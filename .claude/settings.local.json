@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "WebFetch(domain:venmark.dk)",
+      "Bash(where npm)",
+      "Bash(timeout /t 8 /nobreak)",
+      "Bash(npm run dev)",
+      "Bash(npm install next-auth@4 bcryptjs nodemailer @prisma/client)",
+      "Bash(npm install -D @types/bcryptjs @types/nodemailer prisma)",
+      "Bash(npx prisma init --datasource-provider sqlite)",
+      "Bash(npx.cmd prisma init --datasource-provider sqlite)",
+      "Bash(npx.cmd prisma migrate dev --name init)",
+      "Bash(npm install dotenv)",
+      "Bash(npm install prisma@5 @prisma/client@5)",
+      "Bash(grep -r btblan C:/FileRepository --include=*.inf -l)",
+      "Bash(head -20 grep -r btblan C:/Windows/System32/DriverStore/FileRepository --include=*.inf -l)",
+      "Bash(powershell \"Get-PnpDevice | Select FriendlyName, Status, InstanceId | Where-Object { $_FriendlyName -like ''*blan*'' -or $_FriendlyName -like ''*bluetooth*'' -or $_FriendlyName -like ''*personal area*'' }\")",
+      "Bash(powershell -Command \"Get-PnpDevice | Select-Object FriendlyName, Status, InstanceId | Format-List\")",
+      "Bash(powershell -Command \"Get-PnpDevice | Where-Object {$_Status -eq ''Error''} | Format-List FriendlyName, Status, Problem, InstanceId\")",
+      "Bash(powershell -Command \"Get-PnpDevice -PresentOnly | Format-Table FriendlyName, Status, Problem -AutoSize\")",
+      "Bash(powershell -Command \"Get-PnpDevice | Format-List FriendlyName, Status, Problem, InstanceId, HardwareID\")"
+    ]
+  }
+}

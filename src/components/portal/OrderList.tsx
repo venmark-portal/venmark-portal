@@ -1,0 +1,983 @@
+'use client'
+
+import { useState, useCallback, useTransition } from 'react'
+import {
+  Plus, Minus, ShoppingCart, Flame, Search,
+  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar,
+} from 'lucide-react'
+import { formatLongDate, getDeadlineForDelivery } from '@/lib/dateUtils'
+import type { BCItem, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
+import ItemSearchModal from './ItemSearchModal'
+
+// ─── Typer ────────────────────────────────────────────────────────────────────
+
+type EnrichedItem = BCItem & {
+  unitPrice:   number
+  attributes?: BCItemAttributeValue[]
+  uoms?:       BCItemUoM[]
+  pictureId?:  string | null
+}
+
+interface PriceTier {
+  itemNo:          string
+  minimumQuantity: number
+  unitPrice:       number
+  unitOfMeasure:   string
+  startingDate:    string | null
+  endingDate:      string | null
+}
+
+interface OrderLine {
+  item:     EnrichedItem
+  quantity: number
+  uom:      string   // valgt enhed (UoM kode)
+}
+
+interface Props {
+  promotions:        { item: EnrichedItem; note: string }[]
+  favorites:         EnrichedItem[]
+  venmarkItems?:     { item: EnrichedItem; note: string }[]
+  deliveryDays:      Date[]
+  customerId:        string
+  priceTiers?:       PriceTier[]
+  initialFavNos?:    string[]
+  requirePoNumber?:  boolean
+}
+
+// ─── Trappepris-hjælpere ─────────────────────────────────────────────────────
+
+/**
+ * Finder gyldig pris for en given mængde, med UoM-konvertering.
+ *
+ * Logik:
+ * 1. Prøver direkte prislinjer for den valgte UoM (f.eks. KRT 10 KG)
+ * 2. Falder tilbage på base-enhedspriser (KG) og ganger med qtyPerUom
+ */
+function resolvePrice(
+  itemNo: string, qty: number, tiers: PriceTier[], fallback: number,
+  uomCode?: string, qtyPerUom = 1, baseUomCode?: string,
+): number {
+  if (!tiers.length || qty <= 0) return fallback
+  const today = new Date().toISOString().split('T')[0]
+
+  const isBaseUnit = !uomCode || uomCode === baseUomCode || qtyPerUom <= 1
+
+  // ── 1. Direkte priser for den valgte enhed ──────────────────────────────────
+  const directTiers = tiers.filter(t =>
+    t.itemNo === itemNo &&
+    t.minimumQuantity <= qty &&
+    (isBaseUnit
+      // For base-enhed: acceptér tiers uden enhed ELLER med base-enhed
+      ? (!t.unitOfMeasure || !uomCode || t.unitOfMeasure === uomCode)
+      // For anden enhed: skal matche præcist
+      : t.unitOfMeasure === uomCode) &&
+    (!t.startingDate || t.startingDate <= today) &&
+    (!t.endingDate   || t.endingDate   >= today),
+  )
+  if (directTiers.length) return Math.min(...directTiers.map(t => t.unitPrice))
+
+  // ── 2. Fallback: base-enhedspriser × konverteringsfaktor ───────────────────
+  if (!isBaseUnit && qtyPerUom > 1) {
+    const effectiveBaseQty = qty * qtyPerUom
+    const baseTiers = tiers.filter(t =>
+      t.itemNo === itemNo &&
+      t.minimumQuantity <= effectiveBaseQty &&
+      (!t.unitOfMeasure || t.unitOfMeasure === baseUomCode) &&
+      (!t.startingDate || t.startingDate <= today) &&
+      (!t.endingDate   || t.endingDate   >= today),
+    )
+    if (baseTiers.length) return Math.min(...baseTiers.map(t => t.unitPrice)) * qtyPerUom
+  }
+
+  return isBaseUnit ? fallback : fallback * qtyPerUom
+}
+
+/**
+ * Bygger visnings-breakpoints for trappepriser, inkl. UoM-konvertering.
+ * Returnerer kun niveauer hvor prisen faktisk falder.
+ */
+function buildDisplayTiers(
+  tiers: PriceTier[], itemNo: string, uomCode?: string, today8601?: string,
+  qtyPerUom = 1, baseUomCode?: string,
+): Array<{ minimumQuantity: number; unitPrice: number }> {
+  const t = today8601 ?? new Date().toISOString().split('T')[0]
+  const isBaseUnit = !uomCode || uomCode === baseUomCode || qtyPerUom <= 1
+
+  // ── Direkte tiers for den valgte enhed ──────────────────────────────────────
+  const direct = tiers.filter(tier =>
+    tier.itemNo === itemNo &&
+    (isBaseUnit
+      ? (!tier.unitOfMeasure || !uomCode || tier.unitOfMeasure === uomCode)
+      : tier.unitOfMeasure === uomCode) &&
+    (!tier.startingDate || tier.startingDate <= t) &&
+    (!tier.endingDate   || tier.endingDate   >= t),
+  )
+
+  function buildFromValid(valid: PriceTier[], multiply = 1, divideBreakpoints = 1) {
+    const breakpoints = Array.from(new Set(valid.map(v =>
+      Math.max(1, Math.ceil(v.minimumQuantity / divideBreakpoints))
+    ))).sort((a, b) => a - b)
+
+    const result: Array<{ minimumQuantity: number; unitPrice: number }> = []
+    let lastBestPrice = Infinity
+    for (const minQty of breakpoints) {
+      const effectiveQty = minQty * divideBreakpoints
+      const bestPrice = Math.min(...valid.filter(v => v.minimumQuantity <= effectiveQty).map(v => v.unitPrice)) * multiply
+      if (bestPrice < lastBestPrice) {
+        result.push({ minimumQuantity: minQty, unitPrice: bestPrice })
+        lastBestPrice = bestPrice
+      }
+    }
+    return result
+  }
+
+  if (direct.length) return buildFromValid(direct)
+
+  // ── Fallback: base-enhedspriser konverteret til KRT-mængder ────────────────
+  if (!isBaseUnit && qtyPerUom > 1) {
+    const baseTiers = tiers.filter(tier =>
+      tier.itemNo === itemNo &&
+      (!tier.unitOfMeasure || tier.unitOfMeasure === baseUomCode) &&
+      (!tier.startingDate || tier.startingDate <= t) &&
+      (!tier.endingDate   || tier.endingDate   >= t),
+    )
+    if (baseTiers.length) return buildFromValid(baseTiers, qtyPerUom, qtyPerUom)
+  }
+
+  return []
+}
+
+// ─── Attribut-ikoner ──────────────────────────────────────────────────────────
+
+type AttrDef = { label: string; symbol: string }
+const ATTR_DEFS: { pattern: RegExp; def: AttrDef }[] = [
+  { pattern: /frost/i,          def: { label: 'Frost',        symbol: '❄'  } },
+  { pattern: /vild/i,           def: { label: 'Vildfanget',   symbol: '🎣' } },
+  { pattern: /opdr/i,           def: { label: 'Opdrættet',    symbol: '🐟' } },
+  { pattern: /øko|eko|organ/i,  def: { label: 'Økologisk',    symbol: '🌿' } },
+  { pattern: /msc/i,            def: { label: 'MSC',          symbol: 'Ⓜ'  } },
+  { pattern: /asc/i,            def: { label: 'ASC',          symbol: '🅰'  } },
+  { pattern: /røg/i,            def: { label: 'Røget',        symbol: '🔥' } },
+  { pattern: /fersk/i,          def: { label: 'Fersk',        symbol: '💧' } },
+]
+
+function AttrIcon({ attr }: { attr: BCItemAttributeValue }) {
+  const v = attr.value?.toLowerCase()
+  if (!v || v === 'nej' || v === 'no' || v === '0' || v === 'false') return null
+  if (/^\d+$/.test(attr.value.trim())) return null
+
+  for (const { pattern, def } of ATTR_DEFS) {
+    if (pattern.test(attr.attributeName)) {
+      return (
+        <span
+          title={`${def.label}: ${attr.value}`}
+          className="shrink-0 text-[13px] leading-none cursor-default select-none"
+        >
+          {def.symbol}
+        </span>
+      )
+    }
+  }
+  if (attr.value.length <= 2) {
+    return (
+      <span title={`${attr.attributeName}: ${attr.value}`} className="shrink-0 text-[13px] leading-none">
+        {attr.value}
+      </span>
+    )
+  }
+  return null
+}
+
+// ─── Lagerstatus ──────────────────────────────────────────────────────────────
+
+function StockDot({ inventory }: { inventory: number }) {
+  const cfg =
+    inventory === 0  ? { color: 'bg-red-400',    label: 'Ingen lager'  } :
+    inventory < 10   ? { color: 'bg-orange-400', label: 'Knaphed'      } :
+    inventory < 50   ? { color: 'bg-yellow-400', label: 'OK lager'     } :
+                       { color: 'bg-green-400',  label: 'Rigeligt'     }
+  return (
+    <span
+      className={`shrink-0 h-2 w-2 rounded-full ${cfg.color}`}
+      title={`Lager: ${cfg.label} (${inventory})`}
+    />
+  )
+}
+
+// ─── Thumbnail ────────────────────────────────────────────────────────────────
+
+function ItemThumbnail({ item, onClick }: { item: EnrichedItem; onClick?: () => void }) {
+  const url = item.pictureId
+    ? `/api/portal/item-image/${item.id}?pictureId=${item.pictureId}`
+    : null
+
+  return (
+    <button
+      onClick={onClick}
+      className="shrink-0 h-10 w-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center hover:border-blue-300 transition"
+      title={item.displayName}
+      type="button"
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <ShoppingCart size={14} className="text-gray-300" />
+      )}
+    </button>
+  )
+}
+
+// ─── Vare-detalje modal ───────────────────────────────────────────────────────
+
+function ItemDetailModal({ item, onClose }: { item: EnrichedItem; onClose: () => void }) {
+  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const url = item.pictureId
+    ? `/api/portal/item-image/${item.id}?pictureId=${item.pictureId}`
+    : null
+  const attrs = item.attributes ?? []
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white shadow-xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Billede */}
+        {url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={item.displayName} className="w-full h-48 object-cover" />
+        )}
+        {!url && (
+          <div className="w-full h-24 bg-gray-100 flex items-center justify-center">
+            <ShoppingCart size={32} className="text-gray-300" />
+          </div>
+        )}
+
+        <div className="p-5">
+          <p className="text-xs font-mono text-gray-400 mb-1">{item.number}</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-3">{item.displayName}</h2>
+
+          {/* Enhed + pris */}
+          <div className="flex items-center gap-3 mb-4">
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
+              {item.baseUnitOfMeasureCode}
+            </span>
+            {item.unitPrice > 0 && (
+              <span className="text-sm font-semibold text-gray-700">
+                {fmt.format(item.unitPrice)}/{item.baseUnitOfMeasureCode}
+              </span>
+            )}
+          </div>
+
+          {/* Attributter */}
+          {attrs.filter(a => {
+            const v = a.value?.toLowerCase()
+            return v && v !== 'nej' && v !== 'no' && v !== '0' && v !== 'false'
+          }).length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Egenskaber</p>
+              <div className="flex flex-wrap gap-1.5">
+                {attrs.filter(a => {
+                  const v = a.value?.toLowerCase()
+                  return v && v !== 'nej' && v !== 'no' && v !== '0' && v !== 'false'
+                }).map((a, i) => (
+                  <span key={i} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                    {a.attributeName}: {a.value}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={onClose}
+            className="mt-2 w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          >
+            Luk
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Én kompakt vare-række ────────────────────────────────────────────────────
+
+function OrderRow({
+  item, quantity, onQty, priceTiers = [],
+  isPromo = false, promoNote = '',
+  isVenmark = false, venmarkNote = '',
+  isFavorite = false, onToggleFav,
+  selectedUom, onUomChange,
+  onOpenDetail,
+}: {
+  item:          EnrichedItem
+  quantity:      number
+  onQty:         (n: number) => void
+  priceTiers?:   PriceTier[]
+  isPromo?:      boolean
+  promoNote?:    string
+  isVenmark?:    boolean
+  venmarkNote?:  string
+  isFavorite?:   boolean
+  onToggleFav?:  () => void
+  selectedUom?:  string
+  onUomChange?:  (code: string) => void
+  onOpenDetail?: () => void
+}) {
+  const fmt    = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const attrs  = item.attributes ?? []
+  const uoms   = item.uoms ?? []
+
+  const activeUomCode  = selectedUom ?? item.baseUnitOfMeasureCode
+  const activeUomObj   = uoms.find(u => u.code === activeUomCode)
+  const qtyPerUom      = activeUomObj?.qtyPerUnitOfMeasure ?? 1
+  const baseUomCode    = uoms.find(u => u.baseUnitOfMeasure)?.code ?? item.baseUnitOfMeasureCode
+
+  const effectivePrice = resolvePrice(item.number, Math.max(quantity, 1), priceTiers, item.unitPrice, activeUomCode, qtyPerUom, baseUomCode)
+
+  const today8601    = new Date().toISOString().split('T')[0]
+  const displayTiers = buildDisplayTiers(priceTiers, item.number, activeUomCode, today8601, qtyPerUom, baseUomCode)
+
+  const hasRealTiers = displayTiers.length > 1
+  const priceChanged = hasRealTiers && quantity > 0 && effectivePrice !== (displayTiers[0]?.unitPrice ?? item.unitPrice)
+
+  const visibleAttrs = attrs.filter(a => {
+    const v = a.value?.toLowerCase()
+    if (!v || v === 'nej' || v === 'no' || v === '0' || v === 'false') return false
+    if (/^\d+$/.test(a.value.trim())) return false
+    return true
+  }).slice(0, 5)
+
+  const hasMultipleUoms = uoms.length > 1
+
+  return (
+    <div className={`px-3 py-2 transition-colors ${quantity > 0 ? 'bg-blue-50/50' : 'hover:bg-gray-50/40'}`}>
+      <div className="flex items-center gap-2">
+
+        {/* ── Thumbnail ────────────────────────────────── */}
+        <ItemThumbnail item={item} onClick={onOpenDetail} />
+
+        {/* ── Varenavn + info ─────────────────────── */}
+        <div className="min-w-0 flex-1">
+          {/* Linje 1: navn + attributter */}
+          <div className="flex items-center gap-1 min-w-0">
+            <StockDot inventory={item.inventory ?? 0} />
+            {isPromo && <Flame size={11} className="shrink-0 text-orange-500" />}
+            {isVenmark && !isPromo && <span className="shrink-0 text-[12px]" title={venmarkNote || 'Venmark anbefaler'}>⭐</span>}
+            <span className="truncate text-sm font-medium text-gray-900 leading-tight">{item.displayName}</span>
+            {visibleAttrs.map((attr, i) => <AttrIcon key={i} attr={attr} />)}
+          </div>
+          {/* Linje 2: nr + aktiv pris + trappepriser */}
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 flex-wrap leading-tight">
+            <span className="font-mono">{item.number}</span>
+
+            {effectivePrice > 0 && (
+              <span className={`font-semibold ${priceChanged ? 'text-blue-600' : 'text-gray-600'}`}>
+                {fmt.format(effectivePrice)}/{activeUomCode}
+              </span>
+            )}
+
+            {hasRealTiers && (
+              <span className="flex items-center gap-0.5 flex-wrap">
+                <TrendingDown size={9} className="text-emerald-500 shrink-0" />
+                {displayTiers.map((t, i) => {
+                  const isActive = quantity > 0 && t.minimumQuantity <= quantity &&
+                    (i === displayTiers.length - 1 || displayTiers[i + 1].minimumQuantity > quantity)
+                  return (
+                    <span
+                      key={i}
+                      className={`rounded px-1 py-0 leading-tight ${
+                        isActive
+                          ? 'bg-blue-100 text-blue-700 font-semibold'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                      title={`Fra ${t.minimumQuantity} ${activeUomCode}: ${fmt.format(t.unitPrice)}`}
+                    >
+                      {t.minimumQuantity === 0 ? '1' : t.minimumQuantity}+: {fmt.format(t.unitPrice)}
+                    </span>
+                  )
+                })}
+              </span>
+            )}
+
+            {promoNote && <span className="italic text-orange-500">"{promoNote}"</span>}
+          </div>
+        </div>
+
+        {/* ── Enhed + Antal ────────────────────────── */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Enhed FORAN antal */}
+          {hasMultipleUoms ? (
+            <select
+              value={activeUomCode}
+              onChange={e => onUomChange?.(e.target.value)}
+              className="w-16 rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer"
+              title="Vælg bestillingsenhed"
+            >
+              {uoms.map(u => (
+                <option key={u.code} value={u.code}>
+                  {u.code}{u.qtyPerUnitOfMeasure !== 1 ? ` (×${u.qtyPerUnitOfMeasure})` : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="w-6 text-[11px] text-gray-400 text-right">{item.baseUnitOfMeasureCode}</span>
+          )}
+
+          {/* Minus / antal-felt / Plus */}
+          <button
+            onClick={() => onQty(Math.max(0, quantity - 1))}
+            disabled={quantity === 0}
+            className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
+          >
+            <Minus size={12} />
+          </button>
+          <input
+            type="number"
+            min={0}
+            value={quantity || ''}
+            placeholder="0"
+            onChange={(e) => onQty(Math.max(0, parseInt(e.target.value) || 0))}
+            className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
+          />
+          <button
+            onClick={() => onQty(quantity + 1)}
+            className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+
+        {/* ── Favorit-hjerte yderst til højre ─────── */}
+        {onToggleFav && (
+          <button
+            onClick={onToggleFav}
+            className={`shrink-0 p-1 rounded-full transition-colors ${
+              isFavorite ? 'text-red-400 hover:text-red-300' : 'text-gray-200 hover:text-red-300'
+            }`}
+            title={isFavorite ? 'Fjern favorit' : 'Tilføj favorit'}
+          >
+            <Heart size={15} fill={isFavorite ? 'currentColor' : 'none'} />
+          </button>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
+// ─── Leveringsdato-vælger ─────────────────────────────────────────────────────
+
+function DeliveryPicker({
+  deliveryDays, selectedDay, onSelect,
+}: {
+  deliveryDays: Date[]
+  selectedDay:  number
+  onSelect:     (idx: number) => void
+}) {
+  const now = new Date()
+  const [showMore, setShowMore] = useState(false)
+
+  // Hurtige 3 knapper (første 3 gyldige dage)
+  const quickDays = deliveryDays.slice(0, 3).filter(d => now <= getDeadlineForDelivery(d))
+
+  // Resterende dage (fra indeks 3 og frem), kun ikke-forpassede
+  const moreDays = deliveryDays
+    .map((d, i) => ({ d, i }))
+    .slice(3)
+    .filter(({ d }) => now <= getDeadlineForDelivery(d))
+
+  // Er valgt dag ud over de 3 hurtige?
+  const moreSelected = selectedDay >= 3
+
+  function formatDay(day: Date) {
+    return day.toLocaleDateString('da-DK', { weekday: 'short' }).replace('.', '')
+  }
+
+  return (
+    <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        Vælg leveringsdato
+      </p>
+
+      {/* Hurtige knapper + "Mere"-knap på samme linje */}
+      <div className="flex flex-wrap gap-2">
+        {quickDays.map((day, i) => {
+          const dl         = getDeadlineForDelivery(day)
+          const isSelected = i === selectedDay
+          return (
+            <button
+              key={i}
+              onClick={() => { onSelect(i); setShowMore(false) }}
+              className={`flex shrink-0 flex-col items-center rounded-xl px-4 py-2 text-sm font-medium transition ${
+                isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <span className="font-bold">{formatDay(day)}</span>
+              <span className="text-xs opacity-80">
+                {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
+              </span>
+              <span className="mt-0.5 text-[10px] opacity-70">
+                frist {dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </button>
+          )
+        })}
+
+        {/* "Mere"-knap */}
+        {moreDays.length > 0 && (
+          <button
+            onClick={() => setShowMore(v => !v)}
+            className={`flex shrink-0 flex-col items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition gap-0.5 ${
+              moreSelected
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+            title="Vælg en anden dato"
+          >
+            <Calendar size={15} />
+            <span className="text-[11px]">
+              {moreSelected
+                ? deliveryDays[selectedDay]?.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })
+                : 'Mere'}
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* Udvidet dato-liste — samme knapstil som hurtige knapper */}
+      {showMore && (
+        <div className="mt-2 flex flex-wrap gap-2 max-h-52 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/50 p-2">
+          {moreDays.map(({ d: day, i: dlIdx }) => {
+            const dl         = getDeadlineForDelivery(day)
+            const isSelected = dlIdx === selectedDay
+            return (
+              <button
+                key={dlIdx}
+                onClick={() => { onSelect(dlIdx); setShowMore(false) }}
+                className={`flex shrink-0 flex-col items-center rounded-xl px-4 py-2 text-sm font-medium transition ${
+                  isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-200'
+                }`}
+              >
+                <span className="font-bold">{formatDay(day)}</span>
+                <span className="text-xs opacity-80">
+                  {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
+                </span>
+                <span className="mt-0.5 text-[10px] opacity-70">
+                  frist {dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Valgt dato info */}
+      {deliveryDays[selectedDay] && (() => {
+        const dl     = getDeadlineForDelivery(deliveryDays[selectedDay])
+        const isPast = now > dl
+        return (
+          <p className={`mt-2 text-xs ${isPast ? 'text-red-500' : 'text-gray-400'}`}>
+            {isPast
+              ? `⛔ Deadline er overskredet for ${formatLongDate(deliveryDays[selectedDay])}`
+              : `📅 Levering ${formatLongDate(deliveryDays[selectedDay])} — bestil inden kl. ${dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`
+            }
+          </p>
+        )
+      })()}
+    </div>
+  )
+}
+
+// ─── Hoved-komponent ──────────────────────────────────────────────────────────
+
+export default function OrderList({
+  promotions, favorites, venmarkItems = [], deliveryDays, customerId, priceTiers = [], initialFavNos = [],
+  requirePoNumber = false,
+}: Props) {
+  const firstValid = deliveryDays.findIndex(d => new Date() <= getDeadlineForDelivery(d))
+  const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
+  const [lines, setLines]             = useState<Map<string, OrderLine>>(new Map())
+  const [lineUoms, setLineUoms]       = useState<Map<string, string>>(new Map())
+  const [favSet, setFavSet]           = useState<Set<string>>(() => new Set(initialFavNos))
+  const [showSearch, setShowSearch]   = useState(false)
+  const [showPromos, setShowPromos]   = useState(true)
+  const [submitting, setSubmitting]   = useState(false)
+  const [submitted, setSubmitted]     = useState(false)
+  const [error, setError]             = useState('')
+  const [notes,      setNotes]        = useState('')
+  const [driverNote, setDriverNote]   = useState('')
+  const [poNumber,   setPoNumber]     = useState('')
+  const [detailItem, setDetailItem]   = useState<EnrichedItem | null>(null)
+  const [, startTransition]           = useTransition()
+
+  const deliveryDate = deliveryDays[selectedDay]
+  const deadline     = deliveryDate ? getDeadlineForDelivery(deliveryDate) : null
+  const now          = new Date()
+  const pastDeadline = deadline ? now > deadline : false
+
+  // ── Antal ───────────────────────────────────────────────────────────────────
+  const setQty = useCallback((item: EnrichedItem, qty: number) => {
+    setLines(prev => {
+      const next = new Map(prev)
+      if (qty === 0) next.delete(item.number)
+      else {
+        const existing = prev.get(item.number)
+        next.set(item.number, { item, quantity: qty, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+      }
+      return next
+    })
+  }, [])
+
+  const setLineUom = useCallback((item: EnrichedItem, uomCode: string) => {
+    setLineUoms(prev => new Map(prev).set(item.number, uomCode))
+    setLines(prev => {
+      const existing = prev.get(item.number)
+      if (!existing) return prev
+      return new Map(prev).set(item.number, { ...existing, uom: uomCode })
+    })
+  }, [])
+
+  const getQty = (itemNumber: string) => lines.get(itemNumber)?.quantity ?? 0
+
+  // ── Favorit-toggle ──────────────────────────────────────────────────────────
+  function toggleFavorite(item: EnrichedItem) {
+    const newVal = !favSet.has(item.number)
+    setFavSet(prev => {
+      const s = new Set(prev)
+      if (newVal) { s.add(item.number) } else { s.delete(item.number) }
+      return s
+    })
+    startTransition(() => {
+      fetch('/api/portal/favorites', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ itemNo: item.number, itemName: item.displayName, isFavorite: newVal }),
+      }).catch(() => {
+        setFavSet(prev => {
+          const s = new Set(prev)
+          if (newVal) { s.delete(item.number) } else { s.add(item.number) }
+          return s
+        })
+      })
+    })
+  }
+
+  // ── Tilføj via søgning ──────────────────────────────────────────────────────
+  function addSearchedItem(item: EnrichedItem) {
+    setLines(prev => {
+      const next = new Map(prev)
+      const existing = next.get(item.number)
+      next.set(item.number, { item, quantity: (existing?.quantity ?? 0) + 1, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+      return next
+    })
+    setShowSearch(false)
+  }
+
+  // ── Indsend ordre ────────────────────────────────────────────────────────────
+  async function handleSubmit() {
+    if (lines.size === 0 || !deliveryDate) return
+    setSubmitting(true)
+    setError('')
+
+    const orderLines = Array.from(lines.values()).map(l => {
+      const uomCode     = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+      const uomObj      = l.item.uoms?.find(u => u.code === uomCode)
+      const qtyPerUom   = uomObj?.qtyPerUnitOfMeasure ?? 1
+      const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
+      return {
+        bcItemNumber: l.item.number,
+        itemName:     l.item.displayName,
+        quantity:     l.quantity,
+        uom:          uomCode,
+        unitPrice:    resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUomCode),
+      }
+    })
+
+    try {
+      const res = await fetch('/api/portal/order', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ deliveryDate: deliveryDate.toISOString(), notes, driverNote, poNumber, lines: orderLines }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSubmitted(true)
+    } catch (e: any) {
+      setError(e.message ?? 'Ukendt fejl — prøv igen')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ── Totaler ──────────────────────────────────────────────────────────────────
+  const activeLines = Array.from(lines.values())
+  const totalLines  = activeLines.length
+  const totalAmount = activeLines.reduce((s, l) => {
+    const uomCode    = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+    const uomObj     = l.item.uoms?.find(u => u.code === uomCode)
+    const qtyPerUom  = uomObj?.qtyPerUnitOfMeasure ?? 1
+    const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
+    return s + resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUomCode) * l.quantity
+  }, 0)
+
+  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+
+  const promoNos   = new Set(promotions.map(p => p.item.number))
+  const favNos     = new Set(favorites.map(f => f.number))
+  const venmarkNos = new Set(venmarkItems.map(v => v.item.number))
+
+  const searchedLines = Array.from(lines.values()).filter(
+    l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number)
+  )
+
+  // ─── SUCCES ──────────────────────────────────────────────────────────────────
+  if (submitted) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-white py-16 text-center ring-1 ring-gray-200">
+        <CheckCircle2 size={52} className="text-green-500" />
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Bestilling indsendt!</h2>
+          <p className="mt-1 text-sm text-gray-500">Levering: {formatLongDate(deliveryDate)}</p>
+          <p className="mt-0.5 text-sm text-gray-400">Vi bekræfter snarest muligt</p>
+        </div>
+        <div className="flex gap-3 mt-2">
+          <a href="/portal" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Tilbage til oversigt
+          </a>
+          <button
+            onClick={() => { setSubmitted(false); setLines(new Map()); setNotes('') }}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Ny bestilling
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Leveringsdato */}
+      <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} />
+
+      {/* Vareliste */}
+      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
+
+        {/* Legende */}
+        <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] text-gray-400">
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400 inline-block" />Rigeligt</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-400 inline-block" />OK</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />Knaphed</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" />Intet</span>
+          <span className="flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
+        </div>
+
+        {/* Promos */}
+        {promotions.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowPromos(v => !v)}
+              className="flex w-full items-center justify-between bg-orange-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 border-b border-orange-100"
+            >
+              <span className="flex items-center gap-1.5"><Flame size={12} /> Dagens anbefalinger ({promotions.length})</span>
+              {showPromos ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showPromos && (
+              <div className="divide-y divide-gray-100/80">
+                {promotions.map(({ item, note }) => (
+                  <OrderRow
+                    key={`promo-${item.number}`}
+                    item={item} quantity={getQty(item.number)}
+                    onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                    isPromo promoNote={note}
+                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                    onOpenDetail={() => setDetailItem(item)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Venmark anbefaler + kundens favoritter (flettet) */}
+        {(venmarkItems.filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number)).length > 0 ||
+          favorites.filter(f => !promoNos.has(f.number)).length > 0) && (
+          <>
+            <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
+              <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
+            </div>
+            <div className="divide-y divide-gray-100/80">
+              {favorites.filter(f => !promoNos.has(f.number)).map(item => (
+                <OrderRow
+                  key={`fav-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                  onOpenDetail={() => setDetailItem(item)}
+                />
+              ))}
+              {venmarkItems
+                .filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number))
+                .map(({ item, note }) => (
+                  <OrderRow
+                    key={`venmark-${item.number}`}
+                    item={item} quantity={getQty(item.number)}
+                    onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                    isVenmark venmarkNote={note}
+                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                    onOpenDetail={() => setDetailItem(item)}
+                  />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Søgte varer */}
+        {searchedLines.length > 0 && (
+          <>
+            <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
+              <Search size={10} /> Tilføjede varer
+            </div>
+            <div className="divide-y divide-gray-100/80">
+              {searchedLines.map(({ item, quantity }) => (
+                <OrderRow
+                  key={`search-${item.number}`}
+                  item={item} quantity={quantity}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                  onOpenDetail={() => setDetailItem(item)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && searchedLines.length === 0 && (
+          <div className="px-4 py-10 text-center text-sm text-gray-400">
+            Ingen favoritter endnu — brug søgning nedenfor
+          </div>
+        )}
+
+        {/* Søg-knap */}
+        <div className="border-t border-dashed border-gray-200">
+          <button
+            onClick={() => setShowSearch(true)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition"
+          >
+            <Search size={15} />
+            Søg og tilføj vare
+          </button>
+        </div>
+      </div>
+
+      {/* PO-nummer */}
+      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+          PO-nummer / Indkøbsordre{requirePoNumber ? ' *' : ' (valgfri)'}
+        </label>
+        <input
+          type="text"
+          value={poNumber}
+          onChange={e => setPoNumber(e.target.value)}
+          placeholder={requirePoNumber ? 'Påkrævet — angiv PO-nummer' : 'f.eks. PO-2024-1234'}
+          className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${
+            requirePoNumber && !poNumber.trim()
+              ? 'border-orange-400 bg-orange-50 focus:border-orange-500'
+              : 'border-gray-300 focus:border-blue-400'
+          }`}
+        />
+        {requirePoNumber && !poNumber.trim() && (
+          <p className="mt-1.5 text-xs text-orange-600">
+            ⚠️ Din konto kræver et PO-nummer. Du kan indsende ordren uden, men husk at tilføje det bagefter.
+          </p>
+        )}
+      </div>
+
+      {/* Note + chauffør-besked */}
+      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Bemærkning (valgfri)
+          </label>
+          <textarea
+            rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Særlige ønsker, leveringstidspunkt m.m."
+            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Ekstra besked til chauffør (valgfri)
+          </label>
+          <p className="text-[11px] text-gray-400 mb-1.5">Engangs-instruks pr. levering — chaufføren bekræfter denne ved ankomst</p>
+          <textarea
+            rows={2} value={driverNote} onChange={e => setDriverNote(e.target.value)}
+            placeholder="f.eks. Aflever til Jens i dag, ikke i køleskuret"
+            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+          />
+          {driverNote.trim() && (
+            <p className="mt-1 text-[11px] text-blue-500 flex items-center gap-1">
+              🔔 Chaufføren vil blive bedt om at bekræfte denne besked ved levering
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Sammenfatning + indsend */}
+      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+        {totalLines > 0 ? (
+          <div className="mb-3 space-y-1 text-sm text-gray-700">
+            <div className="flex justify-between">
+              <span>Antal linjer</span>
+              <span className="font-semibold">{totalLines}</span>
+            </div>
+            {totalAmount > 0 && (
+              <div className="flex justify-between">
+                <span>Ca. beløb</span>
+                <span className="font-semibold">{fmt.format(totalAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-gray-500">
+              <span>Levering</span>
+              <span>{formatLongDate(deliveryDate)}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="mb-3 text-sm text-gray-400">Ingen varer valgt endnu</p>
+        )}
+
+        {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={totalLines === 0 || submitting || pastDeadline}
+          className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
+        >
+          {submitting ? 'Sender…'
+            : pastDeadline ? 'Deadline passeret for denne dag'
+            : totalLines === 0 ? 'Tilføj varer for at bestille'
+            : `Indsend bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+        </button>
+      </div>
+
+      {/* Søgning/katalog modal */}
+      {showSearch && (
+        <ItemSearchModal onSelect={addSearchedItem} onClose={() => setShowSearch(false)} />
+      )}
+
+      {/* Vare-detalje modal */}
+      {detailItem && (
+        <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,358 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Brugere ─────────────────────────────────────────────────────────────────
+
+model Customer {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String
+  name             String
+  bcCustomerNumber  String   @unique
+  bcPriceGroup      String?
+  bcStandardSalesCode String?  // Standard Sales Code i BC — bruges til favoritliste
+  phone            String?
+  address          String?
+  city             String?
+  zipCode          String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  favorites      Favorite[]
+  blocked        BlockedItem[]
+  orders         Order[]
+  standingOrders StandingOrder[]
+  tickets        Ticket[]
+  deliveryProfile DeliveryProfile?
+  requirePoNumber     Boolean  @default(false)
+  bcDebitorBookingGroup String? // e.g. "Salling", "COOP" — triggers mandatory PO
+  contacts            ContactUser[]
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+// ─── Favoritvarer og skjulte varer ───────────────────────────────────────────
+
+model Favorite {
+  id           String   @id @default(cuid())
+  customer     Customer @relation(fields: [customerId], references: [id])
+  customerId   String
+  bcItemNumber String
+  itemName     String
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@unique([customerId, bcItemNumber])
+}
+
+model BlockedItem {
+  id           String   @id @default(cuid())
+  customer     Customer @relation(fields: [customerId], references: [id])
+  customerId   String
+  bcItemNumber String
+  createdAt    DateTime @default(now())
+
+  @@unique([customerId, bcItemNumber])
+}
+
+// ─── Dagens anbefalinger (styres af admin) ────────────────────────────────────
+
+model DailyPromotion {
+  id           String   @id @default(cuid())
+  bcItemNumber String
+  itemName     String
+  date         DateTime
+  priority     Int      @default(0)
+  note         String?
+  createdAt    DateTime @default(now())
+
+  @@unique([bcItemNumber, date])
+}
+
+// ─── Faste ordrer (ugentlige skabeloner) ─────────────────────────────────────
+
+model StandingOrder {
+  id         String    @id @default(cuid())
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  customerId String
+  weekday    Int       // 1=Man 2=Tir 3=Ons 4=Tor 5=Fre
+  name       String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  lines StandingOrderLine[]
+}
+
+model StandingOrderLine {
+  id              String        @id @default(cuid())
+  standingOrder   StandingOrder @relation(fields: [standingOrderId], references: [id], onDelete: Cascade)
+  standingOrderId String
+  bcItemNumber    String
+  itemName        String
+  quantity        Float
+  uom             String        @default("STK")
+  sortOrder       Int           @default(0)
+
+  @@unique([standingOrderId, bcItemNumber])
+}
+
+// ─── Reklamationer og support-tickets ────────────────────────────────────────
+
+model Ticket {
+  id         String          @id @default(cuid())
+  customer   Customer        @relation(fields: [customerId], references: [id])
+  customerId String
+  type       String          @default("COMPLAINT")  // COMPLAINT | SMS_ORDER | MAIL_ORDER
+  subject    String
+  body       String
+  status     String          @default("OPEN")        // OPEN | IN_PROGRESS | CLOSED
+  orderRef   String?
+  images     TicketImage[]
+  messages   TicketMessage[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+}
+
+model TicketImage {
+  id        String   @id @default(cuid())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  data      String
+  mimeType  String
+  fileName  String
+  createdAt DateTime @default(now())
+}
+
+model TicketMessage {
+  id         String   @id @default(cuid())
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId   String
+  sender     String
+  senderName String?
+  body       String
+  readByCustomer      Boolean  @default(true)   // false = unread for customer (staff reply)
+  createdAt  DateTime @default(now())
+}
+
+// ─── Leveringsprofil ─────────────────────────────────────────────────────────
+
+model DeliveryProfile {
+  id                  String          @id @default(cuid())
+  customer            Customer        @relation(fields: [customerId], references: [id])
+  customerId          String          @unique
+  doorCode            String?         // Dørkodenummer
+  keyboxCode          String?         // Nøglebokskode
+  alarmCode           String?         // Alarmkode
+  deliveryDescription String?         // Beskrivelse af leveringssted (fri tekst)
+  driverMessage       String?         // Fast tilbagevendende besked til chauffør
+  photos              DeliveryPhoto[]
+  updatedAt           DateTime        @updatedAt
+}
+
+model DeliveryPhoto {
+  id        String          @id @default(cuid())
+  profile   DeliveryProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId String
+  data      String          // base64
+  mimeType  String
+  fileName  String
+  sortOrder Int             @default(0)
+  createdAt DateTime        @default(now())
+}
+
+// ─── Kontakt-brugere (ansatte der kan bestille for kunden) ───────────────────
+
+model ContactUser {
+  id           String   @id @default(cuid())
+  customer     Customer @relation(fields: [customerId], references: [id])
+  customerId   String
+  email        String   @unique
+  passwordHash String
+  name         String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Venmark anbefalede varer ("sælg for helvede") ───────────────────────────
+
+model VenmarkRecommended {
+  id           String   @id @default(cuid())
+  bcItemNumber String   @unique
+  itemName     String
+  note         String?  // Salgstip / kommentar
+  priority     Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Portal-udseende (admin-styret) ──────────────────────────────────────────
+
+model PortalSettings {
+  id              String   @id @default("default")
+  bgColor         String   @default("#eff6ff")   // Baggrundsfarve (standard: lys blå)
+  bannerEnabled   Boolean  @default(false)
+  bannerText      String?                         // Banner-tekst
+  bannerBgColor   String   @default("#1e40af")   // Banner-baggrundsfarve
+  bannerTextColor String   @default("#ffffff")   // Banner-tekstfarve
+  updatedAt       DateTime @updatedAt
+}
+
+// ─── Ordrer ───────────────────────────────────────────────────────────────────
+
+model Order {
+  id            String    @id @default(cuid())
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  customerId    String
+  bcOrderNumber String?
+  bcOrderId     String?   // BC ordre GUID (kræves til at tilføje linjer via API)
+  type          String    @default("ONEOFF")     // ONEOFF | STANDING
+  status        String    @default("DRAFT")      // DRAFT | SUBMITTED | APPROVED | SENT_TO_BC | CONFIRMED | REJECTED
+  deliveryDate  DateTime
+  deadline      DateTime
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  approvedBy    String?
+  driverNote          String?   // Ekstra besked pr. levering — bekræftes af chauffør
+  driverConfirmed     Boolean   @default(false)
+  driverConfirmedAt   DateTime?
+  poNumber            String?
+  orderedByName       String?  // navn på person der bestilte (evt. kontakt-bruger)
+  orderedByEmail      String?
+
+  lines OrderLine[]
+}
+
+model OrderLine {
+  id           String @id @default(cuid())
+  order        Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId      String
+  bcItemNumber String
+  itemName     String
+  quantity     Float
+  uom          String @default("STK")
+  unitPrice    Float  @default(0)
+  status       String @default("PENDING") // PENDING | APPROVED | REJECTED
+}
+
+// ─── Levering & Logistik ──────────────────────────────────────────────────────
+
+model DriverUser {
+  id        String      @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  pinHash   String
+  isDefault Boolean     @default(false)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  vehicles  RouteVehicle[] @relation("VehicleDriver")
+  stops     RouteStop[]
+}
+
+model DeliveryCode {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  description String?
+  createdAt   DateTime          @default(now())
+  contacts    DeliveryContact[]
+  stops       RouteStop[]
+}
+
+model DeliveryContact {
+  id             String       @id @default(cuid())
+  deliveryCode   DeliveryCode @relation(fields: [deliveryCodeId], references: [id], onDelete: Cascade)
+  deliveryCodeId String
+  name           String
+  email          String?
+  phone          String?
+  role           String       @default("transporter") // "transporter" | "internal"
+}
+
+model DeliveryRoute {
+  id          String         @id @default(cuid())
+  bookingDate DateTime
+  status      String         @default("DRAFT") // DRAFT | ACTIVE | COMPLETED
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  vehicles    RouteVehicle[]
+}
+
+model RouteVehicle {
+  id           String        @id @default(cuid())
+  route        DeliveryRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  routeId      String
+  vehicleLabel String        @default("Bil 1")
+  driver       DriverUser?   @relation("VehicleDriver", fields: [driverId], references: [id])
+  driverId     String?
+  sortOrder    Int           @default(0)
+  stops        RouteStop[]
+}
+
+model RouteStop {
+  id                   String        @id @default(cuid())
+  vehicle              RouteVehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicleId            String
+  driver               DriverUser?   @relation(fields: [driverId], references: [id])
+  driverId             String?
+  sortOrder            Int
+  deliveryCode         DeliveryCode? @relation(fields: [deliveryCodeId], references: [id])
+  deliveryCodeId       String?
+  deliveryCodeOverride String?
+
+  // BC referencer
+  bcSalesOrderNo    String?
+  bcSalesOrderId    String?
+  bcPurchaseOrderNo String?
+  bcPurchaseOrderId String?
+
+  // Ekstra opgave (ikke BC-ordre)
+  isExtraTask    Boolean @default(false)
+  extraTaskTitle String?
+  extraTaskNote  String?
+
+  // Cachet kundeinformation (til offline-brug)
+  customerName    String?
+  customerAddress String?
+  customerPhone   String?
+  totalWeightKg   Float?
+
+  // Status
+  status      String    @default("PENDING") // PENDING | DELIVERED | FAILED | SKIPPED
+  deliveredAt DateTime?
+  failureNote String?
+  packedStatus String?  // læst fra BC: READY | PARTIAL | PENDING
+
+  createdAt DateTime       @default(now())
+  photos    DeliveryPhoto[]
+}
+
+model DeliveryPhoto {
+  id        String    @id @default(cuid())
+  stop      RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  stopId    String
+  filename  String
+  takenAt   DateTime  @default(now())
+  expiresAt DateTime
+}

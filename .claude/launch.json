@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "venmark-dev",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "dev.cmd"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}
