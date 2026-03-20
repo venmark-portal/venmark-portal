@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays } from '@/lib/dateUtils'
@@ -38,8 +38,8 @@ export default async function BestilPage() {
   const today     = new Date()
   const today8601 = today.toISOString().split('T')[0]
 
-  // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter parallelt ──
-  const [portalPrices, blockedRows, promoRows, dbFavRows, venmarkRows] = await Promise.all([
+  // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC Standard Sales Lines parallelt ──
+  const [portalPrices, blockedRows, promoRows, dbFavRows, venmarkRows, bcStandardLines] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -53,8 +53,10 @@ export default async function BestilPage() {
     }),
     prisma.favorite.findMany({ where: { customerId: userId } }),
     prisma.$queryRaw<{ bcItemNumber: string; priority: number; note: string | null }[]>`
-      SELECT bcItemNumber, priority, note FROM VenmarkRecommended WHERE isActive = 1 ORDER BY priority DESC
+      SELECT "bcItemNumber", priority, note FROM "VenmarkRecommended" WHERE "isActive" = true ORDER BY priority DESC
     `,
+    // BC Standard Sales Lines (kundens faste varer i BC) — primær kilde til favoritter
+    getCustomerFavorites(customerNo).catch(() => []),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -64,10 +66,16 @@ export default async function BestilPage() {
     venmarkRows.map(v => v.bcItemNumber).filter(n => !blockedSet.has(n))
   )
 
-  // ── Merged favoritter: BC prislistelinje portalFavorite=true ELLER portal DB ──
-  const bcFavNos  = new Set(portalPrices.filter(p => p.portalFavorite).map(p => p.itemNo))
-  const dbFavNos  = new Set(dbFavRows.map(f => f.bcItemNumber))
-  const allFavNos = Array.from(new Set([...Array.from(bcFavNos), ...Array.from(dbFavNos)])).filter(n => !blockedSet.has(n))
+  // ── Merged favoritter: BC Standard Sales Lines + BC portalFavorite + portal DB ──
+  // BC Standard Sales Lines er primær kilde (native BC feature)
+  const bcStandardNos = new Set(bcStandardLines.map(l => l.itemNo))
+  const bcFavNos      = new Set(portalPrices.filter(p => p.portalFavorite).map(p => p.itemNo))
+  const dbFavNos      = new Set(dbFavRows.map(f => f.bcItemNumber))
+  const allFavNos     = Array.from(new Set([
+    ...Array.from(bcStandardNos),
+    ...Array.from(bcFavNos),
+    ...Array.from(dbFavNos),
+  ])).filter(n => !blockedSet.has(n))
 
   const promoNumbers = promoRows
     .map((p) => p.bcItemNumber)
