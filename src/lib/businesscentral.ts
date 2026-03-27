@@ -562,31 +562,41 @@ export async function getStandingOrderLines(customerNo: string): Promise<BCStand
  * for alle varer hvor portalCutoffWeekday > 0.
  * Bruges til at beregne tidligste leveringsdato per vare.
  */
-export async function getItemCutoffs(): Promise<Map<string, { cutoffWeekday: number; cutoffHour: number }>> {
+export interface BCItemPortalData {
+  cutoffWeekday: number
+  cutoffHour:    number
+  saelgForH:     boolean
+}
+
+export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
   try {
     const token   = await getAccessToken()
     const tenant  = process.env.BC_TENANT_ID
     const env     = process.env.BC_ENVIRONMENT_NAME
     const company = process.env.BC_COMPANY_ID
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
-    const filter  = encodeURIComponent('portalCutoffWeekday gt 0')
 
+    // Hent alle varer med enten cutoff ELLER saelgForH sat
     const res = await fetch(
-      `${base}/itemCutoffs?$filter=${filter}&$select=itemNo,portalCutoffWeekday,portalCutoffHour&$top=500`,
+      `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH&$top=1000`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        next: { revalidate: 3600 }, // cache 1 time — ændres sjældent
+        next: { revalidate: 3600 },
       }
     )
     if (!res.ok) return new Map()
 
     const data = await res.json()
-    const result = new Map<string, { cutoffWeekday: number; cutoffHour: number }>()
+    const result = new Map<string, BCItemPortalData>()
     for (const item of data.value ?? []) {
-      if (item.itemNo && item.portalCutoffWeekday > 0) {
+      if (!item.itemNo) continue
+      const hasCutoff  = (item.portalCutoffWeekday ?? 0) > 0
+      const saelgForH  = item.portalSaelgForH === true
+      if (hasCutoff || saelgForH) {
         result.set(item.itemNo, {
-          cutoffWeekday: item.portalCutoffWeekday,
-          cutoffHour:    item.portalCutoffHour ?? 14,
+          cutoffWeekday: item.portalCutoffWeekday ?? 0,
+          cutoffHour:    item.portalCutoffHour    ?? 14,
+          saelgForH,
         })
       }
     }

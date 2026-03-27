@@ -39,7 +39,7 @@ export default async function BestilPage() {
   const today8601 = today.toISOString().split('T')[0]
 
   // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC-favoritter + faste ordrelinjer + varefrist parallelt ──
-  const [portalPrices, blockedRows, promoRows, dbFavRows, venmarkRows, bcStandardLines, standingLines, itemCutoffs] = await Promise.all([
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -52,22 +52,22 @@ export default async function BestilPage() {
       orderBy: { priority: 'desc' },
     }),
     prisma.favorite.findMany({ where: { customerId: userId } }),
-    prisma.$queryRaw<{ bcItemNumber: string; priority: number; note: string | null }[]>`
-      SELECT "bcItemNumber", priority, note FROM "VenmarkRecommended" WHERE "isActive" = true ORDER BY priority DESC
-    `,
     // BC Portal Customer Favorite (tabel 50157) — primær kilde til favoritter
     getCustomerFavorites(customerNo).catch(() => []),
     // BC Portal Standing Order Line — faste ugentlige ordrelinjer
     getStandingOrderLines(customerNo).catch(() => []),
-    // BC Portal Item Cutoff — ugentlige bestillingsfrister per vare
+    // BC Item portal data — cutoffs + SaelgForH (felt 50008 på tabel 27)
     getItemCutoffs().catch(() => new Map()),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
 
-  // Venmark-anbefalede varer ("sælg for helvede")
+  // Venmark-anbefalede varer — direkte fra BC felt 50008 "SaelgforH" på tabel 27
   const venmarkNos = new Set(
-    venmarkRows.map(v => v.bcItemNumber).filter(n => !blockedSet.has(n))
+    Array.from(itemCutoffs.entries())
+      .filter(([, v]) => v.saelgForH)
+      .map(([itemNo]) => itemNo)
+      .filter(n => !blockedSet.has(n))
   )
 
   // ── Merged favoritter: BC Standard Sales Lines + BC portalFavorite + portal DB ──
@@ -153,10 +153,12 @@ export default async function BestilPage() {
     .map((n) => itemMap.get(n))
     .filter(Boolean) as NonNullable<ReturnType<typeof itemMap.get>>[]
 
-  // Venmark-anbefalede varer (flettes med favoritter — kun dem der ikke allerede er favoritter/promos)
+  // Venmark-anbefalede varer fra BC felt 50008 — ikke vist hvis allerede i favoritter eller promos
+  const allFavSet  = new Set(allFavNos)
   const venmarkItems = Array.from(venmarkNos)
     .filter(n => !promoRows.some(p => p.bcItemNumber === n)) // ikke promo
-    .map(n => ({ item: itemMap.get(n), note: venmarkRows.find(v => v.bcItemNumber === n)?.note ?? '' }))
+    .filter(n => !allFavSet.has(n))                          // ikke allerede favorit
+    .map(n => ({ item: itemMap.get(n), note: '' }))
     .filter(p => p.item != null) as { item: NonNullable<ReturnType<typeof itemMap.get>>; note: string }[]
 
   // Faste ordrelinjer med varekortdetaljer
