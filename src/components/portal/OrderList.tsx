@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useCallback, useTransition } from 'react'
+import { useState, useCallback, useTransition, useEffect, useRef } from 'react'
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
-  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar,
+  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw,
 } from 'lucide-react'
-import { formatLongDate, getDeadlineForDelivery } from '@/lib/dateUtils'
+import { formatLongDate, getDeadlineForDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
@@ -33,15 +33,43 @@ interface OrderLine {
   uom:      string   // valgt enhed (UoM kode)
 }
 
+interface StandingOrderData {
+  id:            string   // SystemId (GUID) — bruges til PATCH
+  item:          EnrichedItem
+  unitOfMeasure: string
+  standingNote:  string
+  qtyMonday:     number
+  qtyTuesday:    number
+  qtyWednesday:  number
+  qtyThursday:   number
+  qtyFriday:     number
+}
+
 interface Props {
   promotions:        { item: EnrichedItem; note: string }[]
   favorites:         EnrichedItem[]
   venmarkItems?:     { item: EnrichedItem; note: string }[]
+  standingOrders?:   StandingOrderData[]
   deliveryDays:      Date[]
   customerId:        string
   priceTiers?:       PriceTier[]
   initialFavNos?:    string[]
   requirePoNumber?:  boolean
+  itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number }>
+}
+
+type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
+
+/** Finder antal fra faste ordrelinjer baseret på ugedag (1=man, 2=tirs, ..., 5=fre) */
+function getStandingQty(s: StandingOrderData, weekday: number): number {
+  switch (weekday) {
+    case 1: return s.qtyMonday
+    case 2: return s.qtyTuesday
+    case 3: return s.qtyWednesday
+    case 4: return s.qtyThursday
+    case 5: return s.qtyFriday
+    default: return 0
+  }
 }
 
 // ─── Trappepris-hjælpere ─────────────────────────────────────────────────────
@@ -314,20 +342,22 @@ function OrderRow({
   isFavorite = false, onToggleFav,
   selectedUom, onUomChange,
   onOpenDetail,
+  unavailableLabel = '',
 }: {
-  item:          EnrichedItem
-  quantity:      number
-  onQty:         (n: number) => void
-  priceTiers?:   PriceTier[]
-  isPromo?:      boolean
-  promoNote?:    string
-  isVenmark?:    boolean
-  venmarkNote?:  string
-  isFavorite?:   boolean
-  onToggleFav?:  () => void
-  selectedUom?:  string
-  onUomChange?:  (code: string) => void
-  onOpenDetail?: () => void
+  item:             EnrichedItem
+  quantity:         number
+  onQty:            (n: number) => void
+  priceTiers?:      PriceTier[]
+  isPromo?:         boolean
+  promoNote?:       string
+  isVenmark?:       boolean
+  venmarkNote?:     string
+  isFavorite?:      boolean
+  onToggleFav?:     () => void
+  selectedUom?:     string
+  onUomChange?:     (code: string) => void
+  onOpenDetail?:    () => void
+  unavailableLabel?: string
 }) {
   const fmt    = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const attrs  = item.attributes ?? []
@@ -356,7 +386,13 @@ function OrderRow({
   const hasMultipleUoms = uoms.length > 1
 
   return (
-    <div className={`px-3 py-2 transition-colors ${quantity > 0 ? 'bg-blue-50/50' : 'hover:bg-gray-50/40'}`}>
+    <div className={`px-3 py-2 transition-colors ${unavailableLabel ? 'opacity-60' : ''} ${quantity > 0 ? 'bg-blue-50/50' : 'hover:bg-gray-50/40'}`}>
+      {unavailableLabel && (
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 w-fit">
+          <Calendar size={9} />
+          {unavailableLabel}
+        </div>
+      )}
       <div className="flex items-center gap-2">
 
         {/* ── Thumbnail ────────────────────────────────── */}
@@ -597,17 +633,49 @@ function DeliveryPicker({
 // ─── Hoved-komponent ──────────────────────────────────────────────────────────
 
 export default function OrderList({
-  promotions, favorites, venmarkItems = [], deliveryDays, customerId, priceTiers = [], initialFavNos = [],
-  requirePoNumber = false,
+  promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays, customerId, priceTiers = [], initialFavNos = [],
+  requirePoNumber = false, itemCutoffs = new Map(),
 }: Props) {
+  // Tjek om en vare kan leveres på den valgte dato
+  function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
+    if (!deliveryDate) return true
+    const cutoff = itemCutoffs.get(itemNo)
+    if (!cutoff) return true // ingen speciel frist — standard logik gælder
+    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour)
+    return deliveryDate >= earliest
+  }
+
   const firstValid = deliveryDays.findIndex(d => new Date() <= getDeadlineForDelivery(d))
   const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
-  const [lines, setLines]             = useState<Map<string, OrderLine>>(new Map())
-  const [lineUoms, setLineUoms]       = useState<Map<string, string>>(new Map())
+
+  // Beregn ugedag for valgt leveringsdato (1=man ... 5=fre)
+  const deliveryWeekday = deliveryDays[Math.max(0, firstValid)]
+    ? (() => { const d = deliveryDays[Math.max(0, firstValid)]; return d.getDay() === 0 ? 7 : d.getDay() })()
+    : 1
+
+  const [lines, setLines]             = useState<Map<string, OrderLine>>(() => {
+    // Foreslå mængder fra faste ordrelinjer for første gyldige leveringsdag
+    const m = new Map<string, OrderLine>()
+    for (const s of standingOrders) {
+      const qty = getStandingQty(s, deliveryWeekday)
+      if (qty > 0) {
+        m.set(s.item.number, { item: s.item, quantity: qty, uom: s.unitOfMeasure || s.item.baseUnitOfMeasureCode })
+      }
+    }
+    return m
+  })
+  const [lineUoms, setLineUoms]       = useState<Map<string, string>>(() => {
+    const m = new Map<string, string>()
+    for (const s of standingOrders) {
+      if (s.unitOfMeasure) m.set(s.item.number, s.unitOfMeasure)
+    }
+    return m
+  })
   const [favSet, setFavSet]           = useState<Set<string>>(() => new Set(initialFavNos))
-  const [showSearch, setShowSearch]   = useState(false)
-  const [showPromos, setShowPromos]   = useState(true)
-  const [submitting, setSubmitting]   = useState(false)
+  const [showSearch, setShowSearch]     = useState(false)
+  const [showPromos, setShowPromos]     = useState(true)
+  const [showStanding, setShowStanding] = useState(true)
+  const [submitting, setSubmitting]     = useState(false)
   const [submitted, setSubmitted]     = useState(false)
   const [error, setError]             = useState('')
   const [notes,      setNotes]        = useState('')
@@ -616,13 +684,37 @@ export default function OrderList({
   const [detailItem, setDetailItem]   = useState<EnrichedItem | null>(null)
   const [, startTransition]           = useTransition()
 
-  const deliveryDate = deliveryDays[selectedDay]
-  const deadline     = deliveryDate ? getDeadlineForDelivery(deliveryDate) : null
-  const now          = new Date()
+  // (Faste ordrer redigeres i BC — ikke fra portalen)
+
+  const now = new Date()
+
+  // ── Tjek om en vare er tilgængelig for valgt leveringsdato ──────────────────
+  function isItemAvailable(itemNo: string, deliveryDate: Date): boolean {
+    const cutoff = itemCutoffs.get(itemNo)
+    if (!cutoff || cutoff.cutoffWeekday === 0) return true // ingen særlig frist
+    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, now)
+    return deliveryDate >= earliest
+  }
+
+  // Navn på ugedag for cutoff (til fejlbesked)
+  const weekdayNames = ['', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag']
+  function cutoffLabel(itemNo: string): string {
+    const cutoff = itemCutoffs.get(itemNo)
+    if (!cutoff || cutoff.cutoffWeekday === 0) return ''
+    return `Bestillingsfrist: ${weekdayNames[cutoff.cutoffWeekday]} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00`
+  }
+
+  const deliveryDate    = deliveryDays[selectedDay]
+  const deadline        = deliveryDate ? getDeadlineForDelivery(deliveryDate) : null
+  // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
+  const selectedWeekday = deliveryDate
+    ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
+    : 0
   const pastDeadline = deadline ? now > deadline : false
 
   // ── Antal ───────────────────────────────────────────────────────────────────
-  const setQty = useCallback((item: EnrichedItem, qty: number) => {
+  const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {
+    if (!fromStanding) manuallyEdited.current.add(item.number)
     setLines(prev => {
       const next = new Map(prev)
       if (qty === 0) next.delete(item.number)
@@ -644,6 +736,34 @@ export default function OrderList({
   }, [])
 
   const getQty = (itemNumber: string) => lines.get(itemNumber)?.quantity ?? 0
+
+  // ── Opdater faste ordrelinjer når leveringsdagen skifter ─────────────────────
+  // Sæt der tracker hvilke varenumre brugeren har manuelt redigeret
+  const manuallyEdited = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (standingOrders.length === 0 || selectedWeekday === 0) return
+    setLines(prev => {
+      const next = new Map(prev)
+      for (const s of standingOrders) {
+        // Spring over varer brugeren selv har ændret
+        if (manuallyEdited.current.has(s.item.number)) continue
+        const newQty = getStandingQty(s, selectedWeekday)
+        if (newQty > 0) {
+          const existing = next.get(s.item.number)
+          next.set(s.item.number, {
+            item: s.item,
+            quantity: newQty,
+            uom: existing?.uom ?? (s.unitOfMeasure || s.item.baseUnitOfMeasureCode),
+          })
+        } else {
+          next.delete(s.item.number)
+        }
+      }
+      return next
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWeekday])
 
   // ── Favorit-toggle ──────────────────────────────────────────────────────────
   function toggleFavorite(item: EnrichedItem) {
@@ -727,13 +847,17 @@ export default function OrderList({
 
   const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
 
-  const promoNos   = new Set(promotions.map(p => p.item.number))
-  const favNos     = new Set(favorites.map(f => f.number))
-  const venmarkNos = new Set(venmarkItems.map(v => v.item.number))
+  const promoNos    = new Set(promotions.map(p => p.item.number))
+  const favNos      = new Set(favorites.map(f => f.number))
+  const venmarkNos  = new Set(venmarkItems.map(v => v.item.number))
+  const standingNos = new Set(standingOrders.map(s => s.item.number))
 
   const searchedLines = Array.from(lines.values()).filter(
-    l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number)
+    l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number) && !standingNos.has(l.item.number)
   )
+
+  // Ugedagsnavn til sektion-header
+  const weekdayName = ['', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'][selectedWeekday] ?? ''
 
   // ─── SUCCES ──────────────────────────────────────────────────────────────────
   if (submitted) {
@@ -821,6 +945,7 @@ export default function OrderList({
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                   onOpenDetail={() => setDetailItem(item)}
+                  unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
                 />
               ))}
               {venmarkItems
@@ -834,9 +959,51 @@ export default function OrderList({
                     isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                     selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                     onOpenDetail={() => setDetailItem(item)}
+                    unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
                   />
               ))}
             </div>
+          </>
+        )}
+
+        {/* Faste ordrelinjer */}
+        {standingOrders.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowStanding(v => !v)}
+              className="flex w-full items-center justify-between bg-purple-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-purple-700 border-b border-purple-100"
+            >
+              <span className="flex items-center gap-1.5">
+                <RefreshCw size={12} />
+                Faste ordrer — {weekdayName} ({standingOrders.length})
+              </span>
+              {showStanding ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showStanding && (
+              <div className="divide-y divide-gray-100/80">
+                {standingOrders.map((s) => {
+                  const weekdayQty = getStandingQty(s, selectedWeekday)
+                  const currentQty = getQty(s.item.number)
+                  const isEdited   = manuallyEdited.current.has(s.item.number) && currentQty !== weekdayQty
+                  return (
+                    <div key={`standing-${s.item.number}`} className="relative">
+                      {isEdited && (
+                        <span className="absolute right-12 top-1/2 -translate-y-1/2 text-[10px] text-purple-400 italic z-10">
+                          ændret
+                        </span>
+                      )}
+                      <OrderRow
+                        item={s.item} quantity={currentQty}
+                        onQty={qty => setQty(s.item, qty)} priceTiers={priceTiers}
+                        isFavorite={favSet.has(s.item.number)} onToggleFav={() => toggleFavorite(s.item)}
+                        selectedUom={lineUoms.get(s.item.number) ?? s.unitOfMeasure} onUomChange={code => setLineUom(s.item, code)}
+                        onOpenDetail={() => setDetailItem(s.item)}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </>
         )}
 
@@ -861,7 +1028,7 @@ export default function OrderList({
           </>
         )}
 
-        {promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && searchedLines.length === 0 && (
+        {promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && standingOrders.length === 0 && searchedLines.length === 0 && (
           <div className="px-4 py-10 text-center text-sm text-gray-400">
             Ingen favoritter endnu — brug søgning nedenfor
           </div>

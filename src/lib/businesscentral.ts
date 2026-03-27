@@ -449,33 +449,35 @@ export function resolvePrice(
   return applicable[0]?.unitPrice ?? fallbackPrice
 }
 
-// ─── Hent favoritvarer via Sales-warehouse-facade API ────────────────────────
+// ─── Hent favoritvarer via Sales-warehouse-facade API (tabel 50157) ──────────
 
 export interface BCCustomerFavorite {
-  salesCode:     string
-  lineNo:        number
-  itemNo:        string
-  description:   string
-  quantity:      number
-  unitOfMeasure: string
+  customerNo:      string
+  lineNo:          number
+  itemNo:          string
+  description:     string
+  defaultQuantity: number
+  unitOfMeasure:   string
+  sortOrder:       number
+  active:          boolean
 }
 
 /**
- * Henter kundens favoritvarer fra Standard Sales Lines i BC.
+ * Henter kundens favoritvarer fra Portal Customer Favorite (tabel 50157) i BC.
  * Kræver PortalFavoritesAPI i Sales-warehouse-facade extensionen.
  * Returnerer [] hvis extensionen ikke er deployed.
  */
-export async function getCustomerFavorites(salesCode: string): Promise<BCCustomerFavorite[]> {
-  if (!salesCode) return []
+export async function getCustomerFavorites(customerNo: string): Promise<BCCustomerFavorite[]> {
+  if (!customerNo) return []
   try {
     const token  = await getAccessToken()
     const tenant = process.env.BC_TENANT_ID
     const env    = process.env.BC_ENVIRONMENT_NAME
     const company = process.env.BC_COMPANY_ID
     const base   = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
-    const filter = encodeURIComponent(`salesCode eq '${salesCode}'`)
+    const filter = encodeURIComponent(`customerNo eq '${customerNo}'`)
 
-    const res = await fetch(`${base}/customerFavorites?$filter=${filter}&$orderby=lineNo`, {
+    const res = await fetch(`${base}/customerFavorites?$filter=${filter}&$orderby=sortOrder`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       next: { revalidate: 120 },
     })
@@ -483,14 +485,147 @@ export async function getCustomerFavorites(salesCode: string): Promise<BCCustome
 
     const data = await res.json()
     return (data.value ?? []).map((f: any) => ({
-      salesCode:     f.salesCode,
-      lineNo:        f.lineNo,
-      itemNo:        f.itemNo,
-      description:   f.description,
-      quantity:      f.quantity ?? 1,
-      unitOfMeasure: f.unitOfMeasure ?? '',
+      customerNo:      f.customerNo ?? '',
+      lineNo:          f.lineNo ?? 0,
+      itemNo:          f.itemNo ?? '',
+      description:     f.description ?? '',
+      defaultQuantity: f.defaultQuantity ?? 1,
+      unitOfMeasure:   f.unitOfMeasure ?? '',
+      sortOrder:       f.sortOrder ?? f.lineNo ?? 0,
+      active:          f.active !== false,
     }))
   } catch { return [] }
+}
+
+// ─── Hent faste ordrelinjer via Sales-warehouse-facade API (Portal Standing Order Line) ──
+
+export interface BCStandingOrderLine {
+  id:                string   // SystemId (GUID) — bruges til PATCH
+  customerNo:        string
+  itemNo:            string
+  description:       string
+  unitOfMeasureCode: string
+  sortOrder:         number
+  qtyMonday:         number
+  qtyTuesday:        number
+  qtyWednesday:      number
+  qtyThursday:       number
+  qtyFriday:         number
+  standingNote:      string
+}
+
+/**
+ * Henter kundens faste ordrelinjer (Portal Standing Order Line) fra BC.
+ * Disse indeholder ugedagsspecifikke mængder der bruges til at foreslå
+ * mængder på nye salgsordrer.
+ * Kræver PortalStandingOrderAPI i Sales-warehouse-facade extensionen.
+ * Returnerer [] hvis extensionen ikke er deployed.
+ */
+export async function getStandingOrderLines(customerNo: string): Promise<BCStandingOrderLine[]> {
+  if (!customerNo) return []
+  try {
+    const token  = await getAccessToken()
+    const tenant = process.env.BC_TENANT_ID
+    const env    = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base   = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const filter = encodeURIComponent(`customerNo eq '${customerNo}'`)
+
+    const res = await fetch(`${base}/standingOrderLines?$filter=${filter}&$orderby=sortOrder,itemNo`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      next: { revalidate: 120 },
+    })
+    if (!res.ok) return []
+
+    const data = await res.json()
+    return (data.value ?? []).map((l: any) => ({
+      id:                l.id                ?? '',
+      customerNo:        l.customerNo        ?? '',
+      itemNo:            l.itemNo            ?? '',
+      description:       l.description       ?? '',
+      unitOfMeasureCode: l.unitOfMeasureCode ?? '',
+      sortOrder:         l.sortOrder         ?? 0,
+      qtyMonday:         l.qtyMonday         ?? 0,
+      qtyTuesday:        l.qtyTuesday        ?? 0,
+      qtyWednesday:      l.qtyWednesday      ?? 0,
+      qtyThursday:       l.qtyThursday       ?? 0,
+      qtyFriday:         l.qtyFriday         ?? 0,
+      standingNote:      l.standingNote       ?? '',
+    }))
+  } catch { return [] }
+}
+
+// ─── Hent varefrist-data fra BC (Portal Item Cutoff API, page 50326) ──────────
+
+/**
+ * Returnerer et Map fra itemNo → { cutoffWeekday, cutoffHour }
+ * for alle varer hvor portalCutoffWeekday > 0.
+ * Bruges til at beregne tidligste leveringsdato per vare.
+ */
+export async function getItemCutoffs(): Promise<Map<string, { cutoffWeekday: number; cutoffHour: number }>> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const filter  = encodeURIComponent('portalCutoffWeekday gt 0')
+
+    const res = await fetch(
+      `${base}/itemCutoffs?$filter=${filter}&$select=itemNo,portalCutoffWeekday,portalCutoffHour&$top=500`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        next: { revalidate: 3600 }, // cache 1 time — ændres sjældent
+      }
+    )
+    if (!res.ok) return new Map()
+
+    const data = await res.json()
+    const result = new Map<string, { cutoffWeekday: number; cutoffHour: number }>()
+    for (const item of data.value ?? []) {
+      if (item.itemNo && item.portalCutoffWeekday > 0) {
+        result.set(item.itemNo, {
+          cutoffWeekday: item.portalCutoffWeekday,
+          cutoffHour:    item.portalCutoffHour ?? 14,
+        })
+      }
+    }
+    return result
+  } catch { return new Map() }
+}
+
+// ─── Opdater fast ordrelinje i BC (PATCH) ─────────────────────────────────────
+
+export interface StandingOrderPatch {
+  qtyMonday?:         number
+  qtyTuesday?:        number
+  qtyWednesday?:      number
+  qtyThursday?:       number
+  qtyFriday?:         number
+  unitOfMeasureCode?: string
+  sortOrder?:         number
+  standingNote?:      string
+}
+
+export async function updateStandingOrderLine(id: string, patch: StandingOrderPatch): Promise<boolean> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+    const res = await fetch(`${base}/standingOrderLines(${id})`, {
+      method:  'PATCH',
+      headers: {
+        Authorization:  `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'If-Match':     '*',
+      },
+      body: JSON.stringify(patch),
+    })
+    return res.ok
+  } catch { return false }
 }
 
 // ─── Toggle portalFavorite på BC prislistelinje ───────────────────────────────

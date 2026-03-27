@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays } from '@/lib/dateUtils'
@@ -38,8 +38,8 @@ export default async function BestilPage() {
   const today     = new Date()
   const today8601 = today.toISOString().split('T')[0]
 
-  // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC Standard Sales Lines parallelt ──
-  const [portalPrices, blockedRows, promoRows, dbFavRows, venmarkRows, bcStandardLines] = await Promise.all([
+  // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC-favoritter + faste ordrelinjer + varefrist parallelt ──
+  const [portalPrices, blockedRows, promoRows, dbFavRows, venmarkRows, bcStandardLines, standingLines, itemCutoffs] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -55,8 +55,12 @@ export default async function BestilPage() {
     prisma.$queryRaw<{ bcItemNumber: string; priority: number; note: string | null }[]>`
       SELECT "bcItemNumber", priority, note FROM "VenmarkRecommended" WHERE "isActive" = true ORDER BY priority DESC
     `,
-    // BC Standard Sales Lines (kundens faste varer i BC) — primær kilde til favoritter
+    // BC Portal Customer Favorite (tabel 50157) — primær kilde til favoritter
     getCustomerFavorites(customerNo).catch(() => []),
+    // BC Portal Standing Order Line — faste ugentlige ordrelinjer
+    getStandingOrderLines(customerNo).catch(() => []),
+    // BC Portal Item Cutoff — ugentlige bestillingsfrister per vare
+    getItemCutoffs().catch(() => new Map()),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -81,7 +85,12 @@ export default async function BestilPage() {
     .map((p) => p.bcItemNumber)
     .filter((n) => !blockedSet.has(n))
 
-  const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos)]))
+  // Faste ordrelinjer — varenumre der ikke er blokerede
+  const standingNos = standingLines
+    .filter(l => !blockedSet.has(l.itemNo))
+    .map(l => l.itemNo)
+
+  const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos]))
 
   // ── Hent varekortdetaljer + attributter + enheder fra BC parallelt ─────────
   const bcItems = await getItemsByNumbers(allNumbers)
@@ -150,6 +159,30 @@ export default async function BestilPage() {
     .map(n => ({ item: itemMap.get(n), note: venmarkRows.find(v => v.bcItemNumber === n)?.note ?? '' }))
     .filter(p => p.item != null) as { item: NonNullable<ReturnType<typeof itemMap.get>>; note: string }[]
 
+  // Faste ordrelinjer med varekortdetaljer
+  const standingOrders = standingLines
+    .filter(l => !blockedSet.has(l.itemNo))
+    .map(l => {
+      const item = itemMap.get(l.itemNo)
+      if (!item) return null
+      return {
+        id:            l.id,
+        item,
+        unitOfMeasure: l.unitOfMeasureCode || item.baseUnitOfMeasureCode,
+        standingNote:  l.standingNote,
+        qtyMonday:    l.qtyMonday,
+        qtyTuesday:   l.qtyTuesday,
+        qtyWednesday: l.qtyWednesday,
+        qtyThursday:  l.qtyThursday,
+        qtyFriday:    l.qtyFriday,
+      }
+    })
+    .filter(Boolean) as {
+      item: NonNullable<ReturnType<typeof itemMap.get>>
+      unitOfMeasure: string
+      qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number
+    }[]
+
   // ── Trappepriser til klient ─────────────────────────────────────────────────
   const priceTiers = portalPrices.map((p) => ({
     itemNo:          p.itemNo,
@@ -175,11 +208,13 @@ export default async function BestilPage() {
         promotions={promotions as any}
         favorites={favorites as any}
         venmarkItems={venmarkItems as any}
+        standingOrders={standingOrders as any}
         deliveryDays={deliveryDays}
         customerId={userId}
         priceTiers={priceTiers}
         initialFavNos={allFavNos}
         requirePoNumber={needsPo}
+        itemCutoffs={itemCutoffs as any}
       />
     </div>
   )

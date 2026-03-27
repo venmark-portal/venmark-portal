@@ -19,7 +19,8 @@
       "Bash(powershell -Command \"Get-PnpDevice | Select-Object FriendlyName, Status, InstanceId | Format-List\")",
       "Bash(powershell -Command \"Get-PnpDevice | Where-Object {$_Status -eq ''Error''} | Format-List FriendlyName, Status, Problem, InstanceId\")",
       "Bash(powershell -Command \"Get-PnpDevice -PresentOnly | Format-Table FriendlyName, Status, Problem -AutoSize\")",
-      "Bash(powershell -Command \"Get-PnpDevice | Format-List FriendlyName, Status, Problem, InstanceId, HardwareID\")"
+      "Bash(powershell -Command \"Get-PnpDevice | Format-List FriendlyName, Status, Problem, InstanceId, HardwareID\")",
+      "Bash(xargs grep:*)"
     ]
   }
 }

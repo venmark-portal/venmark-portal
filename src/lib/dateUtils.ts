@@ -66,6 +66,56 @@ export function nextOccurrenceOfWeekday(weekday: number): Date {
   return result
 }
 
+/**
+ * Beregner tidligste leveringsdato for en vare med ugentlig bestillingsfrist.
+ *
+ * Eksempel: Laks — cutoffWeekday=2 (tirsdag), cutoffHour=7
+ *   → Bestilles tirsdag kl 07:00 til leverandør
+ *   → Kan leveres fra mandagen ugen efter
+ *
+ * @param cutoffWeekday  1=man … 5=fre
+ * @param cutoffHour     0–23
+ * @param now            aktuel tid (default: nu)
+ */
+export function earliestDeliveryForItem(
+  cutoffWeekday: number,
+  cutoffHour: number,
+  now: Date = new Date()
+): Date {
+  // Find mandagen i denne uge
+  function getMonday(d: Date): Date {
+    const m = new Date(d)
+    const day = m.getDay() || 7 // 0(søn)→7, ellers 1-6
+    m.setDate(m.getDate() - (day - 1))
+    m.setHours(0, 0, 0, 0)
+    return m
+  }
+
+  const thisMonday = getMonday(now)
+
+  // Denne uges cutoff-tidspunkt
+  const thisCutoff = new Date(thisMonday)
+  thisCutoff.setDate(thisMonday.getDate() + (cutoffWeekday - 1))
+  thisCutoff.setHours(cutoffHour, 0, 0, 0)
+
+  // Hvis vi stadig er INDEN fristen → brug denne uges cutoff
+  // Hvis vi har PASSERET fristen → brug næste uges cutoff
+  let relevantCutoff: Date
+  if (now < thisCutoff) {
+    relevantCutoff = thisCutoff
+  } else {
+    relevantCutoff = new Date(thisCutoff)
+    relevantCutoff.setDate(thisCutoff.getDate() + 7)
+  }
+
+  // Tidligste levering = mandagen UGEN EFTER den relevante cutoff
+  const cutoffMonday = getMonday(relevantCutoff)
+  const deliveryMonday = new Date(cutoffMonday)
+  deliveryMonday.setDate(cutoffMonday.getDate() + 7)
+  deliveryMonday.setHours(0, 0, 0, 0)
+  return deliveryMonday
+}
+
 /** Datoformat: "man. 11/3" */
 export function formatShortDate(date: Date): string {
   return date.toLocaleDateString('da-DK', {
