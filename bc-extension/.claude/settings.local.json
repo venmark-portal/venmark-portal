@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/Users/claus/Documents/AL/**)",
-      "Bash(cp \"c:/Users/claus/Documents/AL/ALProject3/.vscode/CustomerMandatory.al\" \"c:/Users/claus/Documents/AL/ALProject3/CustomerMandatory.al\")",
-      "Bash(rm \"c:/Users/claus/Documents/AL/ALProject3/.vscode/CustomerMandatory.al\")"
-    ]
-  }
-}
