@@ -41,6 +41,8 @@ export async function GET(req: Request) {
   const env     = process.env.BC_ENVIRONMENT_NAME
   const company = process.env.BC_COMPANY_ID
   const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+  const baseOdata = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/ODataV4/Company('${company}')`
+  const baseV2 = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
   let url: string
@@ -49,6 +51,12 @@ export async function GET(req: Request) {
   } else if (what === 'customerFavorites') {
     const f = encodeURIComponent(`customerNo eq '${customerNo}'`)
     url = `${base}/customerFavorites?$filter=${f}&$top=10`
+  } else if (what === 'itemCategories') {
+    // BC standard API v2.0 — varekategorier
+    url = `${baseV2}/itemCategories?$top=100`
+  } else if (what === 'items-sample') {
+    // Hent 5 varer med kategori og attributter via standard API
+    url = `${baseV2}/items?$top=5&$select=number,displayName,itemCategoryCode&$filter=blocked eq false`
   } else {
     return NextResponse.json({ error: 'unknown what param' }, { status: 400 })
   }
