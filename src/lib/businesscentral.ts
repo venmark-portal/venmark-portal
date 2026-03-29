@@ -563,9 +563,10 @@ export async function getStandingOrderLines(customerNo: string): Promise<BCStand
  * Bruges til at beregne tidligste leveringsdato per vare.
  */
 export interface BCItemPortalData {
-  cutoffWeekday: number
-  cutoffHour:    number
-  saelgForH:     boolean
+  cutoffWeekday:    number
+  cutoffHour:       number
+  saelgForH:        boolean
+  itemCategoryCode: string
 }
 
 export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
@@ -578,7 +579,7 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
 
     // Hent alle varer med enten cutoff ELLER saelgForH sat
     const res = await fetch(
-      `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH&$top=1000`,
+      `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         next: { revalidate: 3600 },
@@ -590,15 +591,12 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
     const result = new Map<string, BCItemPortalData>()
     for (const item of data.value ?? []) {
       if (!item.itemNo) continue
-      const hasCutoff  = (item.portalCutoffWeekday ?? 0) > 0
-      const saelgForH  = item.portalSaelgForH === true
-      if (hasCutoff || saelgForH) {
-        result.set(item.itemNo, {
-          cutoffWeekday: item.portalCutoffWeekday ?? 0,
-          cutoffHour:    item.portalCutoffHour    ?? 14,
-          saelgForH,
-        })
-      }
+      result.set(item.itemNo, {
+        cutoffWeekday:    item.portalCutoffWeekday ?? 0,
+        cutoffHour:       item.portalCutoffHour    ?? 14,
+        saelgForH:        item.portalSaelgForH     === true,
+        itemCategoryCode: item.itemCategoryCode     ?? '',
+      })
     }
     return result
   } catch { return new Map() }
