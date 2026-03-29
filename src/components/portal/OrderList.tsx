@@ -55,7 +55,7 @@ interface Props {
   priceTiers?:       PriceTier[]
   initialFavNos?:    string[]
   requirePoNumber?:  boolean
-  itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number }>
+  itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; itemCategoryCode?: string }>
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -672,6 +672,7 @@ export default function OrderList({
     return m
   })
   const [favSet, setFavSet]           = useState<Set<string>>(() => new Set(initialFavNos))
+  const [activeCategory, setActiveCategory] = useState<string>('')
   const [showSearch, setShowSearch]     = useState(false)
   const [showPromos, setShowPromos]     = useState(true)
   const [showStanding, setShowStanding] = useState(true)
@@ -852,6 +853,28 @@ export default function OrderList({
   const venmarkNos  = new Set(venmarkItems.map(v => v.item.number))
   const standingNos = new Set(standingOrders.map(s => s.item.number))
 
+  // ── Kategori-filter ──────────────────────────────────────────────────────────
+  // Hent kategori for en vare (fra itemCategoryCode på varen selv, eller fra itemCutoffs)
+  function itemCategory(item: EnrichedItem): string {
+    return item.itemCategoryCode || itemCutoffs.get(item.number)?.itemCategoryCode || ''
+  }
+
+  // Byg sorteret liste over unikke kategorier på tværs af alle synlige varer
+  const allVisibleItems = [
+    ...favorites,
+    ...venmarkItems.map(v => v.item),
+    ...standingOrders.map(s => s.item),
+  ]
+  const categories = Array.from(new Set(
+    allVisibleItems.map(itemCategory).filter(Boolean)
+  )).sort()
+
+  // Filtrer varer baseret på valgt kategori
+  function matchesCategory(item: EnrichedItem): boolean {
+    if (!activeCategory) return true
+    return itemCategory(item) === activeCategory
+  }
+
   const searchedLines = Array.from(lines.values()).filter(
     l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number) && !standingNos.has(l.item.number)
   )
@@ -901,6 +924,35 @@ export default function OrderList({
           <span className="flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
         </div>
 
+        {/* Kategori-tabs */}
+        {categories.length > 1 && (
+          <div className="flex gap-1 px-3 py-2 border-b border-gray-100 overflow-x-auto">
+            <button
+              onClick={() => setActiveCategory('')}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                activeCategory === ''
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Alle
+            </button>
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(c => c === cat ? '' : cat)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  activeCategory === cat
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Promos */}
         {promotions.length > 0 && (
           <>
@@ -937,7 +989,7 @@ export default function OrderList({
               <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
             </div>
             <div className="divide-y divide-gray-100/80">
-              {favorites.filter(f => !promoNos.has(f.number)).map(item => (
+              {favorites.filter(f => !promoNos.has(f.number) && matchesCategory(f)).map(item => (
                 <OrderRow
                   key={`fav-${item.number}`}
                   item={item} quantity={getQty(item.number)}
@@ -949,7 +1001,7 @@ export default function OrderList({
                 />
               ))}
               {venmarkItems
-                .filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number))
+                .filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number) && matchesCategory(v.item))
                 .map(({ item, note }) => (
                   <OrderRow
                     key={`venmark-${item.number}`}
@@ -981,7 +1033,7 @@ export default function OrderList({
             </button>
             {showStanding && (
               <div className="divide-y divide-gray-100/80">
-                {standingOrders.map((s) => {
+                {standingOrders.filter(s => matchesCategory(s.item)).map((s) => {
                   const weekdayQty = getStandingQty(s, selectedWeekday)
                   const currentQty = getQty(s.item.number)
                   const isEdited   = manuallyEdited.current.has(s.item.number) && currentQty !== weekdayQty
