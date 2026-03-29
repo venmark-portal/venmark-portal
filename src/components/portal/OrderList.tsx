@@ -673,6 +673,9 @@ export default function OrderList({
   })
   const [favSet, setFavSet]           = useState<Set<string>>(() => new Set(initialFavNos))
   const [activeCategory, setActiveCategory] = useState<string>('')
+  const [categoryItems, setCategoryItems]   = useState<EnrichedItem[]>([])
+  const [categoryPriceTiers, setCategoryPriceTiers] = useState<PriceTier[]>([])
+  const [categoryLoading, setCategoryLoading]       = useState(false)
   const [showSearch, setShowSearch]     = useState(false)
   const [showPromos, setShowPromos]     = useState(true)
   const [showStanding, setShowStanding] = useState(true)
@@ -854,25 +857,39 @@ export default function OrderList({
   const standingNos = new Set(standingOrders.map(s => s.item.number))
 
   // ── Kategori-filter ──────────────────────────────────────────────────────────
-  // Hent kategori for en vare (fra itemCategoryCode på varen selv, eller fra itemCutoffs)
   function itemCategory(item: EnrichedItem): string {
     return item.itemCategoryCode || itemCutoffs.get(item.number)?.itemCategoryCode || ''
   }
 
-  // Byg sorteret liste over unikke kategorier på tværs af alle synlige varer
-  const allVisibleItems = [
-    ...favorites,
-    ...venmarkItems.map(v => v.item),
-    ...standingOrders.map(s => s.item),
-  ]
+  // Byg sorteret liste over unikke kategorier fra itemCutoffs (alle varer i BC)
   const categories = Array.from(new Set(
-    allVisibleItems.map(itemCategory).filter(Boolean)
+    Array.from(itemCutoffs.values())
+      .map(v => v.itemCategoryCode ?? '')
+      .filter(Boolean)
   )).sort()
 
-  // Filtrer varer baseret på valgt kategori
+  // Filtrer favoritter/faste ordrer ved aktiv kategori
   function matchesCategory(item: EnrichedItem): boolean {
     if (!activeCategory) return true
     return itemCategory(item) === activeCategory
+  }
+
+  // Fetch varer i valgt kategori fra serveren
+  async function selectCategory(cat: string) {
+    if (cat === activeCategory) { setActiveCategory(''); setCategoryItems([]); setCategoryPriceTiers([]); return }
+    setActiveCategory(cat)
+    setCategoryItems([])
+    setCategoryLoading(true)
+    try {
+      const res = await fetch(`/api/portal/category-items?category=${encodeURIComponent(cat)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setCategoryItems(data.items ?? [])
+        setCategoryPriceTiers(data.priceTiers ?? [])
+      }
+    } finally {
+      setCategoryLoading(false)
+    }
   }
 
   const searchedLines = Array.from(lines.values()).filter(
@@ -925,22 +942,22 @@ export default function OrderList({
         </div>
 
         {/* Kategori-tabs */}
-        {categories.length > 1 && (
+        {categories.length > 0 && (
           <div className="flex gap-1 px-3 py-2 border-b border-gray-100 overflow-x-auto">
             <button
-              onClick={() => setActiveCategory('')}
+              onClick={() => { setActiveCategory(''); setCategoryItems([]); setCategoryPriceTiers([]) }}
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 activeCategory === ''
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Alle
+              Mine varer
             </button>
             {categories.map(cat => (
               <button
                 key={cat}
-                onClick={() => setActiveCategory(c => c === cat ? '' : cat)}
+                onClick={() => selectCategory(cat)}
                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   activeCategory === cat
                     ? 'bg-blue-600 text-white'
@@ -1054,6 +1071,37 @@ export default function OrderList({
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Kategori-varer */}
+        {activeCategory && (
+          <>
+            <div className="px-3 py-1 bg-blue-50 border-y border-blue-100 text-[10px] font-semibold uppercase tracking-wide text-blue-500">
+              {activeCategory} — alle varer
+            </div>
+            {categoryLoading && (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
+            )}
+            {!categoryLoading && categoryItems.length === 0 && (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen priser på varer i denne kategori</div>
+            )}
+            {!categoryLoading && categoryItems.length > 0 && (
+              <div className="divide-y divide-gray-100/80">
+                {categoryItems.map(item => (
+                  <OrderRow
+                    key={`cat-${item.number}`}
+                    item={item} quantity={getQty(item.number)}
+                    onQty={qty => setQty(item, qty)}
+                    priceTiers={[...priceTiers, ...categoryPriceTiers]}
+                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                    onOpenDetail={() => setDetailItem(item)}
+                    unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                  />
+                ))}
               </div>
             )}
           </>
