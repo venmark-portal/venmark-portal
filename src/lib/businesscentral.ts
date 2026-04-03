@@ -1157,6 +1157,16 @@ export async function getSalesOrdersForDelivery(
   const base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
+  // DEBUG: log de første 3 ordrer uden filter for at se hvilke datofelter der er sat
+  const debugRes = await fetch(`${base}/salesOrders?$filter=${encodeURIComponent("status ne 'Draft'")}&$top=3&$select=number,status,postingDate,requestedDeliveryDate,shipmentDate`, { headers, cache: 'no-store' })
+  if (debugRes.ok) {
+    const debugData = await debugRes.json()
+    console.log('DEBUG BC ordrer (første 3):', JSON.stringify(debugData.value?.map((o: any) => ({
+      number: o.number, status: o.status,
+      postingDate: o.postingDate, requestedDeliveryDate: o.requestedDeliveryDate, shipmentDate: o.shipmentDate
+    }))))
+  }
+
   // Bogføringsdato = leveringsdato - 1 dag (standard i BC)
   const d = new Date(deliveryDate + 'T12:00:00')
   d.setDate(d.getDate() - 1)
