@@ -1157,29 +1157,15 @@ export async function getSalesOrdersForDelivery(
   const base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // Hent alle ikke-Draft ordrer og filtrer på dato i koden (postingDate er ikke filtrerbart i BC OData)
-  const filterOpen     = encodeURIComponent(`status eq 'Open'`)
-  const filterReleased = encodeURIComponent(`status eq 'Released'`)
+  // Hent Draft, Open og Released ordrer (Draft = ikke frigivet i BC, vises som "Åben" i klienten)
+  const res = await fetch(`${base}/salesOrders?$top=500`, { headers, cache: 'no-store' })
 
-  const [resOpen, resReleased] = await Promise.all([
-    fetch(`${base}/salesOrders?$filter=${filterOpen}&$top=500`,     { headers, cache: 'no-store' }),
-    fetch(`${base}/salesOrders?$filter=${filterReleased}&$top=500`, { headers, cache: 'no-store' }),
-  ])
-
-  if (!resOpen.ok && !resReleased.ok) {
-    const errText = await resOpen.text()
-    throw new Error(`BC salesOrders fejl (${resOpen.status}): ${errText}`)
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`BC salesOrders fejl (${res.status}): ${errText}`)
   }
-
-  const openData     = resOpen.ok     ? await resOpen.json()     : { value: [] }
-  const releasedData = resReleased.ok ? await resReleased.json() : { value: [] }
-
-  // Merge og dedupliker på id
-  const seen = new Set<string>()
-  const allRaw: any[] = []
-  for (const o of [...(openData.value ?? []), ...(releasedData.value ?? [])]) {
-    if (!seen.has(o.id)) { seen.add(o.id); allRaw.push(o) }
-  }
+  const data = await res.json()
+  const allRaw: any[] = data.value ?? []
 
   // Filtrer på bogføringsdato = leveringsdato - 1 dag
   const d = new Date(deliveryDate + 'T12:00:00')
