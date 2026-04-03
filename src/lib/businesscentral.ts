@@ -1157,24 +1157,9 @@ export async function getSalesOrdersForDelivery(
   const base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // DEBUG: log de første 3 ordrer uden filter for at se hvilke datofelter der er sat
-  const debugRes = await fetch(`${base}/salesOrders?$filter=${encodeURIComponent("status ne 'Draft'")}&$top=3&$select=number,status,postingDate,requestedDeliveryDate,shipmentDate`, { headers, cache: 'no-store' })
-  if (debugRes.ok) {
-    const debugData = await debugRes.json()
-    console.log('DEBUG BC ordrer (første 3):', JSON.stringify(debugData.value?.map((o: any) => ({
-      number: o.number, status: o.status,
-      postingDate: o.postingDate, requestedDeliveryDate: o.requestedDeliveryDate, shipmentDate: o.shipmentDate
-    }))))
-  }
-
-  // Bogføringsdato = leveringsdato - 1 dag (standard i BC)
-  const d = new Date(deliveryDate + 'T12:00:00')
-  d.setDate(d.getDate() - 1)
-  const postingDate = d.toISOString().slice(0, 10)
-
-  // To parallelle kald fordi BC OData ikke understøtter OR på tværs af enum-værdier stabilt.
-  const filterOpen     = encodeURIComponent(`status eq 'Open' and postingDate eq ${postingDate}`)
-  const filterReleased = encodeURIComponent(`status eq 'Released' and postingDate eq ${postingDate}`)
+  // Hent alle ikke-Draft ordrer og filtrer på dato i koden (postingDate er ikke filtrerbart i BC OData)
+  const filterOpen     = encodeURIComponent(`status eq 'Open'`)
+  const filterReleased = encodeURIComponent(`status eq 'Released'`)
 
   const [resOpen, resReleased] = await Promise.all([
     fetch(`${base}/salesOrders?$filter=${filterOpen}&$top=500`,     { headers, cache: 'no-store' }),
@@ -1196,9 +1181,19 @@ export async function getSalesOrdersForDelivery(
     if (!seen.has(o.id)) { seen.add(o.id); allRaw.push(o) }
   }
 
-  console.log(`BC returnerede ${allRaw.length} ordrer (Open: ${openData.value?.length ?? 0}, Released: ${releasedData.value?.length ?? 0})`)
+  // Filtrer på bogføringsdato = leveringsdato - 1 dag
+  const d = new Date(deliveryDate + 'T12:00:00')
+  d.setDate(d.getDate() - 1)
+  const postingDate = d.toISOString().slice(0, 10)
 
-  const orders: BCSalesOrderForDelivery[] = allRaw.map((o: any) => ({
+  const filtered = allRaw.filter((o: any) => {
+    const op = o.postingDate?.slice(0, 10)
+    return op === postingDate
+  })
+
+  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher bogføringsdato ${postingDate}`)
+
+  const orders: BCSalesOrderForDelivery[] = filtered.map((o: any) => ({
     id:                    o.id,
     number:                o.number,
     customerNumber:        o.customerNumber,
