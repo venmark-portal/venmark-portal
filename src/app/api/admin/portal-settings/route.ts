@@ -17,10 +17,11 @@ const DEFAULTS = {
 async function getOrCreate() {
   // Sørg for at rækken eksisterer
   await prisma.$executeRaw`
-    INSERT OR IGNORE INTO "PortalSettings"
+    INSERT INTO "PortalSettings"
       (id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "updatedAt")
     VALUES
-      ('default', '#eff6ff', 0, '', '#1e40af', '#ffffff', CURRENT_TIMESTAMP)
+      ('default', '#eff6ff', false, '', '#1e40af', '#ffffff', NOW())
+    ON CONFLICT (id) DO NOTHING
   `
   const rows = await prisma.$queryRaw<any[]>`
     SELECT id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor"

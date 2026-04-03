@@ -49,16 +49,17 @@ export async function GET(
 
   // ── Auto-opret leveringskoder fra salgslinjer hvis de mangler i DB ───────
   const existingCodes = new Set((codeRows as any[]).map((c: any) => c.code))
-  const bcCodes = [...new Set(
+  const bcCodes = Array.from(new Set(
     (bcOrders as any[]).flatMap((o: any) => o.deliveryCodes ?? []).filter(Boolean)
-  )]
+  ))
   for (const code of bcCodes) {
     if (!existingCodes.has(code)) {
       const id  = randomUUID()
       const now = new Date().toISOString()
       await prisma.$executeRaw`
-        INSERT OR IGNORE INTO DeliveryCode (id, code, name, createdAt)
+        INSERT INTO "DeliveryCode" (id, code, name, "createdAt")
         VALUES (${id}, ${code}, ${code}, ${now})
+        ON CONFLICT (code) DO NOTHING
       `
       codeRows.push({ id, code, name: code })
       existingCodes.add(code)
