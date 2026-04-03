@@ -59,28 +59,30 @@ export async function POST(req: NextRequest) {
       SELECT "id" FROM "DriverUser" WHERE "bcDriverCode" = ${d.code} LIMIT 1
     `
 
+    // Hash PIN fra BC hvis den er sat, ellers brug placeholder
+    const pinHash = d.pinCode
+      ? await bcrypt.hash(d.pinCode, 10)
+      : await bcrypt.hash(`__UNSET__${randomUUID()}`, 10)
+
     if (existing.length > 0) {
-      // Opdater navn og telefon fra BC (kilde til sandhed)
       await prisma.$executeRaw`
         UPDATE "DriverUser"
         SET "name"      = ${d.name},
             "phone"     = ${d.phone || null},
             "isActive"  = ${d.active},
+            "pinHash"   = ${pinHash},
             "updatedAt" = ${now}
         WHERE "bcDriverCode" = ${d.code}
       `
       updated++
     } else {
-      // Ny chauffør fra BC — opret med tom PIN (admin skal sætte PIN separat)
       const id = randomUUID()
-      // Placeholder pinHash: bcrypt af umulig PIN — chauffør kan ikke logge ind før PIN sættes
-      const placeholderHash = await bcrypt.hash(`__UNSET__${id}`, 10)
       await prisma.$executeRaw`
         INSERT INTO "DriverUser"
           ("id", "name", "phone", "email", "pinHash", "isDefault", "isActive",
            "defaultVehicleLabel", "bcDriverCode", "createdAt", "updatedAt")
         VALUES
-          (${id}, ${d.name}, ${d.phone || null}, null, ${placeholderHash},
+          (${id}, ${d.name}, ${d.phone || null}, null, ${pinHash},
            false, ${d.active}, 'Bil 1', ${d.code}, ${now}, ${now})
         ON CONFLICT ("bcDriverCode") DO NOTHING
       `

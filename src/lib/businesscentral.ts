@@ -1274,6 +1274,7 @@ export interface BCPortalDriver {
   phone:                     string
   defaultShipmentMethodCode: string
   active:                    boolean
+  pinCode:                   string
 }
 
 /**
@@ -1301,6 +1302,7 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
       phone:                     d.phone                     ?? '',
       defaultShipmentMethodCode: d.defaultShipmentMethodCode ?? '',
       active:                    d.active !== false,
+      pinCode:                   d.pinCode                   ?? '',
     }))
   } catch { return [] }
 }
