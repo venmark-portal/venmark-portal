@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, UserPlus, X, Tag } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserPlus, X, Tag, RefreshCw } from 'lucide-react'
 
 interface Contact { id?: string; name: string; email: string; phone: string; role: string }
 interface DeliveryCode { id: string; code: string; name: string; description: string | null; contacts: Contact[] }
@@ -15,7 +15,20 @@ export default function LeveringskoderPage() {
   const [modal,   setModal]   = useState<null | 'new' | DeliveryCode>(null)
   const [form,    setForm]    = useState({ ...EMPTY_CODE })
   const [saving,  setSaving]  = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [error,   setError]   = useState('')
+
+  async function syncFromBC() {
+    setSyncing(true)
+    const res = await fetch('/api/admin/leveringskoder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ syncFromBC: true }),
+    })
+    setSyncing(false)
+    if (res.ok) await load()
+    else alert('Sync fejlede — er BC tilgængeligt?')
+  }
 
   async function load() {
     const r = await fetch('/api/admin/leveringskoder')
@@ -85,10 +98,16 @@ export default function LeveringskoderPage() {
           <h1 className="text-2xl font-bold text-gray-900">Leveringskoder</h1>
           <p className="text-sm text-gray-500">Koder med tilknyttede transportørkontakter</p>
         </div>
-        <button onClick={openNew}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-          <Plus size={16} /> Ny kode
-        </button>
+        <div className="flex gap-2">
+          <button onClick={syncFromBC} disabled={syncing}
+            className="flex items-center gap-2 rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} /> Sync fra BC
+          </button>
+          <button onClick={openNew}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <Plus size={16} /> Ny kode
+          </button>
+        </div>
       </div>
 
       {loading ? (

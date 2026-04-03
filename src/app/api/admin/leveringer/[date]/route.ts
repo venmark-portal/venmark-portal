@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
-import { randomUUID } from 'crypto'
+
 
 export const runtime = 'nodejs'
 
@@ -46,25 +46,6 @@ export async function GET(
     `,
     prisma.$queryRaw<any[]>`SELECT id, code, name FROM "DeliveryCode" ORDER BY code ASC`,
   ])
-
-  // ── Auto-opret leveringskoder fra salgslinjer hvis de mangler i DB ───────
-  const existingCodes = new Set((codeRows as any[]).map((c: any) => c.code))
-  const bcCodes = Array.from(new Set(
-    (bcOrders as any[]).flatMap((o: any) => o.deliveryCodes ?? []).filter(Boolean)
-  ))
-  for (const code of bcCodes) {
-    if (!existingCodes.has(code)) {
-      const id  = randomUUID()
-      const now = new Date().toISOString()
-      await prisma.$executeRaw`
-        INSERT INTO "DeliveryCode" (id, code, name, "createdAt")
-        VALUES (${id}, ${code}, ${code}, ${now})
-        ON CONFLICT (code) DO NOTHING
-      `
-      codeRows.push({ id, code, name: code })
-      existingCodes.add(code)
-    }
-  }
 
   return NextResponse.json({
     bcOrders,

@@ -1310,3 +1310,22 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
     }))
   } catch { return [] }
 }
+
+// ─── Hent forsendelsesmetoder fra BC (Shipment Method) ───────────────────────
+
+export async function getShipmentMethods(): Promise<{ code: string; description: string }[]> {
+  try {
+    const token = await getAccessToken()
+    const base  = bcBaseUrl()
+    const res   = await fetch(`${base}/shipmentMethods?$top=200`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((m: any) => ({
+      code:        m.code        ?? '',
+      description: m.description ?? m.code ?? '',
+    }))
+  } catch { return [] }
+}
