@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       if (!m.code) continue
       await prisma.$executeRaw`
         INSERT INTO "DeliveryCode" (id, code, name, "createdAt")
-        VALUES (${randomUUID()}, ${m.code}, ${m.description}, ${now})
+        VALUES (${randomUUID()}, ${m.code}, ${m.description}, ${now}::timestamp)
         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
       `
       synced++
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
   await prisma.$executeRaw`
     INSERT INTO "DeliveryCode" (id, code, name, description, "createdAt")
-    VALUES (${id}, ${code.toUpperCase()}, ${name}, ${description ?? null}, ${now})
+    VALUES (${id}, ${code.toUpperCase()}, ${name}, ${description ?? null}, ${now}::timestamp)
   `
   if (contacts?.length) {
     for (const c of contacts) {
