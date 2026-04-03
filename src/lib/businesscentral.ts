@@ -1157,10 +1157,14 @@ export async function getSalesOrdersForDelivery(
   const base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // Hent åbne (Open) og frigivne (Released) ordrer med requestedDeliveryDate = leveringsdato.
+  // Bogføringsdato = leveringsdato - 1 dag (standard i BC)
+  const d = new Date(deliveryDate + 'T12:00:00')
+  d.setDate(d.getDate() - 1)
+  const postingDate = d.toISOString().slice(0, 10)
+
   // To parallelle kald fordi BC OData ikke understøtter OR på tværs af enum-værdier stabilt.
-  const filterOpen     = encodeURIComponent(`status eq 'Open' and requestedDeliveryDate eq ${deliveryDate}`)
-  const filterReleased = encodeURIComponent(`status eq 'Released' and requestedDeliveryDate eq ${deliveryDate}`)
+  const filterOpen     = encodeURIComponent(`status eq 'Open' and postingDate eq ${postingDate}`)
+  const filterReleased = encodeURIComponent(`status eq 'Released' and postingDate eq ${postingDate}`)
 
   const [resOpen, resReleased] = await Promise.all([
     fetch(`${base}/salesOrders?$filter=${filterOpen}&$top=500`,     { headers, cache: 'no-store' }),

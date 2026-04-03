@@ -27,24 +27,24 @@ export async function GET(
 
   const [routeRows, driverRows, codeRows] = await Promise.all([
     prisma.$queryRaw<any[]>`
-      SELECT r.id as routeId, r.status as routeStatus, r.notes as routeNotes,
-        v.id as vehicleId, v.vehicleLabel, v.driverId, v.sortOrder as vehicleSortOrder,
-        s.id as stopId, s.sortOrder, s.driverId as stopDriverId,
-        s.bcSalesOrderNo, s.bcSalesOrderId, s.bcPurchaseOrderNo, s.bcPurchaseOrderId,
-        s.isExtraTask, s.extraTaskTitle, s.extraTaskNote,
-        s.customerName, s.customerAddress, s.customerPhone, s.totalWeightKg,
-        s.status as stopStatus, s.deliveryCodeId, s.deliveryCodeOverride, s.packedStatus
-      FROM DeliveryRoute r
-      JOIN RouteVehicle v ON v.routeId = r.id
-      LEFT JOIN RouteStop s ON s.vehicleId = v.id
-      WHERE date(r.bookingDate) = ${params.date}
-      ORDER BY v.sortOrder, s.sortOrder
+      SELECT r.id as "routeId", r.status as "routeStatus", r.notes as "routeNotes",
+        v.id as "vehicleId", v."vehicleLabel", v."driverId", v."sortOrder" as "vehicleSortOrder",
+        s.id as "stopId", s."sortOrder", s."driverId" as "stopDriverId",
+        s."bcSalesOrderNo", s."bcSalesOrderId", s."bcPurchaseOrderNo", s."bcPurchaseOrderId",
+        s."isExtraTask", s."extraTaskTitle", s."extraTaskNote",
+        s."customerName", s."customerAddress", s."customerPhone", s."totalWeightKg",
+        s.status as "stopStatus", s."deliveryCodeId", s."deliveryCodeOverride", s."packedStatus"
+      FROM "DeliveryRoute" r
+      JOIN "RouteVehicle" v ON v."routeId" = r.id
+      LEFT JOIN "RouteStop" s ON s."vehicleId" = v.id
+      WHERE date(r."bookingDate") = ${params.date}::date
+      ORDER BY v."sortOrder", s."sortOrder"
     `,
     prisma.$queryRaw<any[]>`
-      SELECT id, name, phone, isDefault, defaultVehicleLabel
-      FROM DriverUser WHERE isActive=1 ORDER BY isDefault DESC, name ASC
+      SELECT id, name, phone, "isDefault", "defaultVehicleLabel"
+      FROM "DriverUser" WHERE "isActive" = true ORDER BY "isDefault" DESC, name ASC
     `,
-    prisma.$queryRaw<any[]>`SELECT id, code, name FROM DeliveryCode ORDER BY code ASC`,
+    prisma.$queryRaw<any[]>`SELECT id, code, name FROM "DeliveryCode" ORDER BY code ASC`,
   ])
 
   // ── Auto-opret leveringskoder fra salgslinjer hvis de mangler i DB ───────
