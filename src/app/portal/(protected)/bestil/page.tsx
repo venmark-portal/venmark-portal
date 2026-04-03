@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays } from '@/lib/dateUtils'
@@ -39,7 +39,7 @@ export default async function BestilPage() {
   const today8601 = today.toISOString().split('T')[0]
 
   // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC-favoritter + faste ordrelinjer + varefrist parallelt ──
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs] = await Promise.all([
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -58,6 +58,7 @@ export default async function BestilPage() {
     getStandingOrderLines(customerNo).catch(() => []),
     // BC Item portal data — cutoffs + SaelgForH (felt 50008 på tabel 27)
     getItemCutoffs().catch(() => new Map()),
+    getItemCategories().catch(() => []),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -217,6 +218,7 @@ export default async function BestilPage() {
         initialFavNos={allFavNos}
         requirePoNumber={needsPo}
         itemCutoffs={itemCutoffs as any}
+        allCategories={allCategories}
       />
     </div>
   )

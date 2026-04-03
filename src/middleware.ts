@@ -5,9 +5,21 @@ export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
 
   // Login-sider er altid åbne
-  if (pathname === '/portal/login' || pathname === '/admin/login') return NextResponse.next()
+  if (
+    pathname === '/portal/login' ||
+    pathname === '/admin/login' ||
+    pathname === '/chauffeur/login'
+  ) return NextResponse.next()
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+
+  // Chauffør-sider: kræver driver-rolle
+  if (pathname.startsWith('/chauffeur')) {
+    if (!token || token.role !== 'driver') {
+      return NextResponse.redirect(new URL('/chauffeur/login', req.url))
+    }
+    return NextResponse.next()
+  }
 
   // Ikke logget ind → send til login
   if (!token) {
@@ -25,5 +37,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/portal/:path*', '/admin/:path*'],
+  matcher: ['/portal/:path*', '/admin/:path*', '/chauffeur/:path*'],
 }

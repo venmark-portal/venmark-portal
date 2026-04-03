@@ -7,7 +7,8 @@ import { Truck, CalendarDays, ArrowRight } from 'lucide-react'
 export default function LeveringerPage() {
   const router = useRouter()
   const today = new Date().toISOString().slice(0, 10)
-  const [date, setDate] = useState(today)
+  const TEST_DATE = '2026-01-05' // TODO: skift til `today` når vi går i drift
+  const [date, setDate] = useState(TEST_DATE)
 
   function go() {
     router.push(`/admin/leveringer/${date}`)

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useCallback, useTransition, useEffect, useRef } from 'react'
+import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from 'react'
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
-import type { BCItem, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
+import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
@@ -56,9 +56,39 @@ interface Props {
   initialFavNos?:    string[]
   requirePoNumber?:  boolean
   itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; itemCategoryCode?: string }>
+  allCategories?:    BCItemCategory[]
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
+
+// ─── Katalog-kategori-træ ─────────────────────────────────────────────────────
+
+type CatNode = { code: string; displayName: string; children: CatNode[] }
+
+function buildCatTree(cats: BCItemCategory[]): CatNode[] {
+  const byCode = new Map<string, CatNode>()
+  for (const c of cats) byCode.set(c.code, { code: c.code, displayName: c.displayName, children: [] })
+  const roots: CatNode[] = []
+  for (const c of cats) {
+    const node = byCode.get(c.code)
+    if (!node) continue
+    if (c.parentCategory && byCode.has(c.parentCategory)) {
+      byCode.get(c.parentCategory)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  function sortNodes(nodes: CatNode[]) {
+    nodes.sort((a, b) => a.displayName.localeCompare(b.displayName, 'da'))
+    nodes.forEach(n => sortNodes(n.children))
+  }
+  sortNodes(roots)
+  return roots
+}
+
+function findCatNode(nodes: CatNode[], code: string): CatNode | null {
+  return nodes.find(n => n.code === code) ?? null
+}
 
 /** Finder antal fra faste ordrelinjer baseret på ugedag (1=man, 2=tirs, ..., 5=fre) */
 function getStandingQty(s: StandingOrderData, weekday: number): number {
@@ -634,7 +664,7 @@ function DeliveryPicker({
 
 export default function OrderList({
   promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays, customerId, priceTiers = [], initialFavNos = [],
-  requirePoNumber = false, itemCutoffs = new Map(),
+  requirePoNumber = false, itemCutoffs = new Map(), allCategories = [],
 }: Props) {
   // Tjek om en vare kan leveres på den valgte dato
   function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
@@ -672,8 +702,8 @@ export default function OrderList({
     return m
   })
   const [favSet, setFavSet]           = useState<Set<string>>(() => new Set(initialFavNos))
-  const [activeCategory, setActiveCategory] = useState<string>('')
-  const [categoryItems, setCategoryItems]   = useState<EnrichedItem[]>([])
+  const [catalogPath, setCatalogPath]               = useState<string[]>([])
+  const [categoryItems, setCategoryItems]           = useState<EnrichedItem[]>([])
   const [categoryPriceTiers, setCategoryPriceTiers] = useState<PriceTier[]>([])
   const [categoryLoading, setCategoryLoading]       = useState(false)
   const [showSearch, setShowSearch]     = useState(false)
@@ -856,41 +886,35 @@ export default function OrderList({
   const venmarkNos  = new Set(venmarkItems.map(v => v.item.number))
   const standingNos = new Set(standingOrders.map(s => s.item.number))
 
-  // ── Kategori-filter ──────────────────────────────────────────────────────────
-  function itemCategory(item: EnrichedItem): string {
-    return item.itemCategoryCode || itemCutoffs.get(item.number)?.itemCategoryCode || ''
-  }
+  // ── Katalog-navigation ───────────────────────────────────────────────────────
+  const catTree        = useMemo(() => buildCatTree(allCategories), [allCategories])
+  const activeCategory = catalogPath.length > 0 ? catalogPath[catalogPath.length - 1] : ''
+  const isCatalogMode  = catalogPath.length > 0
+  const l0Cats         = catTree
+  const l1Node         = catalogPath.length >= 1 ? findCatNode(l0Cats, catalogPath[0]) : null
+  const l2Node         = catalogPath.length >= 2 ? findCatNode(l1Node?.children ?? [], catalogPath[1]) : null
 
-  // Byg sorteret liste over unikke kategorier fra itemCutoffs (alle varer i BC)
-  const categories = Array.from(new Set(
-    Array.from(itemCutoffs.values())
-      .map(v => v.itemCategoryCode ?? '')
-      .filter(Boolean)
-  )).sort()
-
-  // Filtrer favoritter/faste ordrer ved aktiv kategori
-  function matchesCategory(item: EnrichedItem): boolean {
-    if (!activeCategory) return true
-    return itemCategory(item) === activeCategory
-  }
-
-  // Fetch varer i valgt kategori fra serveren
-  async function selectCategory(cat: string) {
-    if (cat === activeCategory) { setActiveCategory(''); setCategoryItems([]); setCategoryPriceTiers([]); return }
-    setActiveCategory(cat)
-    setCategoryItems([])
-    setCategoryLoading(true)
-    try {
-      const res = await fetch(`/api/portal/category-items?category=${encodeURIComponent(cat)}`)
-      if (res.ok) {
-        const data = await res.json()
-        setCategoryItems(data.items ?? [])
-        setCategoryPriceTiers(data.priceTiers ?? [])
-      }
-    } finally {
-      setCategoryLoading(false)
+  // Hent varer i valgt kategori ved navigation
+  useEffect(() => {
+    if (!activeCategory) {
+      setCategoryItems([])
+      setCategoryPriceTiers([])
+      return
     }
-  }
+    let cancelled = false
+    setCategoryLoading(true)
+    fetch(`/api/portal/category-items?category=${encodeURIComponent(activeCategory)}`)
+      .then(r => r.ok ? r.json() : { items: [], priceTiers: [] })
+      .then(data => {
+        if (!cancelled) {
+          setCategoryItems(data.items ?? [])
+          setCategoryPriceTiers(data.priceTiers ?? [])
+        }
+      })
+      .catch(() => { if (!cancelled) { setCategoryItems([]); setCategoryPriceTiers([]) } })
+      .finally(() => { if (!cancelled) setCategoryLoading(false) })
+    return () => { cancelled = true }
+  }, [activeCategory])
 
   const searchedLines = Array.from(lines.values()).filter(
     l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number) && !standingNos.has(l.item.number)
@@ -941,37 +965,78 @@ export default function OrderList({
           <span className="flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
         </div>
 
-        {/* Kategori-tabs */}
-        {categories.length > 0 && (
-          <div className="flex gap-1 px-3 py-2 border-b border-gray-100 overflow-x-auto">
+        {/* Katalog-navigation */}
+        <div className="border-b border-gray-100">
+          {/* Niveau 0: Mine varer + top-niveau kategorier */}
+          <div className="flex gap-1 px-3 py-2 overflow-x-auto">
             <button
-              onClick={() => { setActiveCategory(''); setCategoryItems([]); setCategoryPriceTiers([]) }}
+              onClick={() => setCatalogPath([])}
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                activeCategory === ''
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                !isCatalogMode ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
               Mine varer
             </button>
-            {categories.map(cat => (
+            {l0Cats.map(cat => (
               <button
-                key={cat}
-                onClick={() => selectCategory(cat)}
+                key={cat.code}
+                onClick={() => setCatalogPath([cat.code])}
                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  activeCategory === cat
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  catalogPath[0] === cat.code ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {cat}
+                {cat.displayName}
               </button>
             ))}
           </div>
-        )}
+
+          {/* Niveau 1: underkategorier */}
+          {l1Node && l1Node.children.length > 0 && (
+            <div className="flex gap-1 px-3 py-1.5 overflow-x-auto bg-gray-50/60 border-t border-gray-100">
+              <span className="shrink-0 text-[10px] text-gray-400 self-center pr-1 whitespace-nowrap">
+                {l1Node.displayName} ›
+              </span>
+              {l1Node.children.map(child => (
+                <button
+                  key={child.code}
+                  onClick={() => setCatalogPath([catalogPath[0], child.code])}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    catalogPath[1] === child.code
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {child.displayName}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Niveau 2: under-underkategorier */}
+          {l2Node && l2Node.children.length > 0 && (
+            <div className="flex gap-1 px-3 py-1.5 overflow-x-auto bg-gray-50/80 border-t border-gray-100">
+              <span className="shrink-0 text-[10px] text-gray-400 self-center pr-1 whitespace-nowrap">
+                {l2Node.displayName} ›
+              </span>
+              {l2Node.children.map(child => (
+                <button
+                  key={child.code}
+                  onClick={() => setCatalogPath([catalogPath[0], catalogPath[1], child.code])}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    catalogPath[2] === child.code
+                      ? 'bg-blue-400 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {child.displayName}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Promos */}
-        {promotions.length > 0 && (
+        {!isCatalogMode && promotions.length > 0 && (
           <>
             <button
               onClick={() => setShowPromos(v => !v)}
@@ -999,14 +1064,14 @@ export default function OrderList({
         )}
 
         {/* Venmark anbefaler + kundens favoritter (flettet) */}
-        {(venmarkItems.filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number)).length > 0 ||
+        {!isCatalogMode && (venmarkItems.filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number)).length > 0 ||
           favorites.filter(f => !promoNos.has(f.number)).length > 0) && (
           <>
             <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
               <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
             </div>
             <div className="divide-y divide-gray-100/80">
-              {favorites.filter(f => !promoNos.has(f.number) && matchesCategory(f)).map(item => (
+              {favorites.filter(f => !promoNos.has(f.number)).map(item => (
                 <OrderRow
                   key={`fav-${item.number}`}
                   item={item} quantity={getQty(item.number)}
@@ -1018,7 +1083,7 @@ export default function OrderList({
                 />
               ))}
               {venmarkItems
-                .filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number) && matchesCategory(v.item))
+                .filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number))
                 .map(({ item, note }) => (
                   <OrderRow
                     key={`venmark-${item.number}`}
@@ -1036,7 +1101,7 @@ export default function OrderList({
         )}
 
         {/* Faste ordrelinjer */}
-        {standingOrders.length > 0 && (
+        {!isCatalogMode && standingOrders.length > 0 && (
           <>
             <button
               onClick={() => setShowStanding(v => !v)}
@@ -1050,7 +1115,7 @@ export default function OrderList({
             </button>
             {showStanding && (
               <div className="divide-y divide-gray-100/80">
-                {standingOrders.filter(s => matchesCategory(s.item)).map((s) => {
+                {standingOrders.map((s) => {
                   const weekdayQty = getStandingQty(s, selectedWeekday)
                   const currentQty = getQty(s.item.number)
                   const isEdited   = manuallyEdited.current.has(s.item.number) && currentQty !== weekdayQty
@@ -1076,11 +1141,19 @@ export default function OrderList({
           </>
         )}
 
-        {/* Kategori-varer */}
-        {activeCategory && (
+        {/* Katalog-varer */}
+        {isCatalogMode && (
           <>
-            <div className="px-3 py-1 bg-blue-50 border-y border-blue-100 text-[10px] font-semibold uppercase tracking-wide text-blue-500">
-              {activeCategory} — alle varer
+            <div className="px-3 py-1.5 bg-blue-50 border-y border-blue-100 text-[10px] font-semibold uppercase tracking-wide text-blue-500 flex items-center gap-1">
+              {catalogPath.map((code, i) => {
+                const node = i === 0
+                  ? findCatNode(l0Cats, code)
+                  : i === 1
+                  ? findCatNode(l1Node?.children ?? [], code)
+                  : findCatNode(l2Node?.children ?? [], code)
+                return <span key={code}>{i > 0 && <span className="mx-1 opacity-50">›</span>}{node?.displayName ?? code}</span>
+              })}
+              <span className="opacity-50 ml-1">— alle varer</span>
             </div>
             {categoryLoading && (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
@@ -1128,7 +1201,7 @@ export default function OrderList({
           </>
         )}
 
-        {promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && standingOrders.length === 0 && searchedLines.length === 0 && (
+        {!isCatalogMode && promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && standingOrders.length === 0 && searchedLines.length === 0 && (
           <div className="px-4 py-10 text-center text-sm text-gray-400">
             Ingen favoritter endnu — brug søgning nedenfor
           </div>

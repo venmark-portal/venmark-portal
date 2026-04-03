@@ -189,6 +189,7 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
 export interface BCItemCategory {
   code: string
   displayName: string
+  parentCategory: string  // '' for top-level
 }
 
 /**
@@ -206,23 +207,16 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
   const token = await getAccessToken()
   const base  = bcBaseUrl()
 
-  // Hent 1000 varer med kun itemCategoryCode — finder alle kategorier der faktisk bruges
-  const itemsRes = await fetch(
-    `${base}/items?$select=itemCategoryCode&$top=1000`,
-    {
+  const [itemsRes, catRes] = await Promise.all([
+    fetch(`${base}/items?$select=itemCategoryCode&$top=1000`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       next: { revalidate: 3600 },
-    }
-  )
-
-  // Hent kategori-navne til display
-  const catRes = await fetch(
-    `${base}/itemCategories?$select=code,displayName`,
-    {
+    }),
+    fetch(`${base}/itemCategories?$select=code,displayName,parentCategory`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       next: { revalidate: 3600 },
-    }
-  )
+    }),
+  ])
 
   if (!itemsRes.ok) return []
 
@@ -234,24 +228,33 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
     if (item.itemCategoryCode) usedCodes.add(item.itemCategoryCode)
   }
 
-  // Byg opslag: kode → displayName fra itemCategories
-  const nameMap = new Map<string, string>()
+  // Byg opslag: kode → displayName og parentCategory
+  const nameMap   = new Map<string, string>()
+  const parentMap = new Map<string, string>()
   if (catRes.ok) {
     const catData = await catRes.json()
     for (const cat of (catData.value ?? [])) {
-      if (cat.code && cat.displayName) nameMap.set(cat.code, cat.displayName)
+      if (!cat.code) continue
+      if (cat.displayName) nameMap.set(cat.code, cat.displayName)
+      parentMap.set(cat.code, cat.parentCategory ?? '')
     }
   }
 
-  // Returner kun kategorier der har varer, med display-navn hvis tilgængeligt
-  const result: BCItemCategory[] = Array.from(usedCodes).map((code) => ({
-    code,
-    displayName: nameMap.get(code) ?? prettifyCode(code), // Gør koden pæn som fallback
-  }))
+  // Inkludér forældrekategorier i resultatet så hierarkiet kan bygges
+  const includedCodes = new Set<string>(usedCodes)
+  Array.from(usedCodes).forEach(code => {
+    let parent = parentMap.get(code)
+    while (parent) {
+      includedCodes.add(parent)
+      parent = parentMap.get(parent)
+    }
+  })
 
-  return result.sort((a, b) =>
-    a.displayName.localeCompare(b.displayName, 'da')
-  )
+  return Array.from(includedCodes).map(code => ({
+    code,
+    displayName:    nameMap.get(code) ?? prettifyCode(code),
+    parentCategory: parentMap.get(code) ?? '',
+  })).sort((a, b) => a.displayName.localeCompare(b.displayName, 'da'))
 }
 
 // ─── Hent kundespecifikke priser (via prisgruppe) ────────────────────────────
@@ -1121,7 +1124,7 @@ export async function getItem(id: string): Promise<BCItem | null> {
 
 // ─── Salgsordrer til leveringsoversigt ───────────────────────────────────────
 
-export interface BCSalesOrderLine {
+export interface BCDeliveryOrderLine {
   id:          string
   itemNo:      string
   description: string
@@ -1144,30 +1147,44 @@ export interface BCSalesOrderForDelivery {
   status:                string
   totalWeightKg:         number
   deliveryCodes:         string[]  // unikke leveringskoder fra ordrelinjer
-  lines:                 BCSalesOrderLine[]
+  lines:                 BCDeliveryOrderLine[]
 }
 
 export async function getSalesOrdersForDelivery(
-  _deliveryDate: string, // YYYY-MM-DD — ignoreres i testperiode
+  deliveryDate: string, // YYYY-MM-DD — leveringsdato (requestedDeliveryDate i BC)
 ): Promise<BCSalesOrderForDelivery[]> {
   const token = await getAccessToken()
   const base  = bcBaseUrl()
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // TESTPERIODE: Hent ALLE ordrer (ikke Draft) — alle dage vises samlet
-  // requestedDeliveryDate er ofte 0001-01-01 i BC; filtrer ikke på dato i test
-  const filter = encodeURIComponent(`status ne 'Draft'`)
-  const res = await fetch(`${base}/salesOrders?$filter=${filter}&$top=500`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    const errText = await res.text()
-    throw new Error(`BC salesOrders fejl (${res.status}): ${errText}`)
+  // Hent åbne (Open) og frigivne (Released) ordrer med requestedDeliveryDate = leveringsdato.
+  // To parallelle kald fordi BC OData ikke understøtter OR på tværs af enum-værdier stabilt.
+  const filterOpen     = encodeURIComponent(`status eq 'Open' and requestedDeliveryDate eq ${deliveryDate}`)
+  const filterReleased = encodeURIComponent(`status eq 'Released' and requestedDeliveryDate eq ${deliveryDate}`)
+
+  const [resOpen, resReleased] = await Promise.all([
+    fetch(`${base}/salesOrders?$filter=${filterOpen}&$top=500`,     { headers, cache: 'no-store' }),
+    fetch(`${base}/salesOrders?$filter=${filterReleased}&$top=500`, { headers, cache: 'no-store' }),
+  ])
+
+  if (!resOpen.ok && !resReleased.ok) {
+    const errText = await resOpen.text()
+    throw new Error(`BC salesOrders fejl (${resOpen.status}): ${errText}`)
   }
-  const data = await res.json()
-  console.log(`BC returnerede ${data.value?.length ?? 0} ordrer`)
 
-  const orders: BCSalesOrderForDelivery[] = (data.value ?? []).map((o: any) => ({
+  const openData     = resOpen.ok     ? await resOpen.json()     : { value: [] }
+  const releasedData = resReleased.ok ? await resReleased.json() : { value: [] }
+
+  // Merge og dedupliker på id
+  const seen = new Set<string>()
+  const allRaw: any[] = []
+  for (const o of [...(openData.value ?? []), ...(releasedData.value ?? [])]) {
+    if (!seen.has(o.id)) { seen.add(o.id); allRaw.push(o) }
+  }
+
+  console.log(`BC returnerede ${allRaw.length} ordrer (Open: ${openData.value?.length ?? 0}, Released: ${releasedData.value?.length ?? 0})`)
+
+  const orders: BCSalesOrderForDelivery[] = allRaw.map((o: any) => ({
     id:                    o.id,
     number:                o.number,
     customerNumber:        o.customerNumber,
@@ -1181,18 +1198,16 @@ export async function getSalesOrdersForDelivery(
     postingDate:           (!o.postingDate           || o.postingDate           === '0001-01-01') ? '' : o.postingDate,
     status:                o.status,
     totalWeightKg:         0,
-    // shipmentMethodCode sidder på ordrehovedet — brug det som default leveringskode
     deliveryCodes:         [o.shipmentMethodCode?.trim() || 'VENMARK'],
     lines:                 [],
   }))
 
   // Hent salgslinjer for alle ordrer parallelt
-  // Manglende shipmentMethodCode → "selvmorgen" som standard
   await Promise.all(orders.map(async (order) => {
     try {
       const lRes = await fetch(
-        `${base}/salesOrders(${order.id})/salesOrderLines?$select=id,lineObjectNumber,description,quantity,unitOfMeasureCode&$top=200`,
-        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' }
+        `${base}/salesOrders(${order.id})/salesOrderLines?$select=id,documentId,lineObjectNumber,description,quantity,unitOfMeasureCode,qtyToShip,quantityShipped&$top=200`,
+        { headers, cache: 'no-store' }
       )
       if (!lRes.ok) return
       const lData = await lRes.json()
@@ -1249,4 +1264,43 @@ export async function getSalesOrderLines(orderId: string): Promise<BCSalesOrderL
   } catch {
     return []
   }
+}
+
+// ─── Hent chauffører fra BC (Portal Driver API, page 50172) ──────────────────
+
+export interface BCPortalDriver {
+  code:                      string
+  name:                      string
+  phone:                     string
+  defaultShipmentMethodCode: string
+  active:                    boolean
+}
+
+/**
+ * Henter alle chauffører fra Portal Driver-tabellen i BC.
+ * Kræver Portal Driver API (page 50172) i Sales-warehouse-facade extensionen.
+ * Returnerer [] hvis extensionen ikke er deployed.
+ */
+export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+    const res = await fetch(`${base}/portalDrivers?$top=200`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      next: { revalidate: 300 },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((d: any) => ({
+      code:                      d.code                      ?? '',
+      name:                      d.name                      ?? '',
+      phone:                     d.phone                     ?? '',
+      defaultShipmentMethodCode: d.defaultShipmentMethodCode ?? '',
+      active:                    d.active !== false,
+    }))
+  } catch { return [] }
 }

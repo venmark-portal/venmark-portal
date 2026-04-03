@@ -67,10 +67,14 @@ export default function LeveringDagPage() {
   const [saved,          setSaved]          = useState(false)
   const [dragStop,       setDragStop]       = useState<{ vi: number; si: number } | null>(null)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [expandedCodes,  setExpandedCodes]  = useState<Set<string>>(new Set())
   const [checkedLines,   setCheckedLines]   = useState<Set<string>>(new Set())
 
   function toggleOrderExpand(id: string) {
     setExpandedOrders(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function toggleCodeExpand(code: string) {
+    setExpandedCodes(prev => { const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n })
   }
   function toggleLine(id: string) {
     setCheckedLines(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -246,11 +250,11 @@ export default function LeveringDagPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-        {/* ── Venstre: BC-ordrer ─────────────────────────────────────────── */}
+        {/* ── Venstre: BC-ordrer grupperet pr. leveringskode ──────────────── */}
         <div className="lg:col-span-1 space-y-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">BC-ordrer ({bcOrders.length})</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Testperiode: 16–30 marts 2026 · alle dage samlet</p>
+            <p className="text-xs text-gray-400 mt-0.5">Bogføringsdato: {date} · grupperet pr. leveringskode</p>
           </div>
           {bcError && (
             <div className="rounded-xl bg-red-50 p-4 ring-1 ring-red-200 text-xs text-red-700 font-mono break-all">
@@ -260,103 +264,141 @@ export default function LeveringDagPage() {
           )}
           {!bcError && bcOrders.length === 0 && (
             <div className="rounded-xl bg-white p-6 text-center ring-1 ring-gray-200 text-sm text-gray-400">
-              Ingen ordrer i BC for perioden
+              Ingen ordrer i BC for denne dato
             </div>
           )}
-          {bcOrders.map(o => {
-            const inRoute  = orderInRoute(vehicles, o.id)
-            const expanded = expandedOrders.has(o.id)
-            const checkedCount = o.lines.filter(l => checkedLines.has(l.id)).length
-            return (
-              <div key={o.id}
-                className={`rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden ${inRoute ? 'opacity-50' : ''}`}
-              >
-                {/* Ordre-header */}
-                <div className="p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-sm text-gray-900 truncate">{o.customerName}</div>
-                      <div className="text-xs text-gray-500">{o.number}</div>
+          {(() => {
+            // Gruppér ordrer pr. leveringskode
+            const groups = new Map<string, BCOrder[]>()
+            for (const o of bcOrders) {
+              const codes = o.deliveryCodes.length > 0 ? o.deliveryCodes : ['–']
+              for (const code of codes) {
+                if (!groups.has(code)) groups.set(code, [])
+                if (!groups.get(code)!.find(x => x.id === o.id)) groups.get(code)!.push(o)
+              }
+            }
+            // Sorter grupper: kendte leveringskoder fra DB først, derefter alfabetisk
+            const sortedCodes = Array.from(groups.keys()).sort((a, b) => {
+              const aKnown = deliveryCodes.some(dc => dc.code === a)
+              const bKnown = deliveryCodes.some(dc => dc.code === b)
+              if (aKnown && !bKnown) return -1
+              if (!aKnown && bKnown) return 1
+              return a.localeCompare(b)
+            })
+            return sortedCodes.map(code => {
+              const ordersInGroup = groups.get(code)!
+              const codeExpanded = expandedCodes.has(code)
+              const dcName = deliveryCodes.find(dc => dc.code === code)?.name ?? code
+              const allInRoute = ordersInGroup.every(o => orderInRoute(vehicles, o.id))
+              return (
+                <div key={code} className="rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
+                  {/* Leveringskode-header */}
+                  <button
+                    onClick={() => toggleCodeExpand(code)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="rounded bg-purple-100 px-2 py-0.5 text-xs font-mono font-semibold text-purple-700 shrink-0">{code}</span>
+                      <span className="text-sm font-medium text-gray-800 truncate">{dcName}</span>
+                      {allInRoute && <CheckCircle2 size={13} className="text-green-500 shrink-0" />}
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[o.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {o.status}
-                    </span>
-                  </div>
-                  {o.shipToAddress && (
-                    <div className="text-xs text-gray-500">{o.shipToAddress}, {o.shipToPostCode} {o.shipToCity}</div>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {o.requestedDeliveryDate && (
-                      <span className="text-xs text-gray-400">📅 {o.requestedDeliveryDate}</span>
-                    )}
-                    {o.deliveryCodes.map(code => (
-                      <span key={code} className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-mono text-purple-700">{code}</span>
-                    ))}
-                  </div>
-                  {/* Tildel til bil */}
-                  {!inRoute && (
-                    <div className="flex gap-1 flex-wrap pt-1">
-                      {vehicles.map((v, vi) => (
-                        <button key={v._key} onClick={() => addOrder(vi, o)}
-                          className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
-                          + {v.vehicleLabel}
-                        </button>
-                      ))}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-400">{ordersInGroup.length} ordre{ordersInGroup.length !== 1 ? 'r' : ''}</span>
+                      {codeExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                     </div>
-                  )}
-                  {inRoute && (
-                    <div className="flex items-center gap-1 text-xs text-green-600">
-                      <CheckCircle2 size={12} /> Tilføjet til rute
+                  </button>
+
+                  {/* Ordrer i gruppen */}
+                  {codeExpanded && (
+                    <div className="border-t border-gray-100 divide-y divide-gray-100">
+                      {ordersInGroup.map(o => {
+                        const inRoute  = orderInRoute(vehicles, o.id)
+                        const expanded = expandedOrders.has(o.id)
+                        const checkedCount = o.lines.filter(l => checkedLines.has(l.id)).length
+                        return (
+                          <div key={o.id} className={`${inRoute ? 'opacity-50' : ''}`}>
+                            <div className="px-4 py-3 space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-semibold text-sm text-gray-900 truncate">{o.customerName}</div>
+                                  <div className="text-xs text-gray-500">{o.number}</div>
+                                </div>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[o.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                                  {o.status}
+                                </span>
+                              </div>
+                              {o.shipToAddress && (
+                                <div className="text-xs text-gray-500">{o.shipToAddress}, {o.shipToPostCode} {o.shipToCity}</div>
+                              )}
+                              {/* Tildel til bil */}
+                              {!inRoute && (
+                                <div className="flex gap-1 flex-wrap pt-1">
+                                  {vehicles.map((v, vi) => (
+                                    <button key={v._key} onClick={() => addOrder(vi, o)}
+                                      className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                                      + {v.vehicleLabel}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {inRoute && (
+                                <div className="flex items-center gap-1 text-xs text-green-600">
+                                  <CheckCircle2 size={12} /> Tilføjet til rute
+                                </div>
+                              )}
+                            </div>
+                            {/* Varelinjer — toggle */}
+                            {o.lines.length > 0 && (
+                              <>
+                                <button
+                                  onClick={() => toggleOrderExpand(o.id)}
+                                  className="w-full flex items-center justify-between border-t border-gray-50 px-4 py-2 text-xs text-gray-500 hover:bg-gray-50"
+                                >
+                                  <span>
+                                    {checkedCount > 0
+                                      ? `${checkedCount}/${o.lines.length} pakket`
+                                      : `${o.lines.length} varelinje${o.lines.length !== 1 ? 'r' : ''}`}
+                                  </span>
+                                  {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                {expanded && (
+                                  <div className="border-t border-gray-50 divide-y divide-gray-50">
+                                    {o.lines.map(line => {
+                                      const checked = checkedLines.has(line.id)
+                                      return (
+                                        <label key={line.id}
+                                          className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 ${checked ? 'bg-green-50' : ''}`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleLine(line.id)}
+                                            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-green-600"
+                                          />
+                                          <div className="min-w-0">
+                                            <div className={`text-xs font-medium ${checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                                              {line.description}
+                                            </div>
+                                            <div className="text-xs text-gray-400 font-mono">
+                                              {line.itemNo} · {line.quantity} {line.uom}
+                                            </div>
+                                          </div>
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
-
-                {/* Varelinjer — toggle */}
-                {o.lines.length > 0 && (
-                  <>
-                    <button
-                      onClick={() => toggleOrderExpand(o.id)}
-                      className="w-full flex items-center justify-between border-t border-gray-100 px-4 py-2 text-xs text-gray-500 hover:bg-gray-50"
-                    >
-                      <span>
-                        {checkedCount > 0
-                          ? `${checkedCount}/${o.lines.length} pakket`
-                          : `${o.lines.length} varelinje${o.lines.length !== 1 ? 'r' : ''}`}
-                      </span>
-                      {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    </button>
-                    {expanded && (
-                      <div className="border-t border-gray-100 divide-y divide-gray-50">
-                        {o.lines.map(line => {
-                          const checked = checkedLines.has(line.id)
-                          return (
-                            <label key={line.id}
-                              className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 ${checked ? 'bg-green-50' : ''}`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleLine(line.id)}
-                                className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-green-600"
-                              />
-                              <div className="min-w-0">
-                                <div className={`text-xs font-medium ${checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                                  {line.description}
-                                </div>
-                                <div className="text-xs text-gray-400 font-mono">
-                                  {line.itemNo} · {line.quantity} {line.uom}
-                                </div>
-                              </div>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )
-          })}
+              )
+            })
+          })()}
         </div>
 
         {/* ── Højre: Biler + ruter ───────────────────────────────────────── */}

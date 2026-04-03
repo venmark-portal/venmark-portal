@@ -96,6 +96,27 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
+
+    CredentialsProvider({
+      id: 'driver',
+      name: 'Chauffør',
+      credentials: {
+        driverId: { label: 'Chauffør', type: 'text' },
+        pin:      { label: 'PIN',      type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.driverId || !credentials?.pin) return null
+        const rows = await prisma.$queryRaw<any[]>`
+          SELECT id, name, pinHash FROM DriverUser
+          WHERE id = ${credentials.driverId} AND isActive = 1 LIMIT 1
+        `
+        const driver = rows[0]
+        if (!driver) return null
+        const valid = await compare(credentials.pin, driver.pinHash)
+        if (!valid) return null
+        return { id: driver.id, name: driver.name, role: 'driver' as const }
+      },
+    }),
   ],
 
   session: { strategy: 'jwt' },
