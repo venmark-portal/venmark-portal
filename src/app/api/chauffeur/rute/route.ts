@@ -15,9 +15,8 @@ export async function GET(req: NextRequest) {
 
   const driverId = token.sub as string
 
-  // Brug ?date= query-param, fallback til TEST_DATE, ellers dags dato
   const url  = new URL(req.url)
-  const date = url.searchParams.get('date') ?? TEST_DATE || new Date().toISOString().slice(0, 10)
+  const date = url.searchParams.get('date') ?? TEST_DATE
 
   const routeRows = await prisma.$queryRaw<any[]>`
     SELECT r.id AS "routeId", r.notes AS "routeNotes",
