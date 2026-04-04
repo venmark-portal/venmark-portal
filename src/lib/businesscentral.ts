@@ -1164,7 +1164,7 @@ export async function getSalesOrdersForDelivery(
 
   // Hent alle ordrer via custom endpoint — brug single-quoted dato i OData filter
   const allRaw: any[] = []
-  const dateFilter = encodeURIComponent(`postingDate eq '${deliveryDate}'`)
+  const dateFilter = encodeURIComponent(`postingDate eq ${deliveryDate}`)
   let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500&$filter=${dateFilter}`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
