@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { Save, CheckCircle2, ArrowLeft, Plus, GripVertical, Map } from 'lucide-react'
+import { Save, CheckCircle2, ArrowLeft, Plus, GripVertical, Map as MapIcon } from 'lucide-react'
 
 interface BCOrder {
   id: string; number: string; customerNumber: string; customerName: string
@@ -315,7 +315,7 @@ export default function LeveringDagPage() {
                           return links.map((url, i) => (
                             <a key={`${bil}-${i}`} href={url} target="_blank" rel="noreferrer"
                               className="flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 whitespace-nowrap">
-                              <Map size={11} /> {bil}{links.length > 1 ? ` · kort ${i + 1}` : ''}
+                              <MapIcon size={11} /> {bil}{links.length > 1 ? ` · kort ${i + 1}` : ''}
                             </a>
                           ))
                         })}
