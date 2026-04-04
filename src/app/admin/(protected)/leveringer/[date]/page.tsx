@@ -65,54 +65,57 @@ export default function LeveringDagPage() {
       setLoading(false)
       return
     }
-    setBcError(d.bcError ?? null)
-    setDcodes(d.deliveryCodes ?? [])
-    setNotes((d.routeRows ?? [])[0]?.routeNotes ?? '')
+    try {
+      setBcError(d.bcError ?? null)
+      setDcodes(d.deliveryCodes ?? [])
+      setNotes((d.routeRows ?? [])[0]?.routeNotes ?? '')
 
-    const profiles: Record<string, number> = d.routeProfiles ?? {}
+      const profiles: Record<string, number> = d.routeProfiles ?? {}
 
-    // Byg opslag: ordreId → { vehicleLabel, sortOrder } fra eksisterende rute
-    const routeMap = new Map<string, { bil: string; sort: number }>()
-    const bilSet   = new Set<string>()
-    for (const row of (d.routeRows ?? [])) {
-      if (!row.bcSalesOrderId) continue
-      routeMap.set(row.bcSalesOrderId, {
-        bil:  row.vehicleLabel ?? 'Bil 1',
-        sort: row.sortOrder    ?? 99,
+      const routeMap = new Map<string, { bil: string; sort: number }>()
+      const bilSet   = new Set<string>()
+      for (const row of (d.routeRows ?? [])) {
+        if (!row.bcSalesOrderId) continue
+        routeMap.set(row.bcSalesOrderId, {
+          bil:  row.vehicleLabel ?? 'Bil 1',
+          sort: row.sortOrder    ?? 99,
+        })
+        if (row.vehicleLabel) bilSet.add(row.vehicleLabel)
+      }
+      if (bilSet.size > 0) setBils(Array.from(bilSet).sort())
+
+      const orders: BCOrder[] = d.bcOrders ?? []
+      const planRows: PlanRow[] = []
+
+      for (const o of orders) {
+        const codes: string[] = Array.isArray(o.deliveryCodes) ? o.deliveryCodes : []
+        const code = codes.find(c => isVisibleCode(c)) ?? codes[0] ?? '–'
+        if (!isVisibleCode(code)) continue
+        const existing = routeMap.get(o.id)
+        planRows.push({
+          id:           o.id,
+          number:       o.number,
+          customerNo:   o.customerNumber ?? '',
+          customerName: o.customerName ?? '',
+          postCode:     o.shipToPostCode ?? '',
+          city:         o.shipToCity ?? '',
+          weightKg:     o.totalWeightKg ?? 0,
+          code,
+          bil:          existing?.bil ?? 'Bil 1',
+          routeOrder:   profiles[o.customerNumber ?? ''] ?? 5000,
+        })
+      }
+
+      planRows.sort((a, b) => {
+        if (a.code !== b.code) return a.code.localeCompare(b.code)
+        if (a.routeOrder !== b.routeOrder) return a.routeOrder - b.routeOrder
+        return a.customerName.localeCompare(b.customerName, 'da')
       })
-      if (row.vehicleLabel) bilSet.add(row.vehicleLabel)
+
+      setRows(planRows)
+    } catch (e) {
+      setBcError(`Behandlingsfejl: ${e instanceof Error ? e.message : String(e)}`)
     }
-    if (bilSet.size > 0) setBils(Array.from(bilSet).sort())
-
-    const orders: BCOrder[] = d.bcOrders ?? []
-    const planRows: PlanRow[] = []
-
-    for (const o of orders) {
-      const code = o.deliveryCodes.find(c => isVisibleCode(c)) ?? o.deliveryCodes[0] ?? '–'
-      if (!isVisibleCode(code)) continue
-      const existing = routeMap.get(o.id)
-      planRows.push({
-        id:           o.id,
-        number:       o.number,
-        customerNo:   o.customerNumber ?? '',
-        customerName: o.customerName,
-        postCode:     o.shipToPostCode,
-        city:         o.shipToCity,
-        weightKg:     o.totalWeightKg ?? 0,
-        code,
-        bil:          existing?.bil ?? 'Bil 1',
-        routeOrder:   profiles[o.customerNumber ?? ''] ?? 5000,
-      })
-    }
-
-    // Sorter: kode → routeOrder → kundenavn
-    planRows.sort((a, b) => {
-      if (a.code !== b.code) return a.code.localeCompare(b.code)
-      if (a.routeOrder !== b.routeOrder) return a.routeOrder - b.routeOrder
-      return a.customerName.localeCompare(b.customerName, 'da')
-    })
-
-    setRows(planRows)
     setLoading(false)
   }, [date])
 
