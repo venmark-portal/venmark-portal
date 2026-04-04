@@ -1162,10 +1162,9 @@ export async function getSalesOrdersForDelivery(
   const v2base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // Hent alle ordrer via custom endpoint — brug single-quoted dato i OData filter
+  // OData filter på dato virker ikke stabilt på custom AL pages — hent alle og filtrer i kode
   const allRaw: any[] = []
-  const dateFilter = encodeURIComponent(`postingDate eq ${deliveryDate}`)
-  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500&$filter=${dateFilter}`
+  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
     if (!res.ok) {
@@ -1177,8 +1176,8 @@ export async function getSalesOrdersForDelivery(
     nextUrl = data['@odata.nextLink'] ?? null
   }
 
-  const filtered = allRaw.filter((o: any) => o.postingDate?.slice(0, 10) === deliveryDate)
-  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher postingDate ${deliveryDate}`)
+  const filtered = allRaw.filter((o: any) => o.requestedDeliveryDate?.slice(0, 10) === deliveryDate)
+  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher requestedDeliveryDate ${deliveryDate}`)
 
   const orders: BCSalesOrderForDelivery[] = filtered.map((o: any) => ({
     id:                    o.id,
