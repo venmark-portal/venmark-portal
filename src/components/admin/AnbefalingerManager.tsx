@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { addPromotion, removePromotion, getPromotionsForDate } from '@/app/admin/anbefalinger/actions'
+import { addPromotion, removePromotion, getPromotionsForDate } from '@/app/admin/(protected)/anbefalinger/actions'
 import { Search, X, Plus, Trash2, Loader2, Star } from 'lucide-react'
 import type { BCItem } from '@/lib/businesscentral'
 
