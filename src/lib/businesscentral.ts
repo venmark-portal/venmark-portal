@@ -1176,8 +1176,11 @@ export async function getSalesOrdersForDelivery(
     nextUrl = data['@odata.nextLink'] ?? null
   }
 
-  const filtered = allRaw.filter((o: any) => o.requestedDeliveryDate?.slice(0, 10) === deliveryDate)
-  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher requestedDeliveryDate ${deliveryDate}`)
+  const filtered = allRaw.filter((o: any) =>
+    o.postingDate?.slice(0, 10) === deliveryDate ||
+    o.requestedDeliveryDate?.slice(0, 10) === deliveryDate
+  )
+  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher dato ${deliveryDate}`)
 
   const orders: BCSalesOrderForDelivery[] = filtered.map((o: any) => ({
     id:                    o.id,
