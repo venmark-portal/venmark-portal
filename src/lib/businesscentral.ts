@@ -1162,10 +1162,10 @@ export async function getSalesOrdersForDelivery(
   const v2base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // Hent alle ordrer via custom endpoint (ingen implicit 50-graense som standard API)
-  // OData filter paa postingDate virker ikke paa custom AL pages - filtrer i kode
+  // Hent alle ordrer via custom endpoint — brug single-quoted dato i OData filter
   const allRaw: any[] = []
-  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500`
+  const dateFilter = encodeURIComponent(`postingDate eq '${deliveryDate}'`)
+  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500&$filter=${dateFilter}`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
     if (!res.ok) {
