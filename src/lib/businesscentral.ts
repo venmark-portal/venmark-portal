@@ -1157,15 +1157,19 @@ export async function getSalesOrdersForDelivery(
   const base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // Hent Draft, Open og Released ordrer (Draft = ikke frigivet i BC, vises som "Åben" i klienten)
-  const res = await fetch(`${base}/salesOrders?$top=500`, { headers, cache: 'no-store' })
-
-  if (!res.ok) {
-    const errText = await res.text()
-    throw new Error(`BC salesOrders fejl (${res.status}): ${errText}`)
+  // Hent alle ordrer med paginering (BC begrænser til ~50 pr. side)
+  const allRaw: any[] = []
+  let nextUrl: string | null = `${base}/salesOrders?$top=100`
+  while (nextUrl) {
+    const res = await fetch(nextUrl, { headers, cache: 'no-store' })
+    if (!res.ok) {
+      const errText = await res.text()
+      throw new Error(`BC salesOrders fejl (${res.status}): ${errText}`)
+    }
+    const data = await res.json()
+    allRaw.push(...(data.value ?? []))
+    nextUrl = data['@odata.nextLink'] ?? null
   }
-  const data = await res.json()
-  const allRaw: any[] = data.value ?? []
 
   // Filtrer på bogføringsdato = leveringsdato - 1 dag
   const d = new Date(deliveryDate + 'T12:00:00')
