@@ -344,11 +344,11 @@ model RouteStop {
   failureNote String?
   packedStatus String?  // læst fra BC: READY | PARTIAL | PENDING
 
-  createdAt DateTime       @default(now())
-  photos    DeliveryPhoto[]
+  createdAt DateTime    @default(now())
+  photos    StopPhoto[]
 }
 
-model DeliveryPhoto {
+model StopPhoto {
   id        String    @id @default(cuid())
   stop      RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
   stopId    String

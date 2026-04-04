@@ -1151,37 +1151,34 @@ export interface BCSalesOrderForDelivery {
 }
 
 export async function getSalesOrdersForDelivery(
-  deliveryDate: string, // YYYY-MM-DD — leveringsdato (requestedDeliveryDate i BC)
+  deliveryDate: string, // YYYY-MM-DD — bogforingsdato
+  { fetchLines = false }: { fetchLines?: boolean } = {},
 ): Promise<BCSalesOrderForDelivery[]> {
-  const token = await getAccessToken()
-  const base  = bcBaseUrl()
+  const token   = await getAccessToken()
+  const tenant  = process.env.BC_TENANT_ID!
+  const env     = process.env.BC_ENVIRONMENT_NAME ?? 'production'
+  const company = process.env.BC_COMPANY_ID!
+  const customBase = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+  const v2base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // Hent alle ordrer med paginering (BC begrænser til ~50 pr. side)
+  // Hent alle ordrer via custom endpoint (ingen implicit 50-graense som standard API)
+  // OData filter paa postingDate virker ikke paa custom AL pages - filtrer i kode
   const allRaw: any[] = []
-  let nextUrl: string | null = `${base}/salesOrders?$top=100`
+  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500&$filter=${encodeURIComponent('postingDate eq ' + deliveryDate)}`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
     if (!res.ok) {
       const errText = await res.text()
-      throw new Error(`BC salesOrders fejl (${res.status}): ${errText}`)
+      throw new Error(`BC deliveryOrders fejl (${res.status}): ${errText}`)
     }
     const data = await res.json()
     allRaw.push(...(data.value ?? []))
     nextUrl = data['@odata.nextLink'] ?? null
   }
 
-  // Filtrer på bogføringsdato = leveringsdato - 1 dag
-  const d = new Date(deliveryDate + 'T12:00:00')
-  d.setDate(d.getDate() - 1)
-  const postingDate = d.toISOString().slice(0, 10)
-
-  const filtered = allRaw.filter((o: any) => {
-    const op = o.postingDate?.slice(0, 10)
-    return op === postingDate
-  })
-
-  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher bogføringsdato ${postingDate}`)
+  const filtered = allRaw.filter((o: any) => o.postingDate?.slice(0, 10) === deliveryDate)
+  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher postingDate ${deliveryDate}`)
 
   const orders: BCSalesOrderForDelivery[] = filtered.map((o: any) => ({
     id:                    o.id,
@@ -1189,29 +1186,29 @@ export async function getSalesOrdersForDelivery(
     customerNumber:        o.customerNumber,
     customerName:          o.customerName,
     shipToName:            o.shipToName ?? o.customerName ?? '',
-    shipToAddress:         o.shipToAddressLine1 ?? '',
+    shipToAddress:         o.shipToAddress ?? '',
     shipToCity:            o.shipToCity ?? '',
-    shipToPostCode:        o.shipToPostalCode ?? '',
-    shipToPhone:           o.phoneNumber ?? '',
+    shipToPostCode:        o.shipToPostCode ?? '',
+    shipToPhone:           o.shipToPhone ?? '',
     requestedDeliveryDate: (!o.requestedDeliveryDate || o.requestedDeliveryDate === '0001-01-01') ? '' : o.requestedDeliveryDate,
     postingDate:           (!o.postingDate           || o.postingDate           === '0001-01-01') ? '' : o.postingDate,
-    status:                o.status,
+    status:                String(o.status ?? ''),
     totalWeightKg:         0,
     deliveryCodes:         [o.shipmentMethodCode?.trim() || 'VENMARK'],
     lines:                 [],
   }))
 
-  // Hent salgslinjer for alle ordrer parallelt
+  // Hent salgslinjer for alle ordrer parallelt (spring over hvis fetchLines = false)
+  if (!fetchLines) return orders
   await Promise.all(orders.map(async (order) => {
     try {
       const lRes = await fetch(
-        `${base}/salesOrders(${order.id})/salesOrderLines?$select=id,documentId,lineObjectNumber,description,quantity,unitOfMeasureCode,qtyToShip,quantityShipped&$top=200`,
+        `${v2base}/salesOrders(${order.id})/salesOrderLines?$select=id,documentId,lineObjectNumber,description,quantity,unitOfMeasureCode,qtyToShip,quantityShipped&$top=200`,
         { headers, cache: 'no-store' }
       )
       if (!lRes.ok) return
       const lData = await lRes.json()
       const rawLines: any[] = lData.value ?? []
-
       order.lines = rawLines
         .filter((l: any) => l.lineObjectNumber)
         .map((l: any) => ({
@@ -1222,7 +1219,7 @@ export async function getSalesOrdersForDelivery(
           uom:         l.unitOfMeasureCode ?? '',
         }))
     } catch {
-      order.deliveryCodes = ['VENMARK']
+      // linjer hentes ikke - fortsaet uden
     }
   }))
 

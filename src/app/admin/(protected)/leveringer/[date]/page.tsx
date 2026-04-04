@@ -2,245 +2,263 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import {
-  Truck, Plus, Trash2, GripVertical, Save, ArrowLeft,
-  Package, ShoppingCart, CheckCircle2, AlertCircle, Clock, User, Send, ChevronDown, ChevronUp
-} from 'lucide-react'
-
-// ─── Typer ────────────────────────────────────────────────────────────────────
-
-interface BCOrderLine {
-  id: string; itemNo: string; description: string; quantity: number; uom: string
-}
+import { Save, CheckCircle2, ArrowLeft, Plus, GripVertical, Map } from 'lucide-react'
 
 interface BCOrder {
-  id: string; number: string; customerName: string; shipToAddress: string
-  shipToCity: string; shipToPostCode: string; shipToPhone: string
-  status: string; totalWeightKg: number; deliveryCodes: string[]
-  requestedDeliveryDate: string; lines: BCOrderLine[]
+  id: string; number: string; customerNumber: string; customerName: string
+  shipToPostCode: string; shipToCity: string
+  totalWeightKg: number; deliveryCodes: string[]
 }
 
-interface Driver { id: string; name: string; phone: string | null; isDefault: boolean }
 interface DeliveryCode { id: string; code: string; name: string }
 
-interface Stop {
-  _key: string
-  bcSalesOrderNo?: string; bcSalesOrderId?: string
-  bcPurchaseOrderNo?: string; bcPurchaseOrderId?: string
-  isExtraTask?: boolean; extraTaskTitle?: string; extraTaskNote?: string
-  customerName?: string; customerAddress?: string; customerPhone?: string
-  totalWeightKg?: number; driverId?: string
-  deliveryCodeId?: string; deliveryCodeOverride?: string
-  packedStatus?: string
+interface PlanRow {
+  id: string            // BC order id
+  number: string        // BC order number
+  customerNo: string
+  customerName: string
+  postCode: string
+  city: string
+  weightKg: number
+  code: string          // leveringskode
+  bil: string           // 'Bil 1', 'Bil 2', ...
+  routeOrder: number    // Rækkefølge — 1 er først, 10000 sidst
 }
 
-interface Vehicle {
-  _key: string; vehicleLabel: string; driverId: string; stops: Stop[]
+// Leveringskoder der vises i tabellen (og som grupper)
+function isVisibleCode(code: string): boolean {
+  const u = code.toUpperCase().trim()
+  return u === 'LOVENCO' || /^[AKS]/.test(u)
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  Open:     'bg-yellow-100 text-yellow-800',
-  Released: 'bg-green-100 text-green-700',
-  Draft:    'bg-gray-100 text-gray-600',
+function mkKey() { return Math.random().toString(36).slice(2) }
+
+function mapsLinks(stops: PlanRow[]): string[] {
+  const links: string[] = []
+  for (let i = 0; i < stops.length; i += 10) {
+    const addrs = stops.slice(i, i + 10).map(r => encodeURIComponent(`${r.postCode} ${r.city}`))
+    links.push('https://www.google.com/maps/dir/' + addrs.join('/'))
+  }
+  return links
 }
-
-// ─── Hjælpere ─────────────────────────────────────────────────────────────────
-
-function key() { return Math.random().toString(36).slice(2) }
-
-function orderInRoute(vehicles: Vehicle[], orderId: string) {
-  return vehicles.some(v => v.stops.some(s => s.bcSalesOrderId === orderId))
-}
-
-// ─── Side ─────────────────────────────────────────────────────────────────────
 
 export default function LeveringDagPage() {
   const { date } = useParams<{ date: string }>()
-  const [bcOrders,       setBcOrders]       = useState<BCOrder[]>([])
-  const [bcError,        setBcError]        = useState<string | null>(null)
-  const [drivers,        setDrivers]        = useState<Driver[]>([])
-  const [deliveryCodes,  setDeliveryCodes]  = useState<DeliveryCode[]>([])
-  const [vehicles,       setVehicles]       = useState<Vehicle[]>([])
-  const [notes,          setNotes]          = useState('')
-  const [loading,        setLoading]        = useState(true)
-  const [saving,         setSaving]         = useState(false)
-  const [saved,          setSaved]          = useState(false)
-  const [dragStop,       setDragStop]       = useState<{ vi: number; si: number } | null>(null)
-  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
-  const [expandedCodes,  setExpandedCodes]  = useState<Set<string>>(new Set())
-  const [checkedLines,   setCheckedLines]   = useState<Set<string>>(new Set())
-
-  function toggleOrderExpand(id: string) {
-    setExpandedOrders(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  }
-  function toggleCodeExpand(code: string) {
-    setExpandedCodes(prev => { const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n })
-  }
-  function toggleLine(id: string) {
-    setCheckedLines(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  }
+  const [rows,    setRows]    = useState<PlanRow[]>([])
+  const [bils,    setBils]    = useState<string[]>(['Bil 1'])
+  const [dcodes,  setDcodes]  = useState<DeliveryCode[]>([])
+  const [bcError, setBcError] = useState<string | null>(null)
+  const [notes,   setNotes]   = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [saved,   setSaved]   = useState(false)
+  const [drag,    setDrag]    = useState<{ code: string; idx: number } | null>(null)
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/leveringer/${date}`)
-    const d = await r.json()
-    setBcOrders(d.bcOrders ?? [])
-    setBcError(d.bcError ?? null)
-    setDrivers(d.drivers ?? [])
-    setDeliveryCodes(d.deliveryCodes ?? [])
-
-    // Byg vehicles fra routeRows
-    const rows: any[] = d.routeRows ?? []
-    if (rows.length > 0 && rows[0].routeId) {
-      const vMap = new Map<string, Vehicle>()
-      for (const r of rows) {
-        if (!r.vehicleId) continue
-        if (!vMap.has(r.vehicleId)) {
-          vMap.set(r.vehicleId, {
-            _key: r.vehicleId, vehicleLabel: r.vehicleLabel,
-            driverId: r.driverId ?? '', stops: [],
-          })
-        }
-        if (r.stopId) {
-          vMap.get(r.vehicleId)!.stops.push({
-            _key: r.stopId,
-            bcSalesOrderNo: r.bcSalesOrderNo, bcSalesOrderId: r.bcSalesOrderId,
-            bcPurchaseOrderNo: r.bcPurchaseOrderNo, bcPurchaseOrderId: r.bcPurchaseOrderId,
-            isExtraTask: Boolean(r.isExtraTask),
-            extraTaskTitle: r.extraTaskTitle, extraTaskNote: r.extraTaskNote,
-            customerName: r.customerName, customerAddress: r.customerAddress,
-            customerPhone: r.customerPhone, totalWeightKg: r.totalWeightKg,
-            driverId: r.stopDriverId, deliveryCodeId: r.deliveryCodeId,
-            deliveryCodeOverride: r.deliveryCodeOverride, packedStatus: r.packedStatus,
-          })
-        }
-      }
-      setVehicles(Array.from(vMap.values()))
-      setNotes(rows[0].routeNotes ?? '')
-    } else {
-      // Ny dag — byg biler fra chaufførernes defaultVehicleLabel
-      // Gruppér standardchauffører per bil-label
-      const bilMap = new Map<string, string>() // vehicleLabel → driverId
-      for (const dr of (d.drivers as any[])) {
-        const label = dr.defaultVehicleLabel ?? 'Bil 1'
-        if (!bilMap.has(label)) bilMap.set(label, dr.id)
-        else if (dr.isDefault) bilMap.set(label, dr.id) // standardchauffør vinder
-      }
-      if (bilMap.size === 0) {
-        setVehicles([{ _key: key(), vehicleLabel: 'Bil 1', driverId: '', stops: [] }])
-      } else {
-        const vs: Vehicle[] = []
-        let idx = 1
-        bilMap.forEach((driverId, vehicleLabel) => {
-          vs.push({ _key: key(), vehicleLabel, driverId, stops: [] })
-          idx++
-        })
-        vs.sort((a, b) => a.vehicleLabel.localeCompare(b.vehicleLabel))
-        setVehicles(vs)
-      }
+    let d: any
+    try {
+      const r = await fetch(`/api/admin/leveringer/${date}`)
+      if (!r.ok) { setBcError(`API fejl ${r.status}`); setLoading(false); return }
+      d = await r.json()
+    } catch (e) {
+      setBcError(`Netværksfejl: ${e instanceof Error ? e.message : String(e)}`)
+      setLoading(false)
+      return
     }
+    setBcError(d.bcError ?? null)
+    setDcodes(d.deliveryCodes ?? [])
+    setNotes((d.routeRows ?? [])[0]?.routeNotes ?? '')
+
+    const profiles: Record<string, number> = d.routeProfiles ?? {}
+
+    // Byg opslag: ordreId → { vehicleLabel, sortOrder } fra eksisterende rute
+    const routeMap = new Map<string, { bil: string; sort: number }>()
+    const bilSet   = new Set<string>()
+    for (const row of (d.routeRows ?? [])) {
+      if (!row.bcSalesOrderId) continue
+      routeMap.set(row.bcSalesOrderId, {
+        bil:  row.vehicleLabel ?? 'Bil 1',
+        sort: row.sortOrder    ?? 99,
+      })
+      if (row.vehicleLabel) bilSet.add(row.vehicleLabel)
+    }
+    if (bilSet.size > 0) setBils(Array.from(bilSet).sort())
+
+    const orders: BCOrder[] = d.bcOrders ?? []
+    const planRows: PlanRow[] = []
+
+    for (const o of orders) {
+      const code = o.deliveryCodes.find(c => isVisibleCode(c)) ?? o.deliveryCodes[0] ?? '–'
+      if (!isVisibleCode(code)) continue
+      const existing = routeMap.get(o.id)
+      planRows.push({
+        id:           o.id,
+        number:       o.number,
+        customerNo:   o.customerNumber ?? '',
+        customerName: o.customerName,
+        postCode:     o.shipToPostCode,
+        city:         o.shipToCity,
+        weightKg:     o.totalWeightKg ?? 0,
+        code,
+        bil:          existing?.bil ?? 'Bil 1',
+        routeOrder:   profiles[o.customerNumber ?? ''] ?? 5000,
+      })
+    }
+
+    // Sorter: kode → routeOrder → kundenavn
+    planRows.sort((a, b) => {
+      if (a.code !== b.code) return a.code.localeCompare(b.code)
+      if (a.routeOrder !== b.routeOrder) return a.routeOrder - b.routeOrder
+      return a.customerName.localeCompare(b.customerName, 'da')
+    })
+
+    setRows(planRows)
     setLoading(false)
   }, [date])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const failsafe = setTimeout(() => {
+      setLoading(false)
+      setBcError('Timeout — API svarede ikke inden for 20 sekunder. Prøv at genindlæse siden.')
+    }, 20_000)
+    load().finally(() => clearTimeout(failsafe))
+  }, [load])
 
-  // ── Tilføj BC-ordre til en bil ─────────────────────────────────────────────
-  function addOrder(vi: number, order: BCOrder) {
-    // Find første matchende leveringskode i vores DB
-    const firstCode = deliveryCodes.find(dc => order.deliveryCodes.includes(dc.code))
-    setVehicles(vs => vs.map((v, i) => i !== vi ? v : {
-      ...v, stops: [...v.stops, {
-        _key: key(),
-        bcSalesOrderNo: order.number, bcSalesOrderId: order.id,
-        customerName: order.customerName,
-        customerAddress: `${order.shipToAddress}, ${order.shipToPostCode} ${order.shipToCity}`.trim().replace(/^,\s*/, ''),
-        customerPhone: order.shipToPhone,
-        totalWeightKg: order.totalWeightKg,
-        deliveryCodeId: firstCode?.id,
-      }],
-    }))
+  const allBils = Array.from(new Set([...bils, ...rows.map(r => r.bil)])).sort()
+  // Dropdown viser kun A/K/S/LOVENCO koder
+  const allCodes = Array.from(new Set(dcodes.map(dc => dc.code).filter(isVisibleCode))).sort()
+
+  function updateRow(id: string, patch: Partial<PlanRow>) {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
   }
 
-  // ── Tilføj ekstra opgave ───────────────────────────────────────────────────
-  function addExtraTask(vi: number) {
-    setVehicles(vs => vs.map((v, i) => i !== vi ? v : {
-      ...v, stops: [...v.stops, { _key: key(), isExtraTask: true, extraTaskTitle: '' }],
-    }))
+  function changeCode(row: PlanRow, newCode: string) {
+    if (newCode === row.code) return
+    if (!confirm(`Flyt "${row.customerName}" fra ${row.code} til ${newCode}?`)) return
+    // Flyt til bunden af ny gruppe (høj routeOrder)
+    updateRow(row.id, { code: newCode })
   }
 
-  // ── Slet stop ─────────────────────────────────────────────────────────────
-  function removeStop(vi: number, si: number) {
-    setVehicles(vs => vs.map((v, i) => i !== vi ? v : {
-      ...v, stops: v.stops.filter((_, idx) => idx !== si),
-    }))
+  function addBil() {
+    const next = `Bil ${allBils.length + 1}`
+    setBils(prev => [...prev, next])
   }
 
-  // ── Opdater stop-felt ─────────────────────────────────────────────────────
-  function updateStop(vi: number, si: number, patch: Partial<Stop>) {
-    setVehicles(vs => vs.map((v, i) => i !== vi ? v : {
-      ...v, stops: v.stops.map((s, idx) => idx !== si ? s : { ...s, ...patch }),
-    }))
-  }
-
-  // ── Opdater bil ───────────────────────────────────────────────────────────
-  function updateVehicle(vi: number, patch: Partial<Vehicle>) {
-    setVehicles(vs => vs.map((v, i) => i !== vi ? v : { ...v, ...patch }))
-  }
-
-  // ── Tilføj bil ────────────────────────────────────────────────────────────
-  function addVehicle() {
-    setVehicles(vs => [...vs, {
-      _key: key(), vehicleLabel: `Bil ${vs.length + 1}`, driverId: '', stops: [],
-    }])
-  }
-
-  // ── Drag-and-drop stops ───────────────────────────────────────────────────
-  function onDragStart(vi: number, si: number) { setDragStop({ vi, si }) }
-  function onDragOver(e: React.DragEvent) { e.preventDefault() }
-  function onDrop(vi: number, si: number) {
-    if (!dragStop) return
-    setVehicles(vs => {
-      const next = vs.map(v => ({ ...v, stops: [...v.stops] }))
-      const [stop] = next[dragStop.vi].stops.splice(dragStop.si, 1)
-      next[vi].stops.splice(si, 0, stop)
-      return next
+  // Fordel kunder på biler baseret på nuværende rækkefølge — lighed fordeles på skift
+  function rebalanceBils() {
+    if (allBils.length < 2) return
+    setRows(prev => {
+      const result = [...prev]
+      // Per kodegruppe: fordel på biler i rækkefølge (round-robin per bil)
+      const codes = Array.from(new Set(prev.map(r => r.code)))
+      for (const code of codes) {
+        const indices = result.map((r, i) => r.code === code ? i : -1).filter(i => i >= 0)
+        indices.forEach((rowIdx, pos) => {
+          result[rowIdx] = { ...result[rowIdx], bil: allBils[pos % allBils.length] }
+        })
+      }
+      return result
     })
-    setDragStop(null)
   }
 
-  // ── Gem ───────────────────────────────────────────────────────────────────
+  // Drag-and-drop inden for samme kodegruppe
+  function onDragStart(code: string, idx: number) { setDrag({ code, idx }) }
+  function onDrop(code: string, toIdx: number) {
+    if (!drag || drag.code !== code || drag.idx === toIdx) { setDrag(null); return }
+    setRows(prev => {
+      const group  = prev.filter(r => r.code === code)
+      const rest   = prev.filter(r => r.code !== code)
+      const [moved] = group.splice(drag.idx, 1)
+      group.splice(toIdx, 0, moved)
+      // Tildel ny routeOrder ud fra ny rækkefølge (10, 20, 30…)
+      group.forEach((r, i) => { r.routeOrder = (i + 1) * 10 })
+      const result: PlanRow[] = []
+      let gi = 0
+      for (const r of prev) {
+        result.push(r.code === code ? group[gi++] : rest.shift()!)
+      }
+      return result
+    })
+    setDrag(null)
+  }
+
   async function save() {
     setSaving(true); setSaved(false)
+
+    // Byg vehicles/stops til rute-API
+    const vehicleMap = new Map<string, any[]>()
+    for (const r of rows) {
+      if (!vehicleMap.has(r.bil)) vehicleMap.set(r.bil, [])
+      vehicleMap.get(r.bil)!.push({
+        _key:                 mkKey(),
+        bcSalesOrderId:       r.id,
+        bcSalesOrderNo:       r.number,
+        customerName:         r.customerName,
+        customerAddress:      `${r.postCode} ${r.city}`.trim(),
+        totalWeightKg:        r.weightKg,
+        deliveryCodeOverride: r.code,
+      })
+    }
+    const vehicles = Array.from(vehicleMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([label, stops]) => ({ _key: mkKey(), vehicleLabel: label, driverId: '', stops }))
+
+    // Byg routeProfiles til persistering
+    const routeProfiles = rows.map(r => ({ customerNo: r.customerNo, routeOrder: r.routeOrder }))
+
     await fetch(`/api/admin/leveringer/${date}/rute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vehicles, notes }),
+      body: JSON.stringify({ vehicles, notes, routeProfiles }),
     })
     setSaving(false); setSaved(true)
     setTimeout(() => setSaved(false), 3000)
   }
 
-  // ── Beregn total vægt per bil ─────────────────────────────────────────────
-  function totalKg(v: Vehicle) {
-    return v.stops.reduce((s, stop) => s + (stop.totalWeightKg ?? 0), 0)
-  }
-
   if (loading) return <div className="py-16 text-center text-sm text-gray-400">Henter ordrer fra BC…</div>
 
-  const dkDate = new Date(date + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const dkDate = new Date(date + 'T12:00:00').toLocaleDateString('da-DK', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
+
+  // Grupper rows pr. kode (kun synlige koder)
+  const groups = new Map<string, PlanRow[]>()
+  for (const r of rows) {
+    if (!groups.has(r.code)) groups.set(r.code, [])
+    groups.get(r.code)!.push(r)
+  }
+  const sortedCodes = Array.from(groups.keys()).sort()
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-4 max-w-5xl">
+
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <a href="/admin/leveringer" className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-1">
             <ArrowLeft size={12} /> Alle leveringsdage
           </a>
           <h1 className="text-2xl font-bold text-gray-900 capitalize">{dkDate}</h1>
-          <p className="text-sm text-gray-500">{bcOrders.length} ordre{bcOrders.length !== 1 ? 'r' : ''} fra BC · {vehicles.length} bil{vehicles.length !== 1 ? 'er' : ''}</p>
+          <p className="text-sm text-gray-500">
+            {rows.length} kunder · {sortedCodes.length} ruter · {allBils.length} bil{allBils.length !== 1 ? 'er' : ''}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          {saved && <span className="flex items-center gap-1 text-sm text-green-600"><CheckCircle2 size={15} /> Gemt</span>}
+        <div className="flex items-center gap-2">
+          <button onClick={addBil}
+            className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
+            <Plus size={13} /> Tilføj bil
+          </button>
+          {allBils.length > 1 && (
+            <button onClick={rebalanceBils}
+              className="flex items-center gap-1 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-100">
+              Fordel på {allBils.length} biler
+            </button>
+          )}
+          {saved && (
+            <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
+              <CheckCircle2 size={15} /> Gemt
+            </span>
+          )}
           <button onClick={save} disabled={saving}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             <Save size={15} /> {saving ? 'Gemmer…' : 'Gem rute'}
@@ -248,274 +266,139 @@ export default function LeveringDagPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {bcError && (
+        <div className="rounded-xl bg-red-50 p-3 text-xs text-red-700 ring-1 ring-red-200">{bcError}</div>
+      )}
 
-        {/* ── Venstre: BC-ordrer grupperet pr. leveringskode ──────────────── */}
-        <div className="lg:col-span-1 space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">BC-ordrer ({bcOrders.length})</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Bogføringsdato: {date} · grupperet pr. leveringskode</p>
+      {/* ── Tabel ── */}
+      <div className="rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
+        {rows.length === 0 ? (
+          <div className="py-14 text-center text-sm text-gray-400">
+            Ingen ordrer med leveringskoder (A / K / S / LOVENCO) for denne dato
           </div>
-          {bcError && (
-            <div className="rounded-xl bg-red-50 p-4 ring-1 ring-red-200 text-xs text-red-700 font-mono break-all">
-              <div className="font-semibold mb-1">BC-fejl:</div>
-              {bcError}
-            </div>
-          )}
-          {!bcError && bcOrders.length === 0 && (
-            <div className="rounded-xl bg-white p-6 text-center ring-1 ring-gray-200 text-sm text-gray-400">
-              Ingen ordrer i BC for denne dato
-            </div>
-          )}
-          {(() => {
-            // Gruppér ordrer pr. leveringskode
-            const groups = new Map<string, BCOrder[]>()
-            for (const o of bcOrders) {
-              const codes = o.deliveryCodes.length > 0 ? o.deliveryCodes : ['–']
-              for (const code of codes) {
-                if (!groups.has(code)) groups.set(code, [])
-                if (!groups.get(code)!.find(x => x.id === o.id)) groups.get(code)!.push(o)
-              }
-            }
-            // Sorter grupper: kendte leveringskoder fra DB først, derefter alfabetisk
-            const sortedCodes = Array.from(groups.keys()).sort((a, b) => {
-              const aKnown = deliveryCodes.some(dc => dc.code === a)
-              const bKnown = deliveryCodes.some(dc => dc.code === b)
-              if (aKnown && !bKnown) return -1
-              if (!aKnown && bKnown) return 1
-              return a.localeCompare(b)
-            })
-            return sortedCodes.map(code => {
-              const ordersInGroup = groups.get(code)!
-              const codeExpanded = expandedCodes.has(code)
-              const dcName = deliveryCodes.find(dc => dc.code === code)?.name ?? code
-              const allInRoute = ordersInGroup.every(o => orderInRoute(vehicles, o.id))
-              return (
-                <div key={code} className="rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
-                  {/* Leveringskode-header */}
-                  <button
-                    onClick={() => toggleCodeExpand(code)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="rounded bg-purple-100 px-2 py-0.5 text-xs font-mono font-semibold text-purple-700 shrink-0">{code}</span>
-                      <span className="text-sm font-medium text-gray-800 truncate">{dcName}</span>
-                      {allInRoute && <CheckCircle2 size={13} className="text-green-500 shrink-0" />}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-gray-400">{ordersInGroup.length} ordre{ordersInGroup.length !== 1 ? 'r' : ''}</span>
-                      {codeExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-                    </div>
-                  </button>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="w-7 px-2 py-2.5" />
+                <th className="px-3 py-2.5 text-left">Kunde</th>
+                <th className="px-3 py-2.5 text-left w-16">Postnr</th>
+                <th className="px-3 py-2.5 text-left">By</th>
+                <th className="px-3 py-2.5 text-right w-16">Kg</th>
+                <th className="px-3 py-2.5 text-center w-20" title="Rækkefølge inden for gruppen (1 = først)">Rækkef.</th>
+                <th className="px-3 py-2.5 text-left w-36">Leveringskode</th>
+                <th className="px-3 py-2.5 text-left w-28">Bil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCodes.map(code => {
+                const codeRows = groups.get(code)!
+                const dcName   = dcodes.find(dc => dc.code === code)?.name ?? ''
+                const totalKg  = codeRows.reduce((s, r) => s + (r.weightKg ?? 0), 0)
+                const bilsUsed = Array.from(new Set(codeRows.map(r => r.bil))).sort()
 
-                  {/* Ordrer i gruppen */}
-                  {codeExpanded && (
-                    <div className="border-t border-gray-100 divide-y divide-gray-100">
-                      {ordersInGroup.map(o => {
-                        const inRoute  = orderInRoute(vehicles, o.id)
-                        const expanded = expandedOrders.has(o.id)
-                        const checkedCount = o.lines.filter(l => checkedLines.has(l.id)).length
-                        return (
-                          <div key={o.id} className={`${inRoute ? 'opacity-50' : ''}`}>
-                            <div className="px-4 py-3 space-y-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-semibold text-sm text-gray-900 truncate">{o.customerName}</div>
-                                  <div className="text-xs text-gray-500">{o.number}</div>
-                                </div>
-                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[o.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                                  {o.status}
-                                </span>
-                              </div>
-                              {o.shipToAddress && (
-                                <div className="text-xs text-gray-500">{o.shipToAddress}, {o.shipToPostCode} {o.shipToCity}</div>
-                              )}
-                              {/* Tildel til bil */}
-                              {!inRoute && (
-                                <div className="flex gap-1 flex-wrap pt-1">
-                                  {vehicles.map((v, vi) => (
-                                    <button key={v._key} onClick={() => addOrder(vi, o)}
-                                      className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
-                                      + {v.vehicleLabel}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {inRoute && (
-                                <div className="flex items-center gap-1 text-xs text-green-600">
-                                  <CheckCircle2 size={12} /> Tilføjet til rute
-                                </div>
-                              )}
-                            </div>
-                            {/* Varelinjer — toggle */}
-                            {o.lines.length > 0 && (
-                              <>
-                                <button
-                                  onClick={() => toggleOrderExpand(o.id)}
-                                  className="w-full flex items-center justify-between border-t border-gray-50 px-4 py-2 text-xs text-gray-500 hover:bg-gray-50"
-                                >
-                                  <span>
-                                    {checkedCount > 0
-                                      ? `${checkedCount}/${o.lines.length} pakket`
-                                      : `${o.lines.length} varelinje${o.lines.length !== 1 ? 'r' : ''}`}
-                                  </span>
-                                  {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                </button>
-                                {expanded && (
-                                  <div className="border-t border-gray-50 divide-y divide-gray-50">
-                                    {o.lines.map(line => {
-                                      const checked = checkedLines.has(line.id)
-                                      return (
-                                        <label key={line.id}
-                                          className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 ${checked ? 'bg-green-50' : ''}`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => toggleLine(line.id)}
-                                            className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-green-600"
-                                          />
-                                          <div className="min-w-0">
-                                            <div className={`text-xs font-medium ${checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                                              {line.description}
-                                            </div>
-                                            <div className="text-xs text-gray-400 font-mono">
-                                              {line.itemNo} · {line.quantity} {line.uom}
-                                            </div>
-                                          </div>
-                                        </label>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })
-          })()}
-        </div>
+                return [
+                  <tr key={`hdr-${code}`} className="bg-blue-50 border-t-2 border-blue-100">
+                    <td colSpan={8} className="px-4 py-2">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-mono font-bold text-blue-800">{code}</span>
+                        {dcName && <span className="text-xs text-blue-600">{dcName}</span>}
+                        <span className="ml-auto text-xs text-gray-400">
+                          {codeRows.length} kunder
+                          {totalKg > 0 && <> · {totalKg.toFixed(0)} kg</>}
+                        </span>
+                        {bilsUsed.map(bil => {
+                          const links = mapsLinks(codeRows.filter(r => r.bil === bil))
+                          return links.map((url, i) => (
+                            <a key={`${bil}-${i}`} href={url} target="_blank" rel="noreferrer"
+                              className="flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 whitespace-nowrap">
+                              <Map size={11} /> {bil}{links.length > 1 ? ` · kort ${i + 1}` : ''}
+                            </a>
+                          ))
+                        })}
+                      </div>
+                    </td>
+                  </tr>,
 
-        {/* ── Højre: Biler + ruter ───────────────────────────────────────── */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Ruteplan</h2>
-            <button onClick={addVehicle}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
-              <Plus size={13} /> Tilføj bil
-            </button>
-          </div>
+                  ...codeRows.map((r, idx) => {
+                    // Vis bil-separator når bilen skifter inden for gruppen
+                    const prevBil = idx > 0 ? codeRows[idx - 1].bil : null
+                    const bilChanged = prevBil !== null && prevBil !== r.bil
+                    return [
+                    bilChanged ? (
+                      <tr key={`bil-sep-${code}-${idx}`} className="bg-gray-100 border-t border-gray-300">
+                        <td colSpan={8} className="px-4 py-1 text-xs font-semibold text-gray-500 tracking-wide">
+                          {r.bil}
+                        </td>
+                      </tr>
+                    ) : null,
+                    <tr key={r.id}
+                      draggable
+                      onDragStart={() => onDragStart(code, idx)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={() => onDrop(code, idx)}
+                      className={`border-b border-gray-50 hover:bg-gray-50 transition-opacity ${drag?.code === code && drag.idx === idx ? 'opacity-30' : ''}`}
+                    >
+                      <td className="px-2 py-2 text-gray-300 cursor-grab">
+                        <GripVertical size={14} />
+                      </td>
+                      <td className="px-3 py-2 font-medium text-gray-900">{r.customerName}</td>
+                      <td className="px-3 py-2 text-gray-500 font-mono text-xs">{r.postCode}</td>
+                      <td className="px-3 py-2 text-gray-500 text-xs">{r.city}</td>
+                      <td className="px-3 py-2 text-right text-gray-400 text-xs tabular-nums">
+                        {r.weightKg > 0 ? r.weightKg.toFixed(0) : '–'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number" min={1} max={10000}
+                          value={r.routeOrder}
+                          onChange={e => updateRow(r.id, { routeOrder: Number(e.target.value) || 5000 })}
+                          onBlur={() => {
+                            // Resorter gruppen når man forlader feltet
+                            setRows(prev => {
+                              const group = prev.filter(x => x.code === r.code)
+                                .sort((a, b) => a.routeOrder - b.routeOrder || a.customerName.localeCompare(b.customerName, 'da'))
+                              let gi = 0
+                              return prev.map(x => x.code === r.code ? group[gi++] : x)
+                            })
+                          }}
+                          className="w-16 rounded border border-gray-200 px-2 py-1 text-xs text-center bg-white focus:border-blue-400 focus:outline-none tabular-nums"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <select value={r.code}
+                          onChange={e => changeCode(r, e.target.value)}
+                          className="rounded border border-gray-200 px-2 py-1 text-xs bg-white focus:border-blue-400 focus:outline-none w-full">
+                          {allCodes.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <select value={r.bil}
+                          onChange={e => updateRow(r.id, { bil: e.target.value })}
+                          className="rounded border border-gray-200 px-2 py-1 text-xs bg-white focus:border-blue-400 focus:outline-none w-full">
+                          {allBils.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                    ]
+                  }).flat().filter(Boolean),
+                ]
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-          {vehicles.map((v, vi) => (
-            <div key={v._key} className="rounded-xl bg-white ring-1 ring-gray-200">
-              {/* Bil-header */}
-              <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3">
-                <Truck size={16} className="text-blue-600 shrink-0" />
-                <input value={v.vehicleLabel}
-                  onChange={e => updateVehicle(vi, { vehicleLabel: e.target.value })}
-                  className="flex-1 text-sm font-semibold text-gray-900 bg-transparent focus:outline-none focus:border-b focus:border-blue-400"
-                  placeholder="Bil 1" />
-                <select value={v.driverId} onChange={e => updateVehicle(vi, { driverId: e.target.value })}
-                  className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 bg-white focus:border-blue-400 focus:outline-none">
-                  <option value="">— Vælg chauffør —</option>
-                  {drivers.map(d => (
-                    <option key={d.id} value={d.id}>
-                      {d.isDefault ? '⭐ ' : ''}{d.name}
-                    </option>
-                  ))}
-                </select>
-                {totalKg(v) > 0 && (
-                  <span className="shrink-0 text-xs text-gray-500 font-medium">{totalKg(v).toFixed(1)} kg</span>
-                )}
-              </div>
-
-              {/* Stops */}
-              <div className="divide-y divide-gray-50">
-                {v.stops.length === 0 && (
-                  <p className="px-4 py-3 text-xs text-gray-400 italic">Ingen stops — tilføj ordrer fra listen til venstre</p>
-                )}
-                {v.stops.map((s, si) => (
-                  <div key={s._key}
-                    draggable
-                    onDragStart={() => onDragStart(vi, si)}
-                    onDragOver={onDragOver}
-                    onDrop={() => onDrop(vi, si)}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-grab"
-                  >
-                    <GripVertical size={14} className="mt-0.5 shrink-0 text-gray-300" />
-                    <span className="mt-0.5 shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-bold">{si + 1}</span>
-
-                    <div className="flex-1 min-w-0 space-y-1">
-                      {s.isExtraTask ? (
-                        <>
-                          <input value={s.extraTaskTitle ?? ''}
-                            onChange={e => updateStop(vi, si, { extraTaskTitle: e.target.value })}
-                            className="w-full text-sm font-medium text-gray-900 bg-transparent focus:outline-none border-b border-transparent focus:border-blue-400"
-                            placeholder="Ekstra opgave (beskrivelse)" />
-                          <input value={s.extraTaskNote ?? ''}
-                            onChange={e => updateStop(vi, si, { extraTaskNote: e.target.value })}
-                            className="w-full text-xs text-gray-500 bg-transparent focus:outline-none border-b border-transparent focus:border-blue-400"
-                            placeholder="Detaljer…" />
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{s.customerName ?? s.bcSalesOrderNo}</span>
-                            {s.bcSalesOrderNo && (
-                              <span className="text-xs text-gray-400 font-mono">{s.bcSalesOrderNo}</span>
-                            )}
-                            {s.packedStatus === 'PENDING' && (
-                              <span className="flex items-center gap-0.5 text-xs text-amber-600"><Clock size={10} /> Mangler pakning</span>
-                            )}
-                            {s.packedStatus === 'READY' && (
-                              <span className="flex items-center gap-0.5 text-xs text-green-600"><CheckCircle2 size={10} /> Pakket</span>
-                            )}
-                          </div>
-                          {s.customerAddress && <div className="text-xs text-gray-500">{s.customerAddress}</div>}
-                          {s.totalWeightKg ? <div className="text-xs text-gray-400">{s.totalWeightKg} kg</div> : null}
-                        </>
-                      )}
-
-                      {/* Per-stop chauffør (hvis anderledes end bilens) */}
-                      <select value={s.driverId ?? ''}
-                        onChange={e => updateStop(vi, si, { driverId: e.target.value || undefined })}
-                        className="text-xs text-gray-500 bg-transparent focus:outline-none border-b border-transparent focus:border-blue-400">
-                        <option value="">Brug bilens chauffør</option>
-                        {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      </select>
-                    </div>
-
-                    <button onClick={() => removeStop(vi, si)}
-                      className="shrink-0 rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Tilføj ekstra opgave */}
-              <div className="border-t border-gray-100 px-4 py-2">
-                <button onClick={() => addExtraTask(vi)}
-                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600">
-                  <Plus size={12} /> Ekstra opgave
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* Noter til hele ruten */}
-          <div className="rounded-xl bg-white ring-1 ring-gray-200 p-4">
-            <label className="mb-1.5 block text-xs font-medium text-gray-600">Generelle noter til ruten</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none resize-none"
-              placeholder="F.eks. ekstra kørsel, særlige instrukser…" />
-          </div>
-        </div>
+      {/* ── Noter ── */}
+      <div className="rounded-xl bg-white ring-1 ring-gray-200 p-4">
+        <label className="mb-1.5 block text-xs font-medium text-gray-600">Noter til ruten</label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none resize-none"
+          placeholder="Ekstra instrukser, særlige hensyn…" />
       </div>
     </div>
   )

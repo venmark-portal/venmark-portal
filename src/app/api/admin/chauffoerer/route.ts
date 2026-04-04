@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
             "phone"     = ${d.phone || null},
             "isActive"  = ${d.active},
             "pinHash"   = ${pinHash},
-            "updatedAt" = ${now}
+            "updatedAt" = ${now}::timestamp
         WHERE "bcDriverCode" = ${d.code}
       `
       updated++
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
            "defaultVehicleLabel", "bcDriverCode", "createdAt", "updatedAt")
         VALUES
           (${id}, ${d.name}, ${d.phone || null}, null, ${pinHash},
-           false, ${d.active}, 'Bil 1', ${d.code}, ${now}, ${now})
+           false, ${d.active}, 'Bil 1', ${d.code}, ${now}::timestamp, ${now}::timestamp)
         ON CONFLICT ("bcDriverCode") DO NOTHING
       `
       created++

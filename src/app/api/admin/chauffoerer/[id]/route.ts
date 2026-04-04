@@ -27,7 +27,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       SET "pinHash"             = ${pinHash},
           "isDefault"           = ${Boolean(isDefault)},
           "defaultVehicleLabel" = ${vLabel},
-          "updatedAt"           = ${now}
+          "updatedAt"           = ${now}::timestamp
       WHERE "id" = ${params.id}
     `
   } else {
@@ -35,7 +35,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       UPDATE "DriverUser"
       SET "isDefault"           = ${Boolean(isDefault)},
           "defaultVehicleLabel" = ${vLabel},
-          "updatedAt"           = ${now}
+          "updatedAt"           = ${now}::timestamp
       WHERE "id" = ${params.id}
     `
   }
