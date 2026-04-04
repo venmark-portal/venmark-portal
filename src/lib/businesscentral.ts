@@ -1165,7 +1165,7 @@ export async function getSalesOrdersForDelivery(
   // Hent alle ordrer via custom endpoint (ingen implicit 50-graense som standard API)
   // OData filter paa postingDate virker ikke paa custom AL pages - filtrer i kode
   const allRaw: any[] = []
-  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500&$filter=${encodeURIComponent('postingDate eq ' + deliveryDate)}`
+  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
     if (!res.ok) {
