@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
+  const driverId = token.sub as string
   const url  = new URL(req.url)
   const date = url.searchParams.get('date') ?? defaultDate()
   const alle = url.searchParams.get('alle') === '1'
