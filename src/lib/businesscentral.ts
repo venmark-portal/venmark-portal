@@ -1183,11 +1183,10 @@ export async function getSalesOrdersForDelivery(
     nextUrl = data['@odata.nextLink'] ?? null
   }
 
-  // Filtrer på dato (requestedDeliveryDate primær, postingDate fallback) + kun åbne/frigivne
+  // Filtrer på dato (requestedDeliveryDate primær, postingDate fallback)
   const filtered = allRaw.filter((o: any) =>
-    (o.status === 'Open' || o.status === 'Released') &&
-    (o.requestedDeliveryDate?.slice(0, 10) === deliveryDate ||
-     o.postingDate?.slice(0, 10) === deliveryDate)
+    o.requestedDeliveryDate?.slice(0, 10) === deliveryDate ||
+    o.postingDate?.slice(0, 10) === deliveryDate
   )
   const codeCounts: Record<string, number> = {}
   for (const o of filtered) { const c = o.shipmentMethodCode?.trim() || 'INGEN'; codeCounts[c] = (codeCounts[c] ?? 0) + 1 }
