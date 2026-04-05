@@ -13,8 +13,8 @@ interface BCOrder {
 interface DeliveryCode { id: string; code: string; name: string }
 
 interface PlanRow {
-  id: string            // BC order id
-  number: string        // BC order number
+  id: string            // BC order id (primær)
+  number: string        // BC ordrenummer (primær)
   customerNo: string
   customerName: string
   address: string
@@ -26,12 +26,44 @@ interface PlanRow {
   bil: string           // 'Bil 1', 'Bil 2', ...
   routeOrder: number    // Rækkefølge — 1 er først, 10000 sidst
   defaultVehicle: number // 0 = ikke sat, 1-9 = standard bil
+  merged?: { id: string; number: string; originalCode: string; weightKg: number }[]
 }
 
 // Leveringskoder der vises i tabellen (og som grupper)
 function isVisibleCode(code: string): boolean {
   const u = code.toUpperCase().trim()
   return u === 'LOVENCO' || /^[AKS]/.test(u)
+}
+
+// Slå LOVENCO + KØB*-ordrer til samme adresse sammen til én række
+function mergeKobIntoLovenco(rows: PlanRow[]): PlanRow[] {
+  const absorbed = new Set<string>()
+  const out: PlanRow[] = []
+  for (const row of rows) {
+    if (absorbed.has(row.id)) continue
+    if (row.code === 'LOVENCO' && row.originalCode === 'LOVENCO' && row.address) {
+      // Find KØB*-partner med samme leveringsadresse
+      const partner = rows.find(r =>
+        !absorbed.has(r.id) &&
+        r.id !== row.id &&
+        r.code === 'LOVENCO' &&
+        /^KØB/i.test(r.originalCode) &&
+        r.address.toLowerCase() === row.address.toLowerCase() &&
+        r.postCode === row.postCode
+      )
+      if (partner) {
+        absorbed.add(partner.id)
+        out.push({
+          ...row,
+          weightKg: row.weightKg + partner.weightKg,
+          merged: [{ id: partner.id, number: partner.number, originalCode: partner.originalCode, weightKg: partner.weightKg }],
+        })
+        continue
+      }
+    }
+    out.push(row)
+  }
+  return out
 }
 
 function mkKey() { return Math.random().toString(36).slice(2) }
@@ -126,7 +158,7 @@ export default function LeveringDagPage() {
         return a.customerName.localeCompare(b.customerName, 'da')
       })
 
-      setRows(planRows)
+      setRows(mergeKobIntoLovenco(planRows))
     } catch (e) {
       setBcError(`Behandlingsfejl: ${e instanceof Error ? e.message : String(e)}`)
     }
@@ -192,9 +224,9 @@ export default function LeveringDagPage() {
       vehicleMap.get(r.bil)!.push({
         _key:                 mkKey(),
         bcSalesOrderId:       r.id,
-        bcSalesOrderNo:       r.number,
+        bcSalesOrderNo:       [r.number, ...(r.merged?.map(m => m.number) ?? [])].join(' + '),
         customerName:         r.customerName,
-        customerAddress:      `${r.postCode} ${r.city}`.trim(),
+        customerAddress:      [r.address, r.postCode, r.city].filter(Boolean).join(', '),
         totalWeightKg:        r.weightKg,
         deliveryCodeOverride: r.code,
       })
@@ -340,11 +372,16 @@ export default function LeveringDagPage() {
                         <GripVertical size={14} />
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-medium text-gray-900 text-sm">{r.customerName}</span>
                           {r.originalCode !== r.code && (
                             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono font-semibold text-amber-700">{r.originalCode}</span>
                           )}
+                          {r.merged?.map(m => (
+                            <span key={m.id} className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono font-semibold text-amber-700">
+                              +{m.originalCode} {m.weightKg > 0 ? `${m.weightKg.toFixed(0)} kg` : ''}
+                            </span>
+                          ))}
                         </div>
                         {r.address && <div className="text-xs text-gray-400 mt-0.5">{r.address}, {r.postCode} {r.city}</div>}
                       </td>
