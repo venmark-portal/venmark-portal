@@ -68,10 +68,12 @@ const STATUS_LABEL: Record<string, string> = {
 export default function ChauffeurRutePage() {
   const { data: session } = useSession()
   const [vehicles,    setVehicles]    = useState<Vehicle[]>([])
+  const [allVehicles, setAllVehicles] = useState<Vehicle[]>([])
   const [notes,       setNotes]       = useState('')
   const [date,        setDate]        = useState(() => defaultDate())
   const [loading,     setLoading]     = useState(true)
   const [preliminary, setPreliminary] = useState(false)
+  const [codeFilter,  setCodeFilter]  = useState('') // '' = chaufførens egen kode
   const [expanded,  setExpanded]  = useState<Set<string>>(new Set())
   const [updating,  setUpdating]  = useState<Set<string>>(new Set())
   const [failNotes, setFailNotes] = useState<Record<string, string>>({})
@@ -79,16 +81,36 @@ export default function ChauffeurRutePage() {
 
   const load = useCallback(async (d: string) => {
     setLoading(true)
-    setVehicles([])
-    const res  = await fetch(`/api/chauffeur/rute?date=${d}`)
+    setAllVehicles([])
+    // Hent alle ordrer (ingen kode-filter) — filtrer klient-side
+    const res  = await fetch(`/api/chauffeur/rute?date=${d}&alle=1`)
     const data = await res.json()
-    setVehicles(data.vehicles ?? [])
+    setAllVehicles(data.vehicles ?? [])
     setNotes(data.notes ?? '')
     setPreliminary(data.preliminary ?? false)
     setLoading(false)
   }, [])
 
   useEffect(() => { load(date) }, [load, date])
+
+  // Klient-side filter på leveringskode
+  useEffect(() => {
+    if (!codeFilter) {
+      setVehicles(allVehicles)
+    } else {
+      const filtered = allVehicles
+        .map(v => ({
+          ...v,
+          stops: v.stops.filter(s =>
+            (s as any).deliveryCode === codeFilter ||
+            v.vehicleLabel === codeFilter ||
+            v.vehicleLabel.startsWith(codeFilter)
+          )
+        }))
+        .filter(v => v.stops.length > 0)
+      setVehicles(filtered)
+    }
+  }, [codeFilter, allVehicles])
 
   function toggleExpand(id: string) {
     setExpanded(prev => {
@@ -190,6 +212,31 @@ export default function ChauffeurRutePage() {
           <LogOut size={13} /> Log ud
         </button>
       </div>
+
+      {/* Leveringskode-filter */}
+      {allVehicles.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            onClick={() => setCodeFilter('')}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+              codeFilter === '' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            Alle
+          </button>
+          {Array.from(new Set(allVehicles.map(v => v.vehicleLabel))).sort().map(label => (
+            <button
+              key={label}
+              onClick={() => setCodeFilter(label === codeFilter ? '' : label)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                codeFilter === label ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Fremgangsbar */}
       {total > 0 && (

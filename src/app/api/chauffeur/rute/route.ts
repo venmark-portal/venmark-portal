@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
 
   const url  = new URL(req.url)
   const date = url.searchParams.get('date') ?? defaultDate()
+  const alle = url.searchParams.get('alle') === '1'
 
   // Hent chaufførens standard leveringskode + bil
   await prisma.$executeRaw`
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     SELECT "bcShipmentMethodCode", "defaultVehicleLabel"
     FROM "DriverUser" WHERE id = ${driverId} LIMIT 1
   `
-  const driverCode  = driverRows[0]?.bcShipmentMethodCode ?? null
+  const driverCode    = alle ? null : (driverRows[0]?.bcShipmentMethodCode ?? null)
   const driverVehicle = driverRows[0]?.defaultVehicleLabel ?? 'Bil 1'
 
   // Hent gemte rutestop fra DB
