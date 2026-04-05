@@ -36,7 +36,7 @@ export async function POST(
 
   // Gem metadata i DB (opret tabel hvis ikke eksisterer)
   await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS "DeliveryPhoto" (
+    CREATE TABLE IF NOT EXISTS "RouteStopPhoto" (
       id          TEXT PRIMARY KEY,
       "stopId"    TEXT NOT NULL,
       filename    TEXT NOT NULL,
@@ -48,7 +48,7 @@ export async function POST(
   `
   const id = crypto.randomUUID()
   await prisma.$executeRaw`
-    INSERT INTO "DeliveryPhoto" (id, "stopId", filename, "takenAt", lat, lng, "expiresAt")
+    INSERT INTO "RouteStopPhoto" (id, "stopId", filename, "takenAt", lat, lng, "expiresAt")
     VALUES (${id}, ${stopId}, ${dateStr + '/' + filename}, ${now.toISOString()}::timestamp,
             ${lat || null}, ${lng || null}, ${expiresAt.toISOString()}::timestamp)
   `
@@ -72,7 +72,7 @@ export async function GET(
   if (!token) return new NextResponse('Unauthorized', { status: 401 })
 
   const rows = await prisma.$queryRaw<any[]>`
-    SELECT filename, "takenAt", lat, lng FROM "DeliveryPhoto"
+    SELECT filename, "takenAt", lat, lng FROM "RouteStopPhoto"
     WHERE "stopId" = ${params.id}
     ORDER BY "takenAt" DESC LIMIT 1
   `
