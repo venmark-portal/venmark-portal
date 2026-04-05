@@ -16,19 +16,19 @@ export default async function PortalDashboard() {
     include: { lines: true },
   })
 
-  // Ulæste ticket-beskeder — bruger $queryRaw pga. readByCustomer felt (prisma generate DLL-lock workaround)
+  // Ulæste ticket-beskeder
   const unreadRows = await prisma.$queryRaw<[{ cnt: bigint }]>`
     SELECT COUNT(*) as cnt
-    FROM TicketMessage tm
-    JOIN Ticket t ON t.id = tm.ticketId
-    WHERE t.customerId = ${userId}
-      AND tm.readByCustomer = 0
+    FROM "TicketMessage" tm
+    JOIN "Ticket" t ON t.id = tm."ticketId"
+    WHERE t."customerId" = ${userId}
+      AND tm."readByCustomer" = false
   `
   const unreadTicketMessages = Number(unreadRows[0]?.cnt ?? 0)
 
   const openRows = await prisma.$queryRaw<[{ cnt: bigint }]>`
-    SELECT COUNT(*) as cnt FROM Ticket
-    WHERE customerId = ${userId} AND status != 'CLOSED'
+    SELECT COUNT(*) as cnt FROM "Ticket"
+    WHERE "customerId" = ${userId} AND status != 'CLOSED'
   `
   const openTickets = Number(openRows[0]?.cnt ?? 0)
 
