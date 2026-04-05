@@ -168,7 +168,15 @@ export default function ChauffeurRutePage() {
             <button onClick={() => setDate(d => addDays(d, -1))} className="p-1 rounded hover:bg-gray-100">
               <ChevronLeft size={16} className="text-gray-400" />
             </button>
-            <h1 className="text-base font-bold text-gray-900 capitalize">{dkDate}</h1>
+            <label className="text-base font-bold text-gray-900 capitalize cursor-pointer">
+              {dkDate}
+              <input
+                type="date"
+                value={date}
+                onChange={e => e.target.value && setDate(e.target.value)}
+                className="absolute opacity-0 w-0 h-0"
+              />
+            </label>
             <button onClick={() => setDate(d => addDays(d, 1))} className="p-1 rounded hover:bg-gray-100">
               <ChevronRight size={16} className="text-gray-400" />
             </button>
@@ -217,9 +225,14 @@ export default function ChauffeurRutePage() {
       )}
 
       {/* Ingen rute */}
-      {vehicles.length === 0 && (
+      {vehicles.length === 0 && !preliminary && (
         <div className="rounded-xl bg-white p-8 text-center ring-1 ring-gray-200 text-sm text-gray-400">
           Ingen rute planlagt for {dkDate || date}
+        </div>
+      )}
+      {vehicles.length === 0 && preliminary && (
+        <div className="rounded-xl bg-white p-8 text-center ring-1 ring-gray-200 text-sm text-gray-400">
+          Ingen ordrer fundet i BC for {dkDate || date}
         </div>
       )}
 
