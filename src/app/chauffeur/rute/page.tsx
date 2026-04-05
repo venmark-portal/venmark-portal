@@ -2,11 +2,12 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import {
   Truck, MapPin, Phone, Package, CheckCircle2, XCircle,
   Clock, ChevronDown, ChevronUp, LogOut, AlertTriangle,
+  Camera, Navigation,
 } from 'lucide-react'
 
 // TEST: Hardkodet dato — skift til '' for at bruge i dag
@@ -58,6 +59,7 @@ export default function ChauffeurRutePage() {
   const [expanded,  setExpanded]  = useState<Set<string>>(new Set())
   const [updating,  setUpdating]  = useState<Set<string>>(new Set())
   const [failNotes, setFailNotes] = useState<Record<string, string>>({})
+  const fileInputRefs = useRef<Record<string, HTMLInputElement>>({})
 
   const load = useCallback(async () => {
     const dateParam = TEST_DATE || new Date().toISOString().slice(0, 10)
@@ -77,6 +79,32 @@ export default function ChauffeurRutePage() {
       n.has(id) ? n.delete(id) : n.add(id)
       return n
     })
+  }
+
+  async function uploadPhoto(stopId: string, file: File) {
+    setUpdating(prev => new Set(prev).add(stopId))
+    let lat = 0, lng = 0
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+      )
+      lat = pos.coords.latitude
+      lng = pos.coords.longitude
+    } catch {}
+    const fd = new FormData()
+    fd.append('photo', file)
+    fd.append('lat', String(lat))
+    fd.append('lng', String(lng))
+    await fetch(`/api/chauffeur/stop/${stopId}/photo`, { method: 'POST', body: fd })
+    setVehicles(vs => vs.map(v => ({
+      ...v,
+      stops: v.stops.map(s => s.id !== stopId ? s : {
+        ...s,
+        status:      'DELIVERED' as any,
+        deliveredAt: new Date().toISOString(),
+      }),
+    })))
+    setUpdating(prev => { const n = new Set(prev); n.delete(stopId); return n })
   }
 
   async function updateStop(stopId: string, status: string, failureNote?: string) {
@@ -228,13 +256,25 @@ export default function ChauffeurRutePage() {
                 {/* Udvidet indhold */}
                 {isExpanded && (
                   <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
-                    {/* Telefon */}
-                    {s.customerPhone && (
-                      <a href={`tel:${s.customerPhone}`}
-                        className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
-                        <Phone size={14} /> {s.customerPhone}
-                      </a>
-                    )}
+                    {/* Telefon + Maps */}
+                    <div className="flex items-center gap-3">
+                      {s.customerPhone && (
+                        <a href={`tel:${s.customerPhone}`}
+                          className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
+                          <Phone size={14} /> {s.customerPhone}
+                        </a>
+                      )}
+                      {s.customerAddress && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.customerAddress)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-auto flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          <Navigation size={13} /> Navigér
+                        </a>
+                      )}
+                    </div>
 
                     {/* Fejlnote (til FAILED) */}
                     {showFailBox && (
@@ -250,12 +290,24 @@ export default function ChauffeurRutePage() {
                     {/* Handlinger */}
                     {!isDone ? (
                       <div className="flex gap-2">
+                        {/* Skjult fil-input til kamera */}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          ref={el => { if (el) fileInputRefs.current[s.id] = el }}
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) uploadPhoto(s.id, file)
+                          }}
+                        />
                         <button
-                          onClick={() => updateStop(s.id, 'DELIVERED')}
+                          onClick={() => fileInputRefs.current[s.id]?.click()}
                           disabled={isUpdating}
                           className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
                         >
-                          <CheckCircle2 size={15} /> Leveret
+                          <Camera size={15} /> {isUpdating ? 'Gemmer…' : 'Leveret'}
                         </button>
                         <button
                           onClick={() => updateStop(s.id, 'FAILED', failNotes[s.id])}

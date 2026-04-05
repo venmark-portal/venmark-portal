@@ -107,8 +107,8 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.driverId || !credentials?.pin) return null
         const rows = await prisma.$queryRaw<any[]>`
-          SELECT id, name, pinHash FROM DriverUser
-          WHERE id = ${credentials.driverId} AND isActive = 1 LIMIT 1
+          SELECT id, name, "pinHash" FROM "DriverUser"
+          WHERE id = ${credentials.driverId} AND "isActive" = true LIMIT 1
         `
         const driver = rows[0]
         if (!driver) return null

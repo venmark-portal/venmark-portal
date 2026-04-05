@@ -77,12 +77,15 @@ export async function POST(
     for (let si = 0; si < stops.length; si++) {
       const s = stops[si]
       await prisma.$executeRaw`
+        ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "kobSalesOrderNo" TEXT
+      `
+      await prisma.$executeRaw`
         INSERT INTO "RouteStop" (
           id, "vehicleId", "driverId", "sortOrder", "deliveryCodeId", "deliveryCodeOverride",
           "bcSalesOrderNo", "bcSalesOrderId", "bcPurchaseOrderNo", "bcPurchaseOrderId",
           "isExtraTask", "extraTaskTitle", "extraTaskNote",
           "customerName", "customerAddress", "customerPhone", "totalWeightKg",
-          status, "createdAt"
+          "kobSalesOrderNo", status, "createdAt"
         ) VALUES (
           ${randomUUID()}, ${vehicleId}, ${s.driverId ?? null}, ${si},
           ${s.deliveryCodeId ?? null}, ${s.deliveryCodeOverride ?? null},
@@ -90,7 +93,7 @@ export async function POST(
           ${s.bcPurchaseOrderNo ?? null}, ${s.bcPurchaseOrderId ?? null},
           ${s.isExtraTask ? true : false}, ${s.extraTaskTitle ?? null}, ${s.extraTaskNote ?? null},
           ${s.customerName ?? null}, ${s.customerAddress ?? null}, ${s.customerPhone ?? null},
-          ${s.totalWeightKg ?? null}, 'PENDING', ${now}::timestamp
+          ${s.totalWeightKg ?? null}, ${s.kobSalesOrderNo ?? null}, 'PENDING', ${now}::timestamp
         )
       `
     }

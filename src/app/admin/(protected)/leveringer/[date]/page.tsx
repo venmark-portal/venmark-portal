@@ -225,6 +225,7 @@ export default function LeveringDagPage() {
         _key:                 mkKey(),
         bcSalesOrderId:       r.id,
         bcSalesOrderNo:       [r.number, ...(r.merged?.map(m => m.number) ?? [])].join(' + '),
+        kobSalesOrderNo:      r.merged?.[0]?.number ?? null,
         customerName:         r.customerName,
         customerAddress:      [r.address, r.postCode, r.city].filter(Boolean).join(', '),
         totalWeightKg:        r.weightKg,
