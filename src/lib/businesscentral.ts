@@ -1162,13 +1162,19 @@ export async function getSalesOrdersForDelivery(
   const v2base  = bcBaseUrl()
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // OData filter med single-quoted dato — virker på custom AL pages (ingen quotes giver BC 400)
+  // BC's custom API page (med beregnet TotalNetWt i OnAfterGetRecord) afviser $filter.
+  // Vi henter alle ordrer uden filter og filtrerer på dato + status i JS nedenfor.
+  // BC capper sidestr. til ~100-500 uanset $top — nextLinks kan udløbe, så vi stopper ved 404.
   const allRaw: any[] = []
-  const dateFilter = encodeURIComponent(`postingDate eq '${deliveryDate}'`)
-  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=500&$filter=${dateFilter}`
+  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=5000`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
     if (!res.ok) {
+      if (res.status === 404 && nextUrl.includes('tenant=')) {
+        // BC nextLink-URL udløbet — brug det vi allerede har hentet
+        console.warn('BC nextLink returnerede 404 (udløbet) — stopper paginering med', allRaw.length, 'ordrer')
+        break
+      }
       const errText = await res.text()
       throw new Error(`BC deliveryOrders fejl (${res.status}): ${errText}`)
     }
@@ -1177,10 +1183,15 @@ export async function getSalesOrdersForDelivery(
     nextUrl = data['@odata.nextLink'] ?? null
   }
 
-  const filtered = allRaw
+  // Filtrer på dato (requestedDeliveryDate primær, postingDate fallback) + kun åbne/frigivne
+  const filtered = allRaw.filter((o: any) =>
+    (o.status === 'Open' || o.status === 'Released') &&
+    (o.requestedDeliveryDate?.slice(0, 10) === deliveryDate ||
+     o.postingDate?.slice(0, 10) === deliveryDate)
+  )
   const codeCounts: Record<string, number> = {}
   for (const o of filtered) { const c = o.shipmentMethodCode?.trim() || 'INGEN'; codeCounts[c] = (codeCounts[c] ?? 0) + 1 }
-  console.log(`BC returnerede ${filtered.length} ordrer for dato ${deliveryDate} — koder:`, JSON.stringify(codeCounts))
+  console.log(`BC returnerede ${allRaw.length} ordrer totalt, ${filtered.length} matcher dato ${deliveryDate} — koder:`, JSON.stringify(codeCounts))
 
   const orders: BCSalesOrderForDelivery[] = filtered.map((o: any) => ({
     id:                    o.id,
