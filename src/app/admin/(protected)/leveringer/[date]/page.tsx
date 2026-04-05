@@ -117,6 +117,7 @@ export default function LeveringDagPage() {
 
       planRows.sort((a, b) => {
         if (a.code !== b.code) return a.code.localeCompare(b.code)
+        if (a.bil  !== b.bil)  return a.bil.localeCompare(b.bil)
         if (a.routeOrder !== b.routeOrder) return a.routeOrder - b.routeOrder
         return a.customerName.localeCompare(b.customerName, 'da')
       })
@@ -154,23 +155,6 @@ export default function LeveringDagPage() {
   function addBil() {
     const next = `Bil ${allBils.length + 1}`
     setBils(prev => [...prev, next])
-  }
-
-  // Fordel kunder på biler baseret på nuværende rækkefølge — lighed fordeles på skift
-  function rebalanceBils() {
-    if (allBils.length < 2) return
-    setRows(prev => {
-      const result = [...prev]
-      // Per kodegruppe: fordel på biler i rækkefølge (round-robin per bil)
-      const codes = Array.from(new Set(prev.map(r => r.code)))
-      for (const code of codes) {
-        const indices = result.map((r, i) => r.code === code ? i : -1).filter(i => i >= 0)
-        indices.forEach((rowIdx, pos) => {
-          result[rowIdx] = { ...result[rowIdx], bil: allBils[pos % allBils.length] }
-        })
-      }
-      return result
-    })
   }
 
   // Drag-and-drop inden for samme kodegruppe
@@ -264,12 +248,6 @@ export default function LeveringDagPage() {
             className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
             <Plus size={13} /> Tilføj bil
           </button>
-          {allBils.length > 1 && (
-            <button onClick={rebalanceBils}
-              className="flex items-center gap-1 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-100">
-              Fordel på {allBils.length} biler
-            </button>
-          )}
           {saved && (
             <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
               <CheckCircle2 size={15} /> Gemt
@@ -386,7 +364,7 @@ export default function LeveringDagPage() {
                           onBlur={() => {
                             setRows(prev => {
                               const group = prev.filter(x => x.code === r.code)
-                                .sort((a, b) => a.routeOrder - b.routeOrder || a.customerName.localeCompare(b.customerName, 'da'))
+                                .sort((a, b) => a.bil.localeCompare(b.bil) || a.routeOrder - b.routeOrder || a.customerName.localeCompare(b.customerName, 'da'))
                               let gi = 0
                               return prev.map(x => x.code === r.code ? group[gi++] : x)
                             })
