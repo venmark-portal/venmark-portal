@@ -26,6 +26,17 @@ export async function GET(req: NextRequest) {
   const url  = new URL(req.url)
   const date = url.searchParams.get('date') ?? defaultDate()
 
+  // Hent chaufførens standard leveringskode + bil
+  await prisma.$executeRaw`
+    ALTER TABLE "DriverUser" ADD COLUMN IF NOT EXISTS "bcShipmentMethodCode" TEXT
+  `
+  const driverRows = await prisma.$queryRaw<any[]>`
+    SELECT "bcShipmentMethodCode", "defaultVehicleLabel"
+    FROM "DriverUser" WHERE id = ${driverId} LIMIT 1
+  `
+  const driverCode  = driverRows[0]?.bcShipmentMethodCode ?? null
+  const driverVehicle = driverRows[0]?.defaultVehicleLabel ?? 'Bil 1'
+
   // Hent gemte rutestop fra DB
   const routeRows = await prisma.$queryRaw<any[]>`
     SELECT r.id AS "routeId", r.notes AS "routeNotes",
@@ -35,7 +46,8 @@ export async function GET(req: NextRequest) {
       s."isExtraTask", s."extraTaskTitle", s."extraTaskNote",
       s."customerName", s."customerAddress", s."customerPhone",
       s."totalWeightKg", s.status AS "stopStatus",
-      s."deliveredAt", s."failureNote", s."packedStatus"
+      s."deliveredAt", s."failureNote", s."packedStatus",
+      s."deliveryCodeOverride"
     FROM "DeliveryRoute" r
     JOIN "RouteVehicle" v ON v."routeId" = r.id
     LEFT JOIN "RouteStop" s ON s."vehicleId" = v.id
@@ -46,8 +58,13 @@ export async function GET(req: NextRequest) {
   // Hvis gemt rute har stops — brug dem
   const hasStops = routeRows.some(r => r.stopId)
   if (hasStops) {
+    // Filtrer stops på chaufførens leveringskode (deliveryCodeOverride)
+    const filtered = driverCode
+      ? routeRows.filter(r => !r.stopId || r.deliveryCodeOverride === driverCode || r.deliveryCodeOverride === null)
+      : routeRows
+
     const vMap = new Map<string, any>()
-    for (const r of routeRows) {
+    for (const r of filtered) {
       if (!r.vehicleId) continue
       if (!vMap.has(r.vehicleId)) {
         vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, stops: [] })
@@ -81,9 +98,14 @@ export async function GET(req: NextRequest) {
 
   // Ingen gemte stops — hent BC-ordrer og vis som foreløbig rute
   try {
-    const bcOrders = await getSalesOrdersForDelivery(date, { fetchLines: false })
+    const allOrders = await getSalesOrdersForDelivery(date, { fetchLines: false })
+    // Filtrer på chaufførens leveringskode hvis den er sat
+    const bcOrders = driverCode
+      ? allOrders.filter(o => o.deliveryCodes.some(c => c.toUpperCase() === driverCode.toUpperCase()))
+      : allOrders
+
     if (bcOrders.length === 0) {
-      return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '' })
+      return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '', driverCode })
     }
 
     // Grupper efter leveringskode → "bil"

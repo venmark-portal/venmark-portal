@@ -10,9 +10,12 @@ export const runtime = 'nodejs'
 
 // GET: Hent lokale DriverUser-rækker (synkroniseret fra BC)
 export async function GET() {
-  // Sikr at bcDriverCode-kolonnen eksisterer (idempotent migration)
+  // Sikr at kolonnerne eksisterer (idempotent migration)
   await prisma.$executeRaw`
     ALTER TABLE "DriverUser" ADD COLUMN IF NOT EXISTS "bcDriverCode" TEXT UNIQUE
+  `
+  await prisma.$executeRaw`
+    ALTER TABLE "DriverUser" ADD COLUMN IF NOT EXISTS "bcShipmentMethodCode" TEXT
   `
 
   const rows = await prisma.$queryRaw<any[]>`
@@ -40,9 +43,12 @@ export async function POST(req: NextRequest) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  // Sikr at bcDriverCode-kolonnen eksisterer
+  // Sikr at kolonnerne eksisterer
   await prisma.$executeRaw`
     ALTER TABLE "DriverUser" ADD COLUMN IF NOT EXISTS "bcDriverCode" TEXT UNIQUE
+  `
+  await prisma.$executeRaw`
+    ALTER TABLE "DriverUser" ADD COLUMN IF NOT EXISTS "bcShipmentMethodCode" TEXT
   `
 
   const bcDrivers = await getPortalDrivers()
@@ -63,26 +69,29 @@ export async function POST(req: NextRequest) {
       // Opdater navn/telefon/aktiv — men rør IKKE pinHash (sat af admin)
       // Kun hvis BC har en pinCode, overskrives den
       const vLabel = d.defaultVehicle > 0 ? `Bil ${d.defaultVehicle}` : 'Bil 1'
+      const smc    = d.defaultShipmentMethodCode || null
       if (d.pinCode) {
         const pinHash = await bcrypt.hash(d.pinCode, 10)
         await prisma.$executeRaw`
           UPDATE "DriverUser"
-          SET "name"               = ${d.name},
-              "phone"              = ${d.phone || null},
-              "isActive"           = ${d.active},
-              "pinHash"            = ${pinHash},
-              "defaultVehicleLabel" = ${vLabel},
-              "updatedAt"          = ${now}::timestamp
+          SET "name"                   = ${d.name},
+              "phone"                  = ${d.phone || null},
+              "isActive"               = ${d.active},
+              "pinHash"                = ${pinHash},
+              "defaultVehicleLabel"    = ${vLabel},
+              "bcShipmentMethodCode"   = ${smc},
+              "updatedAt"              = ${now}::timestamp
           WHERE "bcDriverCode" = ${d.code}
         `
       } else {
         await prisma.$executeRaw`
           UPDATE "DriverUser"
-          SET "name"               = ${d.name},
-              "phone"              = ${d.phone || null},
-              "isActive"           = ${d.active},
-              "defaultVehicleLabel" = ${vLabel},
-              "updatedAt"          = ${now}::timestamp
+          SET "name"                   = ${d.name},
+              "phone"                  = ${d.phone || null},
+              "isActive"               = ${d.active},
+              "defaultVehicleLabel"    = ${vLabel},
+              "bcShipmentMethodCode"   = ${smc},
+              "updatedAt"              = ${now}::timestamp
           WHERE "bcDriverCode" = ${d.code}
         `
       }
