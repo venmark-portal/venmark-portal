@@ -48,11 +48,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ date, vehicles: [], notes: '' })
   }
 
-  // Byg vehicle-struktur — kun biler tildelt denne chauffør
+  // Byg vehicle-struktur — alle biler på ruten
   const vMap = new Map<string, any>()
   for (const r of routeRows) {
     if (!r.vehicleId) continue
-    if (r.vehicleDriverId !== driverId) continue
 
     if (!vMap.has(r.vehicleId)) {
       vMap.set(r.vehicleId, {
@@ -62,8 +61,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Vis stop hvis stopDriverId er null (arver bilens chauffør) eller matcher
-    if (r.stopId && (r.stopDriverId === null || r.stopDriverId === driverId)) {
+    if (r.stopId) {
       vMap.get(r.vehicleId)!.stops.push({
         id:              r.stopId,
         sortOrder:       r.sortOrder,
