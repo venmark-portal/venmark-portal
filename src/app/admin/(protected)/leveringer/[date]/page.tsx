@@ -21,7 +21,8 @@ interface PlanRow {
   postCode: string
   city: string
   weightKg: number
-  code: string          // leveringskode
+  code: string          // gruppe-kode (KØB* remappes til LOVENCO)
+  originalCode: string  // faktisk BC leveringskode
   bil: string           // 'Bil 1', 'Bil 2', ...
   routeOrder: number    // Rækkefølge — 1 er først, 10000 sidst
   defaultVehicle: number // 0 = ikke sat, 1-9 = standard bil
@@ -93,8 +94,10 @@ export default function LeveringDagPage() {
 
       for (const o of orders) {
         const codes: string[] = Array.isArray(o.deliveryCodes) ? o.deliveryCodes : []
-        const code = codes.find(c => isVisibleCode(c)) ?? codes[0] ?? '–'
-        if (!isVisibleCode(code)) continue
+        const originalCode = codes.find(c => isVisibleCode(c)) ?? codes[0] ?? '–'
+        if (!isVisibleCode(originalCode)) continue
+        // KØB* pakkes med LOVENCO — grupper dem under LOVENCO
+        const code = /^KØB/i.test(originalCode) ? 'LOVENCO' : originalCode
         const existing = routeMap.get(o.id)
         const profile  = profiles[o.customerNumber ?? '']
         const defaultVehicle = profile?.defaultVehicle ?? 0
@@ -109,6 +112,7 @@ export default function LeveringDagPage() {
           city:           o.shipToCity ?? '',
           weightKg:       o.totalWeightKg ?? 0,
           code,
+          originalCode,
           bil:            existing?.bil ?? defaultBil,
           routeOrder:     profile?.routeOrder ?? 5000,
           defaultVehicle,
@@ -336,7 +340,12 @@ export default function LeveringDagPage() {
                         <GripVertical size={14} />
                       </td>
                       <td className="px-3 py-2">
-                        <div className="font-medium text-gray-900 text-sm">{r.customerName}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-900 text-sm">{r.customerName}</span>
+                          {r.originalCode !== r.code && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono font-semibold text-amber-700">{r.originalCode}</span>
+                          )}
+                        </div>
                         {r.address && <div className="text-xs text-gray-400 mt-0.5">{r.address}, {r.postCode} {r.city}</div>}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-400 text-xs tabular-nums">
