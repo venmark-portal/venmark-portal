@@ -62,24 +62,27 @@ export async function POST(req: NextRequest) {
     if (existing.length > 0) {
       // Opdater navn/telefon/aktiv — men rør IKKE pinHash (sat af admin)
       // Kun hvis BC har en pinCode, overskrives den
+      const vLabel = d.defaultVehicle > 0 ? `Bil ${d.defaultVehicle}` : 'Bil 1'
       if (d.pinCode) {
         const pinHash = await bcrypt.hash(d.pinCode, 10)
         await prisma.$executeRaw`
           UPDATE "DriverUser"
-          SET "name"      = ${d.name},
-              "phone"     = ${d.phone || null},
-              "isActive"  = ${d.active},
-              "pinHash"   = ${pinHash},
-              "updatedAt" = ${now}::timestamp
+          SET "name"               = ${d.name},
+              "phone"              = ${d.phone || null},
+              "isActive"           = ${d.active},
+              "pinHash"            = ${pinHash},
+              "defaultVehicleLabel" = ${vLabel},
+              "updatedAt"          = ${now}::timestamp
           WHERE "bcDriverCode" = ${d.code}
         `
       } else {
         await prisma.$executeRaw`
           UPDATE "DriverUser"
-          SET "name"      = ${d.name},
-              "phone"     = ${d.phone || null},
-              "isActive"  = ${d.active},
-              "updatedAt" = ${now}::timestamp
+          SET "name"               = ${d.name},
+              "phone"              = ${d.phone || null},
+              "isActive"           = ${d.active},
+              "defaultVehicleLabel" = ${vLabel},
+              "updatedAt"          = ${now}::timestamp
           WHERE "bcDriverCode" = ${d.code}
         `
       }

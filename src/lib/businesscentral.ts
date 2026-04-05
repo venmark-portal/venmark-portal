@@ -1146,6 +1146,7 @@ export interface BCSalesOrderForDelivery {
   postingDate:           string
   status:                string
   totalWeightKg:         number
+  portalRouteOrder:      number
   deliveryCodes:         string[]  // unikke leveringskoder fra ordrelinjer
   lines:                 BCDeliveryOrderLine[]
 }
@@ -1206,6 +1207,7 @@ export async function getSalesOrdersForDelivery(
     postingDate:           (!o.postingDate           || o.postingDate           === '0001-01-01') ? '' : o.postingDate,
     status:                String(o.status ?? ''),
     totalWeightKg:         o.totalNetWeightKg ?? 0,
+    portalRouteOrder:      o.portalRouteOrder ?? 0,
     deliveryCodes:         [o.shipmentMethodCode?.trim() || 'VENMARK'],
     lines:                 [],
   }))
@@ -1283,6 +1285,7 @@ export interface BCPortalDriver {
   defaultShipmentMethodCode: string
   active:                    boolean
   pinCode:                   string
+  defaultVehicle:            number
 }
 
 /**
@@ -1311,6 +1314,7 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
       defaultShipmentMethodCode: d.defaultShipmentMethodCode ?? '',
       active:                    d.active !== false,
       pinCode:                   d.pinCode                   ?? '',
+      defaultVehicle:            d.defaultVehicle            ?? 1,
     }))
   } catch { return [] }
 }

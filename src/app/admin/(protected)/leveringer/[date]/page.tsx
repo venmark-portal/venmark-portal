@@ -146,7 +146,7 @@ export default function LeveringDagPage() {
           code,
           originalCode,
           bil:            existing?.bil ?? defaultBil,
-          routeOrder:     profile?.routeOrder ?? 5000,
+          routeOrder:     profile?.routeOrder ?? (o.portalRouteOrder > 0 ? o.portalRouteOrder : 5000),
           defaultVehicle,
         })
       }
