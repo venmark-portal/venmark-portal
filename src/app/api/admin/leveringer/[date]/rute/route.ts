@@ -71,7 +71,7 @@ export async function POST(
     const vehicleId = randomUUID()
     await prisma.$executeRaw`
       INSERT INTO "RouteVehicle" (id, "routeId", "vehicleLabel", "driverId", "sortOrder")
-      VALUES (${vehicleId}, ${routeId}, ${v.vehicleLabel ?? `Bil ${vi + 1}`}, ${v.driverId ?? null}, ${vi})
+      VALUES (${vehicleId}, ${routeId}, ${v.vehicleLabel ?? `Bil ${vi + 1}`}, ${v.driverId || null}, ${vi})
     `
     const stops = v.stops ?? []
     for (let si = 0; si < stops.length; si++) {
