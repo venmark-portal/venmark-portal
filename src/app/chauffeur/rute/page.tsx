@@ -7,11 +7,26 @@ import { useSession, signOut } from 'next-auth/react'
 import {
   Truck, MapPin, Phone, Package, CheckCircle2, XCircle,
   Clock, ChevronDown, ChevronUp, LogOut, AlertTriangle,
-  Camera, Navigation,
+  Camera, Navigation, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
-// TEST: Hardkodet dato — skift til '' for at bruge i dag
-const TEST_DATE = '2026-01-05'
+function defaultDate(): string {
+  const now = new Date()
+  const cphToday = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Copenhagen' })
+  const cphHour  = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Copenhagen', hour: '2-digit', hour12: false }))
+  if (cphHour >= 15) {
+    const d = new Date(cphToday + 'T12:00:00')
+    do { d.setDate(d.getDate() + 1) } while (d.getDay() === 0 || d.getDay() === 6)
+    return d.toISOString().slice(0, 10)
+  }
+  return cphToday
+}
+
+function addDays(date: string, n: number): string {
+  const d = new Date(date + 'T12:00:00')
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
+}
 
 interface Stop {
   id:              string
@@ -54,24 +69,24 @@ export default function ChauffeurRutePage() {
   const { data: session } = useSession()
   const [vehicles,  setVehicles]  = useState<Vehicle[]>([])
   const [notes,     setNotes]     = useState('')
-  const [date,      setDate]      = useState('')
+  const [date,      setDate]      = useState(() => defaultDate())
   const [loading,   setLoading]   = useState(true)
   const [expanded,  setExpanded]  = useState<Set<string>>(new Set())
   const [updating,  setUpdating]  = useState<Set<string>>(new Set())
   const [failNotes, setFailNotes] = useState<Record<string, string>>({})
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({})
 
-  const load = useCallback(async () => {
-    const dateParam = TEST_DATE || new Date().toISOString().slice(0, 10)
-    const res  = await fetch(`/api/chauffeur/rute?date=${dateParam}`)
+  const load = useCallback(async (d: string) => {
+    setLoading(true)
+    setVehicles([])
+    const res  = await fetch(`/api/chauffeur/rute?date=${d}`)
     const data = await res.json()
     setVehicles(data.vehicles ?? [])
     setNotes(data.notes ?? '')
-    setDate(data.date ?? dateParam)
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(date) }, [load, date])
 
   function toggleExpand(id: string) {
     setExpanded(prev => {
@@ -146,9 +161,15 @@ export default function ChauffeurRutePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <Truck size={20} className="text-blue-600" />
-            <h1 className="text-lg font-bold text-gray-900 capitalize">{dkDate}</h1>
+          <div className="flex items-center gap-1">
+            <Truck size={20} className="text-blue-600 mr-1" />
+            <button onClick={() => setDate(d => addDays(d, -1))} className="p-1 rounded hover:bg-gray-100">
+              <ChevronLeft size={16} className="text-gray-400" />
+            </button>
+            <h1 className="text-base font-bold text-gray-900 capitalize">{dkDate}</h1>
+            <button onClick={() => setDate(d => addDays(d, 1))} className="p-1 rounded hover:bg-gray-100">
+              <ChevronRight size={16} className="text-gray-400" />
+            </button>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
             {session?.user?.name} · {delivered}/{total} leveret

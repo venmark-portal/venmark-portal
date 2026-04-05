@@ -4,8 +4,18 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
-// TEST: Hardkodet dato til testformål — skift til '' for at bruge dags dato
-const TEST_DATE = '2026-01-05'
+function defaultDate(): string {
+  const now = new Date()
+  const cphToday = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Copenhagen' })
+  const cphHour  = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Copenhagen', hour: '2-digit', hour12: false }))
+  if (cphHour >= 15) {
+    // Næste hverdag
+    const d = new Date(cphToday + 'T12:00:00')
+    do { d.setDate(d.getDate() + 1) } while (d.getDay() === 0 || d.getDay() === 6)
+    return d.toISOString().slice(0, 10)
+  }
+  return cphToday
+}
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -16,7 +26,7 @@ export async function GET(req: NextRequest) {
   const driverId = token.sub as string
 
   const url  = new URL(req.url)
-  const date = url.searchParams.get('date') ?? TEST_DATE
+  const date = url.searchParams.get('date') ?? defaultDate()
 
   const routeRows = await prisma.$queryRaw<any[]>`
     SELECT r.id AS "routeId", r.notes AS "routeNotes",

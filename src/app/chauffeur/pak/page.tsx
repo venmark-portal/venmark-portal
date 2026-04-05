@@ -36,7 +36,17 @@ export default function ChauffeurPakPage() {
   const [saving,     setSaving]     = useState<Set<string>>(new Set())
   const [editQty,    setEditQty]    = useState<Record<string, number>>({})
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = (() => {
+    const now = new Date()
+    const cphToday = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Copenhagen' })
+    const cphHour  = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Copenhagen', hour: '2-digit', hour12: false }))
+    if (cphHour >= 15) {
+      const d = new Date(cphToday + 'T12:00:00')
+      do { d.setDate(d.getDate() + 1) } while (d.getDay() === 0 || d.getDay() === 6)
+      return d.toISOString().slice(0, 10)
+    }
+    return cphToday
+  })()
 
   const load = useCallback(async () => {
     setLoading(true)
