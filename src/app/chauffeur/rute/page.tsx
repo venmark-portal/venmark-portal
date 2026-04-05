@@ -7,7 +7,7 @@ import { useSession, signOut } from 'next-auth/react'
 import {
   Truck, MapPin, Phone, Package, CheckCircle2, XCircle,
   Clock, ChevronDown, ChevronUp, LogOut, AlertTriangle,
-  Camera, Navigation, ChevronLeft, ChevronRight,
+  Camera, Navigation, ChevronLeft, ChevronRight, Calendar,
 } from 'lucide-react'
 
 function defaultDate(): string {
@@ -168,17 +168,19 @@ export default function ChauffeurRutePage() {
             <button onClick={() => setDate(d => addDays(d, -1))} className="p-1 rounded hover:bg-gray-100">
               <ChevronLeft size={16} className="text-gray-400" />
             </button>
-            <label className="text-base font-bold text-gray-900 capitalize cursor-pointer">
-              {dkDate}
-              <input
-                type="date"
-                value={date}
-                onChange={e => e.target.value && setDate(e.target.value)}
-                className="absolute opacity-0 w-0 h-0"
-              />
-            </label>
+            <h1 className="text-base font-bold text-gray-900 capitalize">{dkDate}</h1>
             <button onClick={() => setDate(d => addDays(d, 1))} className="p-1 rounded hover:bg-gray-100">
               <ChevronRight size={16} className="text-gray-400" />
+            </button>
+            <input
+              type="date"
+              value={date}
+              onChange={e => e.target.value && setDate(e.target.value)}
+              className="w-6 h-6 opacity-0 absolute cursor-pointer"
+              style={{ colorScheme: 'light' }}
+            />
+            <button className="p-1 rounded hover:bg-gray-100 pointer-events-none">
+              <Calendar size={15} className="text-gray-400" />
             </button>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
