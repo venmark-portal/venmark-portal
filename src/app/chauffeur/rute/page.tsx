@@ -172,15 +172,12 @@ export default function ChauffeurRutePage() {
             <button onClick={() => setDate(d => addDays(d, 1))} className="p-1 rounded hover:bg-gray-100">
               <ChevronRight size={16} className="text-gray-400" />
             </button>
-            <div className="relative flex items-center justify-center w-7 h-7">
-              <Calendar size={15} className="text-gray-400" />
-              <input
-                type="date"
-                value={date}
-                onChange={e => e.target.value && setDate(e.target.value)}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-              />
-            </div>
+            <input
+              type="date"
+              value={date}
+              onChange={e => e.target.value && setDate(e.target.value)}
+              className="ml-1 text-xs text-gray-400 border border-gray-200 rounded px-1 py-0.5 cursor-pointer"
+            />
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
             {session?.user?.name} · {delivered}/{total} leveret
