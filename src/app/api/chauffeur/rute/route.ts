@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
 
 export const runtime = 'nodejs'
 
@@ -9,7 +10,6 @@ function defaultDate(): string {
   const cphToday = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Copenhagen' })
   const cphHour  = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Copenhagen', hour: '2-digit', hour12: false }))
   if (cphHour >= 15) {
-    // Næste hverdag
     const d = new Date(cphToday + 'T12:00:00')
     do { d.setDate(d.getDate() + 1) } while (d.getDay() === 0 || d.getDay() === 6)
     return d.toISOString().slice(0, 10)
@@ -23,11 +23,10 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  const driverId = token.sub as string
-
   const url  = new URL(req.url)
   const date = url.searchParams.get('date') ?? defaultDate()
 
+  // Hent gemte rutestop fra DB
   const routeRows = await prisma.$queryRaw<any[]>`
     SELECT r.id AS "routeId", r.notes AS "routeNotes",
       v.id AS "vehicleId", v."vehicleLabel", v."driverId" AS "vehicleDriverId",
@@ -44,47 +43,80 @@ export async function GET(req: NextRequest) {
     ORDER BY v."sortOrder", s."sortOrder"
   `
 
-  if (routeRows.length === 0) {
-    return NextResponse.json({ date, vehicles: [], notes: '' })
+  // Hvis gemt rute har stops — brug dem
+  const hasStops = routeRows.some(r => r.stopId)
+  if (hasStops) {
+    const vMap = new Map<string, any>()
+    for (const r of routeRows) {
+      if (!r.vehicleId) continue
+      if (!vMap.has(r.vehicleId)) {
+        vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, stops: [] })
+      }
+      if (r.stopId) {
+        vMap.get(r.vehicleId)!.stops.push({
+          id:              r.stopId,
+          sortOrder:       r.sortOrder,
+          bcSalesOrderNo:  r.bcSalesOrderNo,
+          isExtraTask:     Boolean(r.isExtraTask),
+          extraTaskTitle:  r.extraTaskTitle,
+          extraTaskNote:   r.extraTaskNote,
+          customerName:    r.customerName,
+          customerAddress: r.customerAddress,
+          customerPhone:   r.customerPhone,
+          totalWeightKg:   r.totalWeightKg,
+          status:          r.stopStatus ?? 'PENDING',
+          deliveredAt:     r.deliveredAt,
+          failureNote:     r.failureNote,
+          packedStatus:    r.packedStatus,
+        })
+      }
+    }
+    return NextResponse.json({
+      date,
+      preliminary: false,
+      notes:    routeRows[0]?.routeNotes ?? '',
+      vehicles: Array.from(vMap.values()),
+    })
   }
 
-  // Byg vehicle-struktur — alle biler på ruten
-  const vMap = new Map<string, any>()
-  for (const r of routeRows) {
-    if (!r.vehicleId) continue
-
-    if (!vMap.has(r.vehicleId)) {
-      vMap.set(r.vehicleId, {
-        vehicleId:    r.vehicleId,
-        vehicleLabel: r.vehicleLabel,
-        stops: [],
-      })
+  // Ingen gemte stops — hent BC-ordrer og vis som foreløbig rute
+  try {
+    const bcOrders = await getSalesOrdersForDelivery(date, { fetchLines: false })
+    if (bcOrders.length === 0) {
+      return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '' })
     }
 
-    if (r.stopId) {
-      vMap.get(r.vehicleId)!.stops.push({
-        id:              r.stopId,
-        sortOrder:       r.sortOrder,
-        bcSalesOrderNo:  r.bcSalesOrderNo,
-        bcSalesOrderId:  r.bcSalesOrderId,
-        isExtraTask:     Boolean(r.isExtraTask),
-        extraTaskTitle:  r.extraTaskTitle,
-        extraTaskNote:   r.extraTaskNote,
-        customerName:    r.customerName,
-        customerAddress: r.customerAddress,
-        customerPhone:   r.customerPhone,
-        totalWeightKg:   r.totalWeightKg,
-        status:          r.stopStatus ?? 'PENDING',
-        deliveredAt:     r.deliveredAt,
-        failureNote:     r.failureNote,
-        packedStatus:    r.packedStatus,
-      })
+    // Grupper efter leveringskode → "bil"
+    const groupMap = new Map<string, any[]>()
+    for (const o of bcOrders) {
+      const code = o.deliveryCodes[0] ?? 'VENMARK'
+      if (!groupMap.has(code)) groupMap.set(code, [])
+      groupMap.get(code)!.push(o)
     }
+
+    const vehicles = Array.from(groupMap.entries()).map(([code, orders], idx) => ({
+      vehicleId:    `bc-${code}`,
+      vehicleLabel: code,
+      stops: orders.map((o, i) => ({
+        id:              `bc-${o.id}`,
+        sortOrder:       i,
+        bcSalesOrderNo:  o.number,
+        isExtraTask:     false,
+        extraTaskTitle:  null,
+        extraTaskNote:   null,
+        customerName:    o.customerName,
+        customerAddress: [o.shipToAddress, o.shipToCity].filter(Boolean).join(', '),
+        customerPhone:   o.shipToPhone ?? null,
+        totalWeightKg:   o.totalWeightKg,
+        status:          'PENDING' as const,
+        deliveredAt:     null,
+        failureNote:     null,
+        packedStatus:    null,
+      })),
+    }))
+
+    return NextResponse.json({ date, preliminary: true, notes: '', vehicles })
+  } catch {
+    return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '' })
   }
-
-  return NextResponse.json({
-    date,
-    notes:    routeRows[0]?.routeNotes ?? '',
-    vehicles: Array.from(vMap.values()),
-  })
 }

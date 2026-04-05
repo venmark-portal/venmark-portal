@@ -67,10 +67,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function ChauffeurRutePage() {
   const { data: session } = useSession()
-  const [vehicles,  setVehicles]  = useState<Vehicle[]>([])
-  const [notes,     setNotes]     = useState('')
-  const [date,      setDate]      = useState(() => defaultDate())
-  const [loading,   setLoading]   = useState(true)
+  const [vehicles,    setVehicles]    = useState<Vehicle[]>([])
+  const [notes,       setNotes]       = useState('')
+  const [date,        setDate]        = useState(() => defaultDate())
+  const [loading,     setLoading]     = useState(true)
+  const [preliminary, setPreliminary] = useState(false)
   const [expanded,  setExpanded]  = useState<Set<string>>(new Set())
   const [updating,  setUpdating]  = useState<Set<string>>(new Set())
   const [failNotes, setFailNotes] = useState<Record<string, string>>({})
@@ -83,6 +84,7 @@ export default function ChauffeurRutePage() {
     const data = await res.json()
     setVehicles(data.vehicles ?? [])
     setNotes(data.notes ?? '')
+    setPreliminary(data.preliminary ?? false)
     setLoading(false)
   }, [])
 
@@ -199,6 +201,13 @@ export default function ChauffeurRutePage() {
         </div>
       )}
 
+      {/* Foreløbig rute */}
+      {preliminary && (
+        <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200 text-sm text-amber-800">
+          Foreløbig rute — ikke endeligt planlagt af admin endnu
+        </div>
+      )}
+
       {/* Generelle noter */}
       {notes && (
         <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200 text-sm text-amber-800">
@@ -227,6 +236,7 @@ export default function ChauffeurRutePage() {
             const isUpdating  = updating.has(s.id)
             const isDone      = s.status !== 'PENDING'
             const showFailBox = isExpanded && s.status === 'PENDING'
+            const isPrelim    = s.id.startsWith('bc-')
 
             return (
               <div key={s.id}
@@ -309,7 +319,9 @@ export default function ChauffeurRutePage() {
                     )}
 
                     {/* Handlinger */}
-                    {!isDone ? (
+                    {isPrelim ? (
+                      <div className="text-xs text-amber-600 text-center py-1">Ruten er ikke endeligt planlagt endnu</div>
+                    ) : !isDone ? (
                       <div className="flex gap-2">
                         {/* Skjult fil-input til kamera */}
                         <input
