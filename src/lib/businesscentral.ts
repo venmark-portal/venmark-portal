@@ -1205,7 +1205,7 @@ export async function getSalesOrdersForDelivery(
     requestedDeliveryDate: (!o.requestedDeliveryDate || o.requestedDeliveryDate === '0001-01-01') ? '' : o.requestedDeliveryDate,
     postingDate:           (!o.postingDate           || o.postingDate           === '0001-01-01') ? '' : o.postingDate,
     status:                String(o.status ?? ''),
-    totalWeightKg:         0,
+    totalWeightKg:         o.totalNetWeightKg ?? 0,
     deliveryCodes:         [o.shipmentMethodCode?.trim() || 'VENMARK'],
     lines:                 [],
   }))
