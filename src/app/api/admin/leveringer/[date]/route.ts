@@ -7,6 +7,13 @@ import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
 
 export const runtime = 'nodejs'
 
+// Næste hverdag (spring lørdag + søndag over)
+function nextBusinessDay(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  do { d.setUTCDate(d.getUTCDate() + 1) } while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+  return d.toISOString().slice(0, 10)
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { date: string } }
@@ -16,15 +23,26 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
+  const nextDay = nextBusinessDay(params.date)
+
   let bcOrders: any[] = []
   let bcError: string | null = null
   try {
-    bcOrders = await Promise.race([
-      getSalesOrdersForDelivery(params.date, { fetchLines: false }),
+    // Hent dagens ordrer + næste hverdag parallelt (timeout 20s samlet)
+    const [todayOrders, nextOrders] = await Promise.race([
+      Promise.all([
+        getSalesOrdersForDelivery(params.date, { fetchLines: false }),
+        getSalesOrdersForDelivery(nextDay,       { fetchLines: false }),
+      ]),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('BC timeout (15s) — prøv igen')), 15_000)
+        setTimeout(() => reject(new Error('BC timeout (20s) — prøv igen')), 20_000)
       ),
     ])
+    // Fra næste hverdag: kun KØB*-koder (pakkes i KBH sammen med LOVENCO)
+    const kobNextDay = nextOrders.filter(o =>
+      o.deliveryCodes.some((c: string) => /^KØB/i.test(c.trim()))
+    )
+    bcOrders = [...todayOrders, ...kobNextDay]
   } catch (err) {
     bcError = err instanceof Error ? err.message : String(err)
     console.error('BC fejl:', bcError)
