@@ -17,12 +17,14 @@ interface PlanRow {
   number: string        // BC order number
   customerNo: string
   customerName: string
+  address: string
   postCode: string
   city: string
   weightKg: number
   code: string          // leveringskode
   bil: string           // 'Bil 1', 'Bil 2', ...
   routeOrder: number    // Rækkefølge — 1 er først, 10000 sidst
+  defaultVehicle: number // 0 = ikke sat, 1-9 = standard bil
 }
 
 // Leveringskoder der vises i tabellen (og som grupper)
@@ -36,7 +38,9 @@ function mkKey() { return Math.random().toString(36).slice(2) }
 function mapsLinks(stops: PlanRow[]): string[] {
   const links: string[] = []
   for (let i = 0; i < stops.length; i += 10) {
-    const addrs = stops.slice(i, i + 10).map(r => encodeURIComponent(`${r.postCode} ${r.city}`))
+    const addrs = stops.slice(i, i + 10).map(r =>
+      encodeURIComponent([r.address, r.postCode, r.city].filter(Boolean).join(', '))
+    )
     links.push('https://www.google.com/maps/dir/' + addrs.join('/'))
   }
   return links
@@ -70,7 +74,7 @@ export default function LeveringDagPage() {
       setDcodes(d.deliveryCodes ?? [])
       setNotes((d.routeRows ?? [])[0]?.routeNotes ?? '')
 
-      const profiles: Record<string, number> = d.routeProfiles ?? {}
+      const profiles: Record<string, { routeOrder: number; defaultVehicle: number }> = d.routeProfiles ?? {}
 
       const routeMap = new Map<string, { bil: string; sort: number }>()
       const bilSet   = new Set<string>()
@@ -92,17 +96,22 @@ export default function LeveringDagPage() {
         const code = codes.find(c => isVisibleCode(c)) ?? codes[0] ?? '–'
         if (!isVisibleCode(code)) continue
         const existing = routeMap.get(o.id)
+        const profile  = profiles[o.customerNumber ?? '']
+        const defaultVehicle = profile?.defaultVehicle ?? 0
+        const defaultBil = defaultVehicle > 0 ? `Bil ${defaultVehicle}` : 'Bil 1'
         planRows.push({
-          id:           o.id,
-          number:       o.number,
-          customerNo:   o.customerNumber ?? '',
-          customerName: o.customerName ?? '',
-          postCode:     o.shipToPostCode ?? '',
-          city:         o.shipToCity ?? '',
-          weightKg:     o.totalWeightKg ?? 0,
+          id:             o.id,
+          number:         o.number,
+          customerNo:     o.customerNumber ?? '',
+          customerName:   o.customerName ?? '',
+          address:        o.shipToAddress ?? '',
+          postCode:       o.shipToPostCode ?? '',
+          city:           o.shipToCity ?? '',
+          weightKg:       o.totalWeightKg ?? 0,
           code,
-          bil:          existing?.bil ?? 'Bil 1',
-          routeOrder:   profiles[o.customerNumber ?? ''] ?? 5000,
+          bil:            existing?.bil ?? defaultBil,
+          routeOrder:     profile?.routeOrder ?? 5000,
+          defaultVehicle,
         })
       }
 
@@ -207,7 +216,7 @@ export default function LeveringDagPage() {
       .map(([label, stops]) => ({ _key: mkKey(), vehicleLabel: label, driverId: '', stops }))
 
     // Byg routeProfiles til persistering
-    const routeProfiles = rows.map(r => ({ customerNo: r.customerNo, routeOrder: r.routeOrder }))
+    const routeProfiles = rows.map(r => ({ customerNo: r.customerNo, routeOrder: r.routeOrder, defaultVehicle: r.defaultVehicle }))
 
     await fetch(`/api/admin/leveringer/${date}/rute`, {
       method: 'POST',
@@ -231,6 +240,10 @@ export default function LeveringDagPage() {
     groups.get(r.code)!.push(r)
   }
   const sortedCodes = Array.from(groups.keys()).sort()
+  // Flad liste til tabIndex-beregning (kolonnevis tab-rækkefølge)
+  const allRows = sortedCodes.flatMap(c => groups.get(c)!)
+  const rowIdx = new Map(allRows.map((r, i) => [r.id, i]))
+  const n = allRows.length
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -285,9 +298,8 @@ export default function LeveringDagPage() {
               <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 <th className="w-7 px-2 py-2.5" />
                 <th className="px-3 py-2.5 text-left">Kunde</th>
-                <th className="px-3 py-2.5 text-left w-16">Postnr</th>
-                <th className="px-3 py-2.5 text-left">By</th>
                 <th className="px-3 py-2.5 text-right w-16">Kg</th>
+                <th className="px-3 py-2.5 text-center w-14" title="Standardbil (gemmes per kunde)">Std.bil</th>
                 <th className="px-3 py-2.5 text-center w-20" title="Rækkefølge inden for gruppen (1 = først)">Rækkef.</th>
                 <th className="px-3 py-2.5 text-left w-36">Leveringskode</th>
                 <th className="px-3 py-2.5 text-left w-28">Bil</th>
@@ -324,13 +336,13 @@ export default function LeveringDagPage() {
                   </tr>,
 
                   ...codeRows.map((r, idx) => {
-                    // Vis bil-separator når bilen skifter inden for gruppen
                     const prevBil = idx > 0 ? codeRows[idx - 1].bil : null
                     const bilChanged = prevBil !== null && prevBil !== r.bil
+                    const gi = rowIdx.get(r.id)!
                     return [
                     bilChanged ? (
                       <tr key={`bil-sep-${code}-${idx}`} className="bg-gray-100 border-t border-gray-300">
-                        <td colSpan={8} className="px-4 py-1 text-xs font-semibold text-gray-500 tracking-wide">
+                        <td colSpan={7} className="px-4 py-1 text-xs font-semibold text-gray-500 tracking-wide">
                           {r.bil}
                         </td>
                       </tr>
@@ -345,19 +357,33 @@ export default function LeveringDagPage() {
                       <td className="px-2 py-2 text-gray-300 cursor-grab">
                         <GripVertical size={14} />
                       </td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{r.customerName}</td>
-                      <td className="px-3 py-2 text-gray-500 font-mono text-xs">{r.postCode}</td>
-                      <td className="px-3 py-2 text-gray-500 text-xs">{r.city}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-gray-900 text-sm">{r.customerName}</div>
+                        {r.address && <div className="text-xs text-gray-400 mt-0.5">{r.address}, {r.postCode} {r.city}</div>}
+                      </td>
                       <td className="px-3 py-2 text-right text-gray-400 text-xs tabular-nums">
                         {r.weightKg > 0 ? r.weightKg.toFixed(0) : '–'}
                       </td>
                       <td className="px-3 py-2">
                         <input
+                          type="number" min={0} max={9}
+                          value={r.defaultVehicle || ''}
+                          placeholder="–"
+                          tabIndex={gi + 1}
+                          onChange={e => {
+                            const v = Math.min(9, Math.max(0, Number(e.target.value) || 0))
+                            updateRow(r.id, { defaultVehicle: v, bil: v > 0 ? `Bil ${v}` : r.bil })
+                          }}
+                          className="w-10 rounded border border-gray-200 px-1 py-1 text-xs text-center bg-white focus:border-blue-400 focus:outline-none tabular-nums"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
                           type="number" min={1} max={10000}
                           value={r.routeOrder}
+                          tabIndex={n + gi + 1}
                           onChange={e => updateRow(r.id, { routeOrder: Number(e.target.value) || 5000 })}
                           onBlur={() => {
-                            // Resorter gruppen når man forlader feltet
                             setRows(prev => {
                               const group = prev.filter(x => x.code === r.code)
                                 .sort((a, b) => a.routeOrder - b.routeOrder || a.customerName.localeCompare(b.customerName, 'da'))
@@ -370,6 +396,7 @@ export default function LeveringDagPage() {
                       </td>
                       <td className="px-3 py-2">
                         <select value={r.code}
+                          tabIndex={2 * n + gi + 1}
                           onChange={e => changeCode(r, e.target.value)}
                           className="rounded border border-gray-200 px-2 py-1 text-xs bg-white focus:border-blue-400 focus:outline-none w-full">
                           {allCodes.map(c => (
@@ -379,6 +406,7 @@ export default function LeveringDagPage() {
                       </td>
                       <td className="px-3 py-2">
                         <select value={r.bil}
+                          tabIndex={3 * n + gi + 1}
                           onChange={e => updateRow(r.id, { bil: e.target.value })}
                           className="rounded border border-gray-200 px-2 py-1 text-xs bg-white focus:border-blue-400 focus:outline-none w-full">
                           {allBils.map(b => (

@@ -16,26 +16,32 @@ export async function POST(
   }
 
   const { vehicles, notes, routeProfiles } = await req.json()
-  // routeProfiles: Array<{ customerNo: string; routeOrder: number }>
+  // routeProfiles: Array<{ customerNo: string; routeOrder: number; defaultVehicle: number }>
 
   const now = new Date().toISOString()
 
-  // Gem ruterækkefølge per kunde (persistent på tværs af dage)
+  // Gem ruterækkefølge + standardbil per kunde (persistent på tværs af dage)
   if (routeProfiles?.length) {
     await prisma.$executeRaw`
       CREATE TABLE IF NOT EXISTS "CustomerRouteProfile" (
-        "customerNo"  TEXT    PRIMARY KEY,
-        "routeOrder"  INTEGER NOT NULL DEFAULT 5000,
-        "updatedAt"   TIMESTAMP NOT NULL DEFAULT NOW()
+        "customerNo"      TEXT    PRIMARY KEY,
+        "routeOrder"      INTEGER NOT NULL DEFAULT 5000,
+        "defaultVehicle"  INTEGER NOT NULL DEFAULT 0,
+        "updatedAt"       TIMESTAMP NOT NULL DEFAULT NOW()
       )
+    `
+    await prisma.$executeRaw`
+      ALTER TABLE "CustomerRouteProfile"
+        ADD COLUMN IF NOT EXISTS "defaultVehicle" INTEGER NOT NULL DEFAULT 0
     `
     for (const p of routeProfiles) {
       await prisma.$executeRaw`
-        INSERT INTO "CustomerRouteProfile" ("customerNo", "routeOrder", "updatedAt")
-        VALUES (${p.customerNo}, ${p.routeOrder}, ${now}::timestamp)
+        INSERT INTO "CustomerRouteProfile" ("customerNo", "routeOrder", "defaultVehicle", "updatedAt")
+        VALUES (${p.customerNo}, ${p.routeOrder}, ${p.defaultVehicle ?? 0}, ${now}::timestamp)
         ON CONFLICT ("customerNo") DO UPDATE
-          SET "routeOrder" = EXCLUDED."routeOrder",
-              "updatedAt"  = EXCLUDED."updatedAt"
+          SET "routeOrder"     = EXCLUDED."routeOrder",
+              "defaultVehicle" = EXCLUDED."defaultVehicle",
+              "updatedAt"      = EXCLUDED."updatedAt"
       `
     }
   }

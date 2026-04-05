@@ -56,7 +56,7 @@ export async function GET(
         FROM "DriverUser" WHERE "isActive" = true ORDER BY "isDefault" DESC, name ASC
       `,
       prisma.$queryRaw<any[]>`SELECT id, code, name FROM "DeliveryCode" ORDER BY code ASC`,
-      prisma.$queryRaw<any[]>`SELECT "customerNo", "routeOrder" FROM "CustomerRouteProfile"`,
+      prisma.$queryRaw<any[]>`SELECT "customerNo", "routeOrder", "defaultVehicle" FROM "CustomerRouteProfile"`,
     ])
   } catch (dbErr) {
     console.error('DB fejl:', dbErr instanceof Error ? dbErr.message : dbErr)
@@ -69,6 +69,6 @@ export async function GET(
     routeRows,
     drivers: driverRows.map(d => ({ ...d, isDefault: Boolean(d.isDefault) })),
     deliveryCodes: codeRows,
-    routeProfiles: Object.fromEntries(profileRows.map(p => [p.customerNo, Number(p.routeOrder)])),
+    routeProfiles: Object.fromEntries(profileRows.map(p => [p.customerNo, { routeOrder: Number(p.routeOrder), defaultVehicle: Number(p.defaultVehicle ?? 0) }])),
   })
 }
