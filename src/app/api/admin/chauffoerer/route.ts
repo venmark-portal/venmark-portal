@@ -59,23 +59,36 @@ export async function POST(req: NextRequest) {
       SELECT "id" FROM "DriverUser" WHERE "bcDriverCode" = ${d.code} LIMIT 1
     `
 
-    // Hash PIN fra BC hvis den er sat, ellers brug placeholder
-    const pinHash = d.pinCode
-      ? await bcrypt.hash(d.pinCode, 10)
-      : await bcrypt.hash(`__UNSET__${randomUUID()}`, 10)
-
     if (existing.length > 0) {
-      await prisma.$executeRaw`
-        UPDATE "DriverUser"
-        SET "name"      = ${d.name},
-            "phone"     = ${d.phone || null},
-            "isActive"  = ${d.active},
-            "pinHash"   = ${pinHash},
-            "updatedAt" = ${now}::timestamp
-        WHERE "bcDriverCode" = ${d.code}
-      `
+      // Opdater navn/telefon/aktiv — men rør IKKE pinHash (sat af admin)
+      // Kun hvis BC har en pinCode, overskrives den
+      if (d.pinCode) {
+        const pinHash = await bcrypt.hash(d.pinCode, 10)
+        await prisma.$executeRaw`
+          UPDATE "DriverUser"
+          SET "name"      = ${d.name},
+              "phone"     = ${d.phone || null},
+              "isActive"  = ${d.active},
+              "pinHash"   = ${pinHash},
+              "updatedAt" = ${now}::timestamp
+          WHERE "bcDriverCode" = ${d.code}
+        `
+      } else {
+        await prisma.$executeRaw`
+          UPDATE "DriverUser"
+          SET "name"      = ${d.name},
+              "phone"     = ${d.phone || null},
+              "isActive"  = ${d.active},
+              "updatedAt" = ${now}::timestamp
+          WHERE "bcDriverCode" = ${d.code}
+        `
+      }
       updated++
     } else {
+      // Ny chauffør — sæt placeholder PIN (admin sætter den rigtige bagefter)
+      const pinHash = d.pinCode
+        ? await bcrypt.hash(d.pinCode, 10)
+        : await bcrypt.hash(`__UNSET__${randomUUID()}`, 10)
       const id = randomUUID()
       await prisma.$executeRaw`
         INSERT INTO "DriverUser"
