@@ -31,7 +31,7 @@ function fmtDate(iso: string): string {
 function fmtTime(iso: string | null): string {
   if (!iso) return '–'
   return new Date(iso).toLocaleTimeString('da-DK', {
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
     timeZone: 'Europe/Copenhagen',
   })
 }
@@ -174,16 +174,28 @@ export default function LeveringshistorikPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {r.hasPhoto && (
-                        <a
-                          href={`/api/chauffeur/stop/${r.stopId}/photo`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100"
-                        >
-                          <Camera size={11} /> Se foto
-                        </a>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {r.hasPhoto ? (
+                        <div className="relative group">
+                          <a
+                            href={`/api/chauffeur/stop/${r.stopId}/photo`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100"
+                          >
+                            <Camera size={11} /> Foto
+                          </a>
+                          {/* Forhåndsvisning ved hover */}
+                          <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 shadow-xl rounded-lg overflow-hidden border border-gray-200">
+                            <img
+                              src={`/api/chauffeur/stop/${r.stopId}/photo`}
+                              alt="Leveringsfoto"
+                              className="w-48 h-48 object-cover"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">Intet foto</span>
                       )}
                       {r.photoLat && r.photoLng ? (
                         <a
@@ -192,10 +204,8 @@ export default function LeveringshistorikPage() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500 hover:bg-gray-100"
                         >
-                          <MapPin size={11} /> Kort
+                          <MapPin size={11} /> {r.photoLat.toFixed(4)}, {r.photoLng.toFixed(4)}
                         </a>
-                      ) : !r.hasPhoto ? (
-                        <span className="text-xs text-gray-300">–</span>
                       ) : null}
                     </div>
                   </td>
