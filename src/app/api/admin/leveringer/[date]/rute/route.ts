@@ -51,8 +51,26 @@ export async function POST(
     SELECT id FROM "DeliveryRoute" WHERE date("bookingDate") = ${params.date}::date LIMIT 1
   `
   let routeId: string
+
+  // Bevar leveringsstatus for stops der allerede er handlet på
+  const preservedByStopId    = new Map<string, any>()
+  const preservedByBcOrderId = new Map<string, any>()
+
   if (existing.length > 0) {
     routeId = existing[0].id
+
+    // Hent eksisterende stop-statuser FØR vi sletter
+    const prevStops = await prisma.$queryRaw<any[]>`
+      SELECT s.id, s."bcSalesOrderId", s.status, s."deliveredAt", s."failureNote"
+      FROM "RouteStop" s
+      JOIN "RouteVehicle" v ON v.id = s."vehicleId"
+      WHERE v."routeId" = ${routeId} AND s.status != 'PENDING'
+    `
+    for (const s of prevStops) {
+      preservedByStopId.set(s.id, s)
+      if (s.bcSalesOrderId) preservedByBcOrderId.set(s.bcSalesOrderId, s)
+    }
+
     await prisma.$executeRaw`
       UPDATE "DeliveryRoute" SET notes = ${notes ?? null}, "updatedAt" = ${now}::timestamp WHERE id = ${routeId}
     `
@@ -76,6 +94,15 @@ export async function POST(
     const stops = v.stops ?? []
     for (let si = 0; si < stops.length; si++) {
       const s = stops[si]
+
+      // Bevar status fra tidligere gem (match på stopId eller bcSalesOrderId)
+      const prev = preservedByStopId.get(s.existingStopId ?? '')
+        ?? preservedByBcOrderId.get(s.bcSalesOrderId ?? '')
+        ?? null
+      const stopStatus  = prev?.status      ?? 'PENDING'
+      const deliveredAt = prev?.deliveredAt ?? null
+      const failureNote = prev?.failureNote ?? s.failureNote ?? null
+
       await prisma.$executeRaw`
         ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "kobSalesOrderNo" TEXT
       `
@@ -85,7 +112,7 @@ export async function POST(
           "bcSalesOrderNo", "bcSalesOrderId", "bcPurchaseOrderNo", "bcPurchaseOrderId",
           "isExtraTask", "extraTaskTitle", "extraTaskNote",
           "customerName", "customerAddress", "customerPhone", "totalWeightKg",
-          "kobSalesOrderNo", status, "createdAt"
+          "kobSalesOrderNo", status, "deliveredAt", "failureNote", "createdAt"
         ) VALUES (
           ${randomUUID()}, ${vehicleId}, ${s.driverId ?? null}, ${si},
           ${s.deliveryCodeId ?? null}, ${s.deliveryCodeOverride ?? null},
@@ -93,7 +120,8 @@ export async function POST(
           ${s.bcPurchaseOrderNo ?? null}, ${s.bcPurchaseOrderId ?? null},
           ${s.isExtraTask ? true : false}, ${s.extraTaskTitle ?? null}, ${s.extraTaskNote ?? null},
           ${s.customerName ?? null}, ${s.customerAddress ?? null}, ${s.customerPhone ?? null},
-          ${s.totalWeightKg ?? null}, ${s.kobSalesOrderNo ?? null}, 'PENDING', ${now}::timestamp
+          ${s.totalWeightKg ?? null}, ${s.kobSalesOrderNo ?? null},
+          ${stopStatus}, ${deliveredAt}, ${failureNote}, ${now}::timestamp
         )
       `
     }
