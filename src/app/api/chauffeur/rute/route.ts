@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
           id:              r.stopId,
           sortOrder:       r.sortOrder,
           bcSalesOrderNo:  r.bcSalesOrderNo,
+          deliveryCode:    r.deliveryCodeOverride ?? null,
           isExtraTask:     Boolean(r.isExtraTask),
           extraTaskTitle:  r.extraTaskTitle,
           extraTaskNote:   r.extraTaskNote,

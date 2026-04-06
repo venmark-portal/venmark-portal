@@ -32,6 +32,7 @@ interface Stop {
   id:              string
   sortOrder:       number
   bcSalesOrderNo:  string | null
+  deliveryCode:    string | null
   isExtraTask:     boolean
   extraTaskTitle:  string | null
   extraTaskNote:   string | null
@@ -100,7 +101,12 @@ export default function ChauffeurRutePage() {
     if (!codeFilter) {
       setVehicles(allVehicles)
     } else {
-      const filtered = allVehicles.filter(v => v.vehicleLabel === codeFilter)
+      const filtered = allVehicles
+        .map(v => ({
+          ...v,
+          stops: v.stops.filter(s => (s.deliveryCode ?? v.vehicleLabel) === codeFilter),
+        }))
+        .filter(v => v.stops.length > 0)
       setVehicles(filtered)
     }
   }, [codeFilter, allVehicles])
@@ -217,7 +223,7 @@ export default function ChauffeurRutePage() {
           >
             Alle
           </button>
-          {Array.from(new Set(allVehicles.map(v => v.vehicleLabel))).sort().map(label => (
+          {Array.from(new Set(allVehicles.flatMap(v => v.stops.map(s => s.deliveryCode ?? v.vehicleLabel)))).filter(Boolean).sort().map(label => (
             <button
               key={label}
               onClick={() => setCodeFilter(label === codeFilter ? null : label)}
@@ -324,8 +330,7 @@ export default function ChauffeurRutePage() {
                     )}
                     <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
                       {s.bcSalesOrderNo && <span className="font-mono">{s.bcSalesOrderNo}</span>}
-                      {(s as any).deliveryCode && <span className="font-medium text-blue-500">{(s as any).deliveryCode}</span>}
-                      {!codeFilter && v.vehicleLabel && <span className="font-medium text-gray-500">{v.vehicleLabel}</span>}
+                      {s.deliveryCode && <span className="font-medium text-blue-500">{s.deliveryCode}</span>}
                       {s.totalWeightKg  && <span>{s.totalWeightKg} kg</span>}
                       {s.packedStatus === 'READY' && (
                         <span className="text-green-600 font-medium">✓ Pakket</span>
