@@ -19,17 +19,22 @@ export async function PATCH(
     return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
   }
 
-  const now         = new Date().toISOString()
-  const deliveredAt = status === 'DELIVERED' ? now : null
-  const note        = failureNote ?? null
+  const now  = new Date()
+  const note = failureNote ?? null
 
-  await prisma.$executeRaw`
-    UPDATE "RouteStop"
-    SET status        = ${status},
-        "deliveredAt" = ${deliveredAt},
-        "failureNote" = ${note}
-    WHERE id = ${params.id}
-  `
+  if (status === 'DELIVERED') {
+    await prisma.$executeRaw`
+      UPDATE "RouteStop"
+      SET status = ${status}, "deliveredAt" = ${now}, "failureNote" = ${note}
+      WHERE id = ${params.id}
+    `
+  } else {
+    await prisma.$executeRaw`
+      UPDATE "RouteStop"
+      SET status = ${status}, "deliveredAt" = NULL, "failureNote" = ${note}
+      WHERE id = ${params.id}
+    `
+  }
 
   return NextResponse.json({ ok: true })
 }
