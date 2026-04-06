@@ -119,7 +119,8 @@ export default function ChauffeurRutePage() {
     })
   }
 
-  async function uploadPhoto(stopId: string, file: File) {
+  async function deliverWithPhoto(stopId: string, file: File) {
+    setUpdating(prev => new Set(prev).add(stopId))
     let lat = 0, lng = 0
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -132,8 +133,16 @@ export default function ChauffeurRutePage() {
     fd.append('photo', file)
     fd.append('lat', String(lat))
     fd.append('lng', String(lng))
-    // Kører i baggrunden — fejl ignoreres (status er allerede sat via updateStop)
-    fetch(`/api/chauffeur/stop/${stopId}/photo`, { method: 'POST', body: fd }).catch(() => {})
+    const res = await fetch(`/api/chauffeur/stop/${stopId}/photo`, { method: 'POST', body: fd })
+    if (res.ok) {
+      setVehicles(vs => vs.map(v => ({
+        ...v,
+        stops: v.stops.map(s => s.id !== stopId ? s : {
+          ...s, status: 'DELIVERED' as any, deliveredAt: new Date().toISOString(),
+        }),
+      })))
+    }
+    setUpdating(prev => { const n = new Set(prev); n.delete(stopId); return n })
   }
 
   async function updateStop(stopId: string, status: string, failureNote?: string) {
@@ -373,13 +382,26 @@ export default function ChauffeurRutePage() {
                       <div className="text-xs text-amber-600 text-center py-1">Ruten er ikke endeligt planlagt endnu</div>
                     ) : !isDone ? (
                       <div className="space-y-2">
+                        {/* Skjult fil-input til kamera */}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          ref={el => { if (el) fileInputRefs.current[s.id] = el }}
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) deliverWithPhoto(s.id, file)
+                          }}
+                        />
                         <div className="flex gap-2">
+                          {/* Hoved-knap: tag foto = leveret */}
                           <button
-                            onClick={() => updateStop(s.id, 'DELIVERED')}
+                            onClick={() => fileInputRefs.current[s.id]?.click()}
                             disabled={isUpdating}
                             className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
                           >
-                            <CheckCircle2 size={15} /> {isUpdating ? 'Gemmer…' : 'Leveret'}
+                            <Camera size={15} /> {isUpdating ? 'Gemmer…' : 'Tag foto + leveret'}
                           </button>
                           <button
                             onClick={() => updateStop(s.id, 'FAILED', failNotes[s.id])}
@@ -389,23 +411,13 @@ export default function ChauffeurRutePage() {
                             <XCircle size={15} /> Fejlet
                           </button>
                         </div>
-                        {/* Valgfrit foto — kører i baggrunden efter leveret er trykket */}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          ref={el => { if (el) fileInputRefs.current[s.id] = el }}
-                          onChange={e => {
-                            const file = e.target.files?.[0]
-                            if (file) uploadPhoto(s.id, file)
-                          }}
-                        />
+                        {/* Fallback uden foto */}
                         <button
-                          onClick={() => fileInputRefs.current[s.id]?.click()}
-                          className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 py-2 text-xs text-gray-400 hover:bg-gray-50"
+                          onClick={() => updateStop(s.id, 'DELIVERED')}
+                          disabled={isUpdating}
+                          className="w-full text-xs text-gray-400 hover:text-gray-600 underline py-1"
                         >
-                          <Camera size={13} /> Tag leveringsfoto (valgfrit)
+                          Marker som leveret uden foto
                         </button>
                       </div>
                     ) : (

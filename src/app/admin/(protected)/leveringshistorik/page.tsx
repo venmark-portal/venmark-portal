@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Search, CheckCircle2, XCircle, Calendar, Package } from 'lucide-react'
+import { Search, CheckCircle2, XCircle, MapPin, Camera } from 'lucide-react'
 
 interface DeliveryRow {
   stopId:               string
@@ -15,30 +15,32 @@ interface DeliveryRow {
   status:               string
   vehicleLabel:         string
   bookingDate:          string
-}
-
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '–'
-  return new Date(iso).toLocaleString('da-DK', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Europe/Copenhagen',
-  })
+  photoLat:             number | null
+  photoLng:             number | null
+  photoTakenAt:         string | null
+  hasPhoto:             boolean
 }
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('da-DK', {
-    day: 'numeric', month: 'short', year: 'numeric',
+    weekday: 'short', day: 'numeric', month: 'short',
+    timeZone: 'Europe/Copenhagen',
+  })
+}
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return '–'
+  return new Date(iso).toLocaleTimeString('da-DK', {
+    hour: '2-digit', minute: '2-digit',
     timeZone: 'Europe/Copenhagen',
   })
 }
 
 export default function LeveringshistorikPage() {
   const [rows,    setRows]    = useState<DeliveryRow[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
-  const defaultFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  const [from,    setFrom]    = useState(defaultFrom)
+  const [from,    setFrom]    = useState('')
   const [to,      setTo]      = useState('')
 
   const load = useCallback(async () => {
@@ -54,23 +56,19 @@ export default function LeveringshistorikPage() {
 
   useEffect(() => { load() }, [load])
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    load()
-  }
-
   const delivered = rows.filter(r => r.status === 'DELIVERED').length
   const failed    = rows.filter(r => r.status === 'FAILED').length
+  const withPhoto = rows.filter(r => r.hasPhoto).length
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Leveringshistorik</h1>
-        <p className="mt-1 text-sm text-gray-500">Søg i afsluttede leveringer</p>
+        <p className="mt-1 text-sm text-gray-500">De 100 seneste afsluttede leveringer</p>
       </div>
 
       {/* Søgeformular */}
-      <form onSubmit={handleSubmit}
+      <form onSubmit={e => { e.preventDefault(); load() }}
         className="rounded-xl bg-white p-4 ring-1 ring-gray-200 flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-48">
           <label className="block text-xs font-medium text-gray-600 mb-1">Kunde</label>
@@ -87,35 +85,21 @@ export default function LeveringshistorikPage() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Fra dato</label>
-          <input
-            type="date"
-            value={from}
-            onChange={e => setFrom(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Til dato</label>
-          <input
-            type="date"
-            value={to}
-            onChange={e => setTo(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
         </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <button type="submit" disabled={loading}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
           {loading ? 'Søger…' : 'Søg'}
         </button>
         {(search || from || to) && (
-          <button
-            type="button"
-            onClick={() => { setSearch(''); setFrom(''); setTo('') }}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-          >
+          <button type="button" onClick={() => { setSearch(''); setFrom(''); setTo('') }}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
             Nulstil
           </button>
         )}
@@ -123,18 +107,21 @@ export default function LeveringshistorikPage() {
 
       {/* Statistik */}
       {!loading && rows.length > 0 && (
-        <div className="flex gap-4 text-sm text-gray-500">
+        <div className="flex gap-4 text-sm text-gray-500 flex-wrap">
           <span className="flex items-center gap-1.5">
-            <CheckCircle2 size={14} className="text-green-600" />
-            {delivered} leveret
+            <CheckCircle2 size={14} className="text-green-600" /> {delivered} leveret
           </span>
           {failed > 0 && (
             <span className="flex items-center gap-1.5">
-              <XCircle size={14} className="text-red-500" />
-              {failed} fejlet
+              <XCircle size={14} className="text-red-500" /> {failed} fejlet
             </span>
           )}
-          <span className="text-gray-400">{rows.length} i alt (max 500)</span>
+          {withPhoto > 0 && (
+            <span className="flex items-center gap-1.5">
+              <Camera size={14} className="text-blue-500" /> {withPhoto} med foto
+            </span>
+          )}
+          <span className="text-gray-400">{rows.length} vist</span>
         </div>
       )}
 
@@ -146,33 +133,28 @@ export default function LeveringshistorikPage() {
           Ingen leveringer fundet
         </div>
       ) : (
-        <div className="rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
+        <div className="rounded-xl bg-white ring-1 ring-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Dato</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tidspunkt</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Dato</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Tid</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Kunde</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Adresse</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Ordre</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Kode / Bil</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Vægt</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell whitespace-nowrap">Kode / Bil</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Foto / Geo</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map(r => (
                 <tr key={r.stopId} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <Calendar size={12} className="text-gray-400" />
-                      {fmtDate(r.bookingDate)}
-                    </div>
+                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap text-sm">
+                    {fmtDate(r.bookingDate)}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
-                    {r.deliveredAt
-                      ? new Date(r.deliveredAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen' })
-                      : '–'}
+                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-sm">
+                    {fmtTime(r.deliveredAt)}
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {r.customerName ?? '–'}
@@ -180,7 +162,7 @@ export default function LeveringshistorikPage() {
                   <td className="px-4 py-3 text-gray-500 hidden md:table-cell text-xs max-w-48 truncate">
                     {r.customerAddress ?? '–'}
                   </td>
-                  <td className="px-4 py-3 text-gray-400 font-mono text-xs hidden lg:table-cell">
+                  <td className="px-4 py-3 text-gray-400 font-mono text-xs hidden lg:table-cell whitespace-nowrap">
                     {r.bcSalesOrderNo ?? '–'}
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell">
@@ -191,13 +173,31 @@ export default function LeveringshistorikPage() {
                       <span className="text-xs text-gray-400">{r.vehicleLabel}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">
-                    {r.totalWeightKg != null ? (
-                      <span className="flex items-center gap-1">
-                        <Package size={11} className="text-gray-400" />
-                        {r.totalWeightKg} kg
-                      </span>
-                    ) : '–'}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {r.hasPhoto && (
+                        <a
+                          href={`/api/chauffeur/stop/${r.stopId}/photo`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100"
+                        >
+                          <Camera size={11} /> Se foto
+                        </a>
+                      )}
+                      {r.photoLat && r.photoLng ? (
+                        <a
+                          href={`https://www.google.com/maps?q=${r.photoLat},${r.photoLng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                        >
+                          <MapPin size={11} /> Kort
+                        </a>
+                      ) : !r.hasPhoto ? (
+                        <span className="text-xs text-gray-300">–</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {r.status === 'DELIVERED' ? (
