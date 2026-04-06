@@ -37,7 +37,8 @@ export default function LeveringshistorikPage() {
   const [rows,    setRows]    = useState<DeliveryRow[]>([])
   const [loading, setLoading] = useState(false)
   const [search,  setSearch]  = useState('')
-  const [from,    setFrom]    = useState('')
+  const defaultFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const [from,    setFrom]    = useState(defaultFrom)
   const [to,      setTo]      = useState('')
 
   const load = useCallback(async () => {
@@ -51,8 +52,7 @@ export default function LeveringshistorikPage() {
     setLoading(false)
   }, [search, from, to])
 
-  // Indlæs ved første render
-  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [load])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

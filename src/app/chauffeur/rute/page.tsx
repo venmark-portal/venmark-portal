@@ -120,7 +120,6 @@ export default function ChauffeurRutePage() {
   }
 
   async function uploadPhoto(stopId: string, file: File) {
-    setUpdating(prev => new Set(prev).add(stopId))
     let lat = 0, lng = 0
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -133,35 +132,28 @@ export default function ChauffeurRutePage() {
     fd.append('photo', file)
     fd.append('lat', String(lat))
     fd.append('lng', String(lng))
-    await fetch(`/api/chauffeur/stop/${stopId}/photo`, { method: 'POST', body: fd })
-    setVehicles(vs => vs.map(v => ({
-      ...v,
-      stops: v.stops.map(s => s.id !== stopId ? s : {
-        ...s,
-        status:      'DELIVERED' as any,
-        deliveredAt: new Date().toISOString(),
-      }),
-    })))
-    setUpdating(prev => { const n = new Set(prev); n.delete(stopId); return n })
+    // Kører i baggrunden — fejl ignoreres (status er allerede sat via updateStop)
+    fetch(`/api/chauffeur/stop/${stopId}/photo`, { method: 'POST', body: fd }).catch(() => {})
   }
 
   async function updateStop(stopId: string, status: string, failureNote?: string) {
     setUpdating(prev => new Set(prev).add(stopId))
-    await fetch(`/api/chauffeur/stop/${stopId}`, {
+    const res = await fetch(`/api/chauffeur/stop/${stopId}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ status, failureNote }),
     })
-    // Opdater lokalt
-    setVehicles(vs => vs.map(v => ({
-      ...v,
-      stops: v.stops.map(s => s.id !== stopId ? s : {
-        ...s,
-        status:     status as any,
-        deliveredAt: status === 'DELIVERED' ? new Date().toISOString() : s.deliveredAt,
-        failureNote: failureNote ?? s.failureNote,
-      }),
-    })))
+    if (res.ok) {
+      setVehicles(vs => vs.map(v => ({
+        ...v,
+        stops: v.stops.map(s => s.id !== stopId ? s : {
+          ...s,
+          status:      status as any,
+          deliveredAt: status === 'DELIVERED' ? new Date().toISOString() : s.deliveredAt,
+          failureNote: failureNote ?? s.failureNote,
+        }),
+      })))
+    }
     setUpdating(prev => { const n = new Set(prev); n.delete(stopId); return n })
   }
 
@@ -380,8 +372,24 @@ export default function ChauffeurRutePage() {
                     {isPrelim ? (
                       <div className="text-xs text-amber-600 text-center py-1">Ruten er ikke endeligt planlagt endnu</div>
                     ) : !isDone ? (
-                      <div className="flex gap-2">
-                        {/* Skjult fil-input til kamera */}
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => updateStop(s.id, 'DELIVERED')}
+                            disabled={isUpdating}
+                            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            <CheckCircle2 size={15} /> {isUpdating ? 'Gemmer…' : 'Leveret'}
+                          </button>
+                          <button
+                            onClick={() => updateStop(s.id, 'FAILED', failNotes[s.id])}
+                            disabled={isUpdating}
+                            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-red-300 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <XCircle size={15} /> Fejlet
+                          </button>
+                        </div>
+                        {/* Valgfrit foto — kører i baggrunden efter leveret er trykket */}
                         <input
                           type="file"
                           accept="image/*"
@@ -395,17 +403,9 @@ export default function ChauffeurRutePage() {
                         />
                         <button
                           onClick={() => fileInputRefs.current[s.id]?.click()}
-                          disabled={isUpdating}
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                          className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 py-2 text-xs text-gray-400 hover:bg-gray-50"
                         >
-                          <Camera size={15} /> {isUpdating ? 'Gemmer…' : 'Leveret'}
-                        </button>
-                        <button
-                          onClick={() => updateStop(s.id, 'FAILED', failNotes[s.id])}
-                          disabled={isUpdating}
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-red-300 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <XCircle size={15} /> Fejlet
+                          <Camera size={13} /> Tag leveringsfoto (valgfrit)
                         </button>
                       </div>
                     ) : (
