@@ -174,23 +174,24 @@ export default function LeveringshistorikPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-col gap-1">
                       {r.hasPhoto ? (
-                        <div className="relative group">
+                        <div className="relative group inline-block">
                           <a
                             href={`/api/chauffeur/stop/${r.stopId}/photo`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100"
                           >
-                            <Camera size={11} /> Foto
+                            <Camera size={11} />
+                            Foto {r.photoTakenAt ? fmtTime(r.photoTakenAt) : ''}
                           </a>
                           {/* Forhåndsvisning ved hover */}
                           <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 shadow-xl rounded-lg overflow-hidden border border-gray-200">
                             <img
                               src={`/api/chauffeur/stop/${r.stopId}/photo`}
                               alt="Leveringsfoto"
-                              className="w-48 h-48 object-cover"
+                              className="w-56 h-56 object-cover"
                             />
                           </div>
                         </div>
@@ -202,10 +203,15 @@ export default function LeveringshistorikPage() {
                           href={`https://www.google.com/maps?q=${r.photoLat},${r.photoLng}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600"
                         >
-                          <MapPin size={11} /> {r.photoLat.toFixed(4)}, {r.photoLng.toFixed(4)}
+                          <MapPin size={10} className="shrink-0" />
+                          {r.photoLat.toFixed(5)}, {r.photoLng.toFixed(5)}
                         </a>
+                      ) : r.hasPhoto ? (
+                        <span className="text-xs text-gray-300 flex items-center gap-1">
+                          <MapPin size={10} /> Ingen GPS
+                        </span>
                       ) : null}
                     </div>
                   </td>

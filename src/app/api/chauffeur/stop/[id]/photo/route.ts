@@ -22,8 +22,8 @@ export async function POST(
 
   if (!photo) return NextResponse.json({ error: 'Intet foto' }, { status: 400 })
 
-  const stopId = params.id
-  const now    = new Date()
+  const stopId  = params.id
+  const now     = new Date()
   const dateStr = now.toISOString().slice(0, 10)
   const filename = `${stopId}_${Date.now()}.jpg`
   const dir = path.join(process.cwd(), 'uploads', 'delivery-photos', dateStr)
@@ -49,14 +49,14 @@ export async function POST(
   const id = crypto.randomUUID()
   await prisma.$executeRaw`
     INSERT INTO "RouteStopPhoto" (id, "stopId", filename, "takenAt", lat, lng, "expiresAt")
-    VALUES (${id}, ${stopId}, ${dateStr + '/' + filename}, ${now.toISOString()}::timestamp,
-            ${lat || null}, ${lng || null}, ${expiresAt.toISOString()}::timestamp)
+    VALUES (${id}, ${stopId}, ${dateStr + '/' + filename}, ${now},
+            ${lat || null}, ${lng || null}, ${expiresAt})
   `
 
-  // Opdater stop med leveret + foto-flag
+  // Opdater stop med leveret
   await prisma.$executeRaw`
     UPDATE "RouteStop"
-    SET status = 'DELIVERED', "deliveredAt" = ${now.toISOString()}::timestamp
+    SET status = 'DELIVERED', "deliveredAt" = ${now}
     WHERE id = ${stopId}
   `
 
