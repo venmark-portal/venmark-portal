@@ -16,18 +16,9 @@ export async function GET(req: NextRequest) {
   const from   = url.searchParams.get('from')   || null
   const to     = url.searchParams.get('to')     || null
 
-  // Sikr at RouteStopPhoto-tabellen eksisterer
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS "RouteStopPhoto" (
-      id          TEXT PRIMARY KEY,
-      "stopId"    TEXT NOT NULL,
-      filename    TEXT NOT NULL,
-      "takenAt"   TIMESTAMP NOT NULL,
-      lat         DOUBLE PRECISION,
-      lng         DOUBLE PRECISION,
-      "expiresAt" TIMESTAMP NOT NULL
-    )
-  `
+  // Sikr at lat/lng kolonner eksisterer (tabellen oprettes i foto-API'et)
+  await prisma.$executeRaw`ALTER TABLE "RouteStopPhoto" ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`
+  await prisma.$executeRaw`ALTER TABLE "RouteStopPhoto" ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`
 
   const rows = await prisma.$queryRaw<any[]>`
     SELECT
