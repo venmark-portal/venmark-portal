@@ -73,7 +73,7 @@ export default function ChauffeurRutePage() {
   const [date,        setDate]        = useState(() => defaultDate())
   const [loading,     setLoading]     = useState(true)
   const [preliminary, setPreliminary] = useState(false)
-  const [codeFilter,  setCodeFilter]  = useState('') // '' = chaufførens egen kode
+  const [codeFilter,  setCodeFilter]  = useState<string | null>(null) // null = ikke sat endnu
   const [expanded,  setExpanded]  = useState<Set<string>>(new Set())
   const [updating,  setUpdating]  = useState<Set<string>>(new Set())
   const [failNotes, setFailNotes] = useState<Record<string, string>>({})
@@ -88,6 +88,8 @@ export default function ChauffeurRutePage() {
     setAllVehicles(data.vehicles ?? [])
     setNotes(data.notes ?? '')
     setPreliminary(data.preliminary ?? false)
+    // Sæt standard-filter til chaufførens kode (kun første gang)
+    if (data.driverCode) setCodeFilter(prev => prev === null ? data.driverCode : prev)
     setLoading(false)
   }, [])
 
@@ -98,16 +100,7 @@ export default function ChauffeurRutePage() {
     if (!codeFilter) {
       setVehicles(allVehicles)
     } else {
-      const filtered = allVehicles
-        .map(v => ({
-          ...v,
-          stops: v.stops.filter(s =>
-            (s as any).deliveryCode === codeFilter ||
-            v.vehicleLabel === codeFilter ||
-            v.vehicleLabel.startsWith(codeFilter)
-          )
-        }))
-        .filter(v => v.stops.length > 0)
+      const filtered = allVehicles.filter(v => v.vehicleLabel === codeFilter)
       setVehicles(filtered)
     }
   }, [codeFilter, allVehicles])
@@ -217,9 +210,9 @@ export default function ChauffeurRutePage() {
       {allVehicles.length > 0 && (
         <div className="flex gap-1.5 flex-wrap">
           <button
-            onClick={() => setCodeFilter('')}
+            onClick={() => setCodeFilter(null)}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-              codeFilter === '' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              !codeFilter ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
             }`}
           >
             Alle
@@ -227,7 +220,7 @@ export default function ChauffeurRutePage() {
           {Array.from(new Set(allVehicles.map(v => v.vehicleLabel))).sort().map(label => (
             <button
               key={label}
-              onClick={() => setCodeFilter(label === codeFilter ? '' : label)}
+              onClick={() => setCodeFilter(label === codeFilter ? null : label)}
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                 codeFilter === label ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
               }`}
@@ -331,6 +324,8 @@ export default function ChauffeurRutePage() {
                     )}
                     <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
                       {s.bcSalesOrderNo && <span className="font-mono">{s.bcSalesOrderNo}</span>}
+                      {(s as any).deliveryCode && <span className="font-medium text-blue-500">{(s as any).deliveryCode}</span>}
+                      {!codeFilter && v.vehicleLabel && <span className="font-medium text-gray-500">{v.vehicleLabel}</span>}
                       {s.totalWeightKg  && <span>{s.totalWeightKg} kg</span>}
                       {s.packedStatus === 'READY' && (
                         <span className="text-green-600 font-medium">✓ Pakket</span>

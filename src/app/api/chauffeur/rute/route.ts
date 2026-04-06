@@ -93,38 +93,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       date,
       preliminary: false,
+      driverCode: driverRows[0]?.bcShipmentMethodCode ?? null,
       notes:    routeRows[0]?.routeNotes ?? '',
       vehicles: Array.from(vMap.values()),
     })
   }
 
-  // Ingen gemte stops — hent BC-ordrer og vis som foreløbig rute
+  // Ingen gemte stops — hent alle BC-ordrer og vis som foreløbig rute
   try {
     const allOrders = await getSalesOrdersForDelivery(date, { fetchLines: false })
-    // Filtrer på chaufførens leveringskode hvis den er sat
-    const bcOrders = driverCode
-      ? allOrders.filter(o => o.deliveryCodes.some(c => c.toUpperCase() === driverCode.toUpperCase()))
-      : allOrders
+    const bcDriverCode = driverRows[0]?.bcShipmentMethodCode ?? null
 
-    if (bcOrders.length === 0) {
-      return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '', driverCode })
+    if (allOrders.length === 0) {
+      return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '', driverCode: bcDriverCode })
     }
 
-    // Grupper efter leveringskode → "bil"
+    // Grupper efter leveringskode → vehicle
     const groupMap = new Map<string, any[]>()
-    for (const o of bcOrders) {
+    for (const o of allOrders) {
       const code = o.deliveryCodes[0] ?? 'VENMARK'
       if (!groupMap.has(code)) groupMap.set(code, [])
       groupMap.get(code)!.push(o)
     }
 
-    const vehicles = Array.from(groupMap.entries()).map(([code, orders], idx) => ({
+    const vehicles = Array.from(groupMap.entries()).map(([code, orders]) => ({
       vehicleId:    `bc-${code}`,
       vehicleLabel: code,
       stops: orders.map((o, i) => ({
         id:              `bc-${o.id}`,
         sortOrder:       i,
         bcSalesOrderNo:  o.number,
+        deliveryCode:    code,
         isExtraTask:     false,
         extraTaskTitle:  null,
         extraTaskNote:   null,
@@ -139,8 +138,8 @@ export async function GET(req: NextRequest) {
       })),
     }))
 
-    return NextResponse.json({ date, preliminary: true, notes: '', vehicles })
+    return NextResponse.json({ date, preliminary: true, notes: '', driverCode: bcDriverCode, vehicles })
   } catch {
-    return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '' })
+    return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '', driverCode: null })
   }
 }
