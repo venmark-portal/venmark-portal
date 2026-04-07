@@ -120,7 +120,7 @@ export async function sendPod(opts: {
   deliveredAt:  Date
   recipients:   PodRecipient[]
 }) {
-  const photoUrl = `${APP_URL}/api/chauffeur/stop/${opts.stopId}/photo`
+  const photoUrl = `${APP_URL}/pod/${opts.stopId}`
 
   const targets: PodRecipient[] = TEST_MODE
     ? [{ email: TEST_EMAIL, phone: TEST_PHONE, sendEmail: true, sendSms: true }]
