@@ -1,12 +1,13 @@
 /**
  * POD — Proof of Delivery
- * Email via SMTP (nodemailer), SMS via GatewayAPI.
+ * Email via Microsoft Graph API, SMS via GatewayAPI.
  *
  * TEST_MODE = true  → alt går til POD_TEST_EMAIL / POD_TEST_PHONE
  * TEST_MODE = false → brug de konfigurerede modtagere fra DB
  *
- * Env vars (email — samme som resten af systemet):
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+ * Env vars (email — genbruger BC app registration):
+ *   BC_TENANT_ID, BC_CLIENT_ID, BC_CLIENT_SECRET
+ *   POD_FROM_EMAIL    — afsender-adresse (default: claus@venmark.dk)
  * Env vars (SMS):
  *   GATEWAY_API_TOKEN
  * Env vars (POD):
@@ -16,49 +17,64 @@
  *   POD_TEST_PHONE    — 41969644
  */
 
-import nodemailer from 'nodemailer'
-
 const TEST_MODE  = process.env.POD_TEST_MODE  !== 'false'
 const TEST_EMAIL = process.env.POD_TEST_EMAIL ?? 'claus@venmark.dk'
 const TEST_PHONE = process.env.POD_TEST_PHONE ?? '41969644'
 const APP_URL    = (process.env.APP_URL ?? 'http://204.168.191.215').replace(/\/$/, '')
 const GW_TOKEN   = process.env.GATEWAY_API_TOKEN ?? ''
+const FROM_EMAIL = process.env.POD_FROM_EMAIL ?? 'claus@venmark.dk'
 
-// ── Email via SMTP ────────────────────────────────────────────────────────────
+// ── Email via Microsoft Graph API ────────────────────────────────────────────
 
-function createTransporter() {
-  const host = process.env.SMTP_HOST
-  const port = parseInt(process.env.SMTP_PORT ?? '587')
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  if (!host || !user || !pass) return null
-  return nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } })
+async function getGraphToken(): Promise<string | null> {
+  const tenantId     = process.env.BC_TENANT_ID
+  const clientId     = process.env.BC_CLIENT_ID
+  const clientSecret = process.env.BC_CLIENT_SECRET
+  if (!tenantId || !clientId || !clientSecret) return null
+
+  const res = await fetch(
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     clientId,
+        client_secret: clientSecret,
+        scope:         'https://graph.microsoft.com/.default',
+        grant_type:    'client_credentials',
+      }),
+    }
+  )
+  if (!res.ok) {
+    console.error(`[POD] Graph token fejl: ${await res.text()}`)
+    return null
+  }
+  const data = await res.json()
+  return data.access_token ?? null
 }
 
 async function sendEmail(to: string, customerName: string, photoUrl: string, deliveredAt: Date) {
-  const transporter = createTransporter()
-  if (!transporter) {
-    console.log(`[POD] SMTP ikke konfigureret — ville have sendt email til ${to}`)
+  const token = await getGraphToken()
+  if (!token) {
+    console.log(`[POD] Graph API ikke konfigureret — ville have sendt email til ${to}`)
     return
   }
+
   const tid = deliveredAt.toLocaleTimeString('da-DK', {
     hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Copenhagen',
   })
   const dato = deliveredAt.toLocaleDateString('da-DK', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Copenhagen',
   })
-  await transporter.sendMail({
-    from:    `"Venmark Fisk" <${process.env.SMTP_USER ?? 'ordre@venmark.dk'}>`,
-    to,
-    subject: `Levering bekræftet — ${customerName}`,
-    html: `
+
+  const html = `
 <!DOCTYPE html><html lang="da">
 <head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:system-ui,sans-serif">
   <div style="max-width:520px;margin:32px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
     <div style="background:#16a34a;padding:24px 32px;color:white">
       <div style="font-size:20px;font-weight:700">Venmark<span style="opacity:0.7">.dk</span></div>
-      <div style="margin-top:4px;opacity:0.9;font-size:14px">✓ Levering bekræftet</div>
+      <div style="margin-top:4px;opacity:0.9;font-size:14px">&#10003; Levering bekræftet</div>
     </div>
     <div style="padding:24px 32px">
       <p style="margin:0 0 16px;color:#374151">Kære kunde,</p>
@@ -70,7 +86,7 @@ async function sendEmail(to: string, customerName: string, photoUrl: string, del
         <a href="${photoUrl}"
            style="display:inline-block;background:#16a34a;color:#fff;padding:12px 28px;
                   border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px">
-          📷 Se leveringsfoto
+          Se leveringsfoto
         </a>
       </div>
       <p style="color:#9ca3af;font-size:12px;margin:0">Linket er gyldigt i 30 dage.</p>
@@ -79,9 +95,24 @@ async function sendEmail(to: string, customerName: string, photoUrl: string, del
       Venmark Fisk A/S · venmark.dk
     </div>
   </div>
-</body></html>`,
+</body></html>`
+
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${FROM_EMAIL}/sendMail`, {
+    method:  'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: `Levering bekræftet — ${customerName}`,
+        body:    { contentType: 'HTML', content: html },
+        toRecipients: [{ emailAddress: { address: to } }],
+        from:         { emailAddress: { address: FROM_EMAIL, name: 'Venmark Fisk' } },
+      },
+      saveToSentItems: false,
+    }),
   })
-  console.log(`[POD] Email sendt til ${to}`)
+
+  if (!res.ok) console.error(`[POD] Email fejl til ${to}: ${await res.text()}`)
+  else         console.log(`[POD] Email sendt til ${to}`)
 }
 
 // ── SMS via GatewayAPI ────────────────────────────────────────────────────────
@@ -98,7 +129,7 @@ async function sendSms(phone: string, photoUrl: string) {
     body: JSON.stringify({
       sender:     'Venmark',
       message:    `Venmark Fisk: Din levering er afleveret. Se foto: ${photoUrl}`,
-      recipients: [{ msisdn: normalized }],
+      recipients: [{ msisdn: parseInt(normalized, 10) }],
     }),
   })
   if (!res.ok) console.error(`[POD] SMS fejl til ${normalized}: ${await res.text()}`)
