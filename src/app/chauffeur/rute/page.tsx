@@ -121,19 +121,14 @@ export default function ChauffeurRutePage() {
 
   async function deliverWithPhoto(stopId: string, file: File) {
     setUpdating(prev => new Set(prev).add(stopId))
-    let lat = 0, lng = 0
-    try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-      )
-      lat = pos.coords.latitude
-      lng = pos.coords.longitude
-    } catch {}
+
+    // Upload foto med det samme — ingen GPS-ventetid
     const fd = new FormData()
     fd.append('photo', file)
-    fd.append('lat', String(lat))
-    fd.append('lng', String(lng))
+    fd.append('lat', '0')
+    fd.append('lng', '0')
     const res = await fetch(`/api/chauffeur/stop/${stopId}/photo`, { method: 'POST', body: fd })
+
     if (res.ok) {
       setVehicles(vs => vs.map(v => ({
         ...v,
@@ -141,7 +136,23 @@ export default function ChauffeurRutePage() {
           ...s, status: 'DELIVERED' as any, deliveredAt: new Date().toISOString(),
         }),
       })))
+
+      // Hent GPS bagefter og opdater foto-record (blokker ikke UI)
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            fetch(`/api/chauffeur/stop/${stopId}/geo`, {
+              method:  'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            }).catch(() => {})
+          },
+          () => {}, // GPS afvist — ignorer
+          { timeout: 15000, enableHighAccuracy: true }
+        )
+      }
     }
+
     setUpdating(prev => { const n = new Set(prev); n.delete(stopId); return n })
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
+import { sendPod } from '@/lib/pod'
 import path from 'path'
 
 export const runtime = 'nodejs'
@@ -17,8 +18,8 @@ export async function POST(
 
   const formData = await req.formData()
   const photo = formData.get('photo') as File | null
-  const lat   = parseFloat(formData.get('lat') as string || '0')
-  const lng   = parseFloat(formData.get('lng') as string || '0')
+  const lat   = parseFloat(formData.get('lat') as string || '0') || null
+  const lng   = parseFloat(formData.get('lng') as string || '0') || null
 
   if (!photo) return NextResponse.json({ error: 'Intet foto' }, { status: 400 })
 
@@ -34,7 +35,6 @@ export async function POST(
 
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
-  // Gem metadata i DB (opret tabel hvis ikke eksisterer)
   await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "RouteStopPhoto" (
       id          TEXT PRIMARY KEY,
@@ -46,24 +46,77 @@ export async function POST(
       "expiresAt" TIMESTAMP NOT NULL
     )
   `
-  const id = crypto.randomUUID()
+  await prisma.$executeRaw`ALTER TABLE "RouteStopPhoto" ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`
+  await prisma.$executeRaw`ALTER TABLE "RouteStopPhoto" ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`
+
+  const photoId = crypto.randomUUID()
   await prisma.$executeRaw`
     INSERT INTO "RouteStopPhoto" (id, "stopId", filename, "takenAt", lat, lng, "expiresAt")
-    VALUES (${id}, ${stopId}, ${dateStr + '/' + filename}, ${now},
-            ${lat || null}, ${lng || null}, ${expiresAt})
+    VALUES (${photoId}, ${stopId}, ${dateStr + '/' + filename}, ${now}, ${lat}, ${lng}, ${expiresAt})
   `
 
-  // Opdater stop med leveret
   await prisma.$executeRaw`
-    UPDATE "RouteStop"
-    SET status = 'DELIVERED', "deliveredAt" = ${now}
-    WHERE id = ${stopId}
+    UPDATE "RouteStop" SET status = 'DELIVERED', "deliveredAt" = ${now} WHERE id = ${stopId}
   `
 
-  return NextResponse.json({ ok: true, photoId: id })
+  // Hent stop-info til POD
+  const stopRows = await prisma.$queryRaw<any[]>`
+    SELECT s."customerName", s."bcSalesOrderNo",
+           v."vehicleLabel", r."bookingDate"
+    FROM "RouteStop" s
+    JOIN "RouteVehicle" v ON v.id = s."vehicleId"
+    JOIN "DeliveryRoute" r ON r.id = v."routeId"
+    WHERE s.id = ${stopId}
+    LIMIT 1
+  `
+  const stop = stopRows[0]
+
+  // Hent POD-modtagere for denne kunde (fra PodRecipient-tabel)
+  let recipients: any[] = []
+  try {
+    await prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "PodRecipient" (
+        id               TEXT PRIMARY KEY,
+        "bcCustomerNo"   TEXT NOT NULL,
+        name             TEXT,
+        email            TEXT,
+        phone            TEXT,
+        "sendEmail"      BOOLEAN NOT NULL DEFAULT false,
+        "sendSms"        BOOLEAN NOT NULL DEFAULT false,
+        "sortOrder"      INTEGER NOT NULL DEFAULT 0
+      )
+    `
+    // Find kundenummer via bcSalesOrderNo → Customer tabel
+    const custRows = await prisma.$queryRaw<any[]>`
+      SELECT c."bcCustomerNumber"
+      FROM "Customer" c
+      JOIN "RouteStop" s ON s."customerName" = c.name
+      WHERE s.id = ${stopId}
+      LIMIT 1
+    `
+    if (custRows[0]?.bcCustomerNumber) {
+      recipients = await prisma.$queryRaw<any[]>`
+        SELECT email, phone, "sendEmail", "sendSms"
+        FROM "PodRecipient"
+        WHERE "bcCustomerNo" = ${custRows[0].bcCustomerNumber}
+      `
+    }
+  } catch {}
+
+  // Send POD asynkront (blokker ikke svaret)
+  if (stop) {
+    sendPod({
+      stopId,
+      customerName: stop.customerName ?? 'Kunde',
+      deliveredAt:  now,
+      recipients,
+    }).catch(e => console.error('[POD] Fejl:', e))
+  }
+
+  return NextResponse.json({ ok: true, photoId })
 }
 
-// Hent foto (kun chauffør/admin)
+// Hent foto (chauffør + admin)
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -86,11 +139,12 @@ export async function GET(
     const buf = await readFile(filePath)
     return new NextResponse(buf, {
       headers: {
-        'Content-Type': 'image/jpeg',
-        'X-Taken-At': takenAt,
-        'X-Lat': String(lat ?? ''),
-        'X-Lng': String(lng ?? ''),
-      }
+        'Content-Type':  'image/jpeg',
+        'Cache-Control': 'private, max-age=86400',
+        'X-Taken-At':    String(takenAt ?? ''),
+        'X-Lat':         String(lat ?? ''),
+        'X-Lng':         String(lng ?? ''),
+      },
     })
   } catch {
     return NextResponse.json(null)
