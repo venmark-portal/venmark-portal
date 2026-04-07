@@ -9,9 +9,9 @@ export const dynamic = 'force-dynamic'
 export default async function LeveringPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/portal/login')
-  const customerId = (session.user as any).id
+  const customerId   = (session.user as any).id
+  const bcCustomerNo = (session.user as any).bcCustomerNumber ?? ''
 
-  // Brug $queryRaw — DeliveryProfile er ny model (prisma generate DLL-lock workaround)
   const profiles = await prisma.$queryRaw<any[]>`
     SELECT * FROM DeliveryProfile WHERE customerId = ${customerId} LIMIT 1
   `
@@ -24,6 +24,27 @@ export default async function LeveringPage() {
     profile = { ...profileRow, photos }
   }
 
+  // POD-modtagere
+  let podRecipients: any[] = []
+  try {
+    await prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "PodRecipient" (
+        id             TEXT PRIMARY KEY,
+        "bcCustomerNo" TEXT NOT NULL,
+        name           TEXT,
+        email          TEXT,
+        phone          TEXT,
+        "sendEmail"    BOOLEAN NOT NULL DEFAULT false,
+        "sendSms"      BOOLEAN NOT NULL DEFAULT false,
+        "sortOrder"    INTEGER NOT NULL DEFAULT 0
+      )
+    `
+    podRecipients = await prisma.$queryRaw<any[]>`
+      SELECT id, name, email, phone, "sendEmail", "sendSms"
+      FROM "PodRecipient" WHERE "bcCustomerNo" = ${bcCustomerNo} ORDER BY "sortOrder"
+    `
+  } catch {}
+
   return (
     <div className="space-y-4">
       <div>
@@ -33,7 +54,7 @@ export default async function LeveringPage() {
           Adgangskoder og instruktioner til chauffører. Gemmes sikkert og vises kun til vores chauffører.
         </p>
       </div>
-      <DeliveryProfileForm initialProfile={profile as any} />
+      <DeliveryProfileForm initialProfile={profile as any} initialPodRecipients={podRecipients} />
     </div>
   )
 }

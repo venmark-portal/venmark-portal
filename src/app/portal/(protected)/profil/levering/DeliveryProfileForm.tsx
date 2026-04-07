@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import {
   Lock, KeyRound, ShieldAlert, MapPin, MessageSquare,
   Camera, Image as ImageIcon, X, Eye, EyeOff, CheckCircle2, Loader2, Truck,
+  Bell, Plus, Trash2,
 } from 'lucide-react'
 
 interface Photo { data: string; mimeType: string; fileName: string }
@@ -17,9 +18,21 @@ interface InitialProfile {
   photos?:              Array<{ data: string; mimeType: string; fileName: string }>
 }
 
-interface Props { initialProfile?: InitialProfile | null }
+interface PodRecipient {
+  id?:       string
+  name:      string
+  email:     string
+  phone:     string
+  sendEmail: boolean
+  sendSms:   boolean
+}
 
-export default function DeliveryProfileForm({ initialProfile }: Props) {
+interface Props {
+  initialProfile?:      InitialProfile | null
+  initialPodRecipients?: PodRecipient[]
+}
+
+export default function DeliveryProfileForm({ initialProfile, initialPodRecipients }: Props) {
   const [doorCode,            setDoorCode]            = useState(initialProfile?.doorCode            ?? '')
   const [keyboxCode,          setKeyboxCode]          = useState(initialProfile?.keyboxCode          ?? '')
   const [alarmCode,           setAlarmCode]           = useState(initialProfile?.alarmCode           ?? '')
@@ -30,6 +43,10 @@ export default function DeliveryProfileForm({ initialProfile }: Props) {
   const [showDoor,   setShowDoor]   = useState(false)
   const [showKeybox, setShowKeybox] = useState(false)
   const [showAlarm,  setShowAlarm]  = useState(false)
+
+  const [podRecipients, setPodRecipients] = useState<PodRecipient[]>(
+    initialPodRecipients ?? []
+  )
 
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
@@ -62,12 +79,20 @@ export default function DeliveryProfileForm({ initialProfile }: Props) {
     setSaved(false)
     setError('')
     try {
-      const res = await fetch('/api/portal/delivery-profile', {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ doorCode, keyboxCode, alarmCode, deliveryDescription, driverMessage, photos }),
-      })
-      if (!res.ok) throw new Error(await res.text())
+      const [r1, r2] = await Promise.all([
+        fetch('/api/portal/delivery-profile', {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ doorCode, keyboxCode, alarmCode, deliveryDescription, driverMessage, photos }),
+        }),
+        fetch('/api/portal/pod-recipients', {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(podRecipients),
+        }),
+      ])
+      if (!r1.ok) throw new Error(await r1.text())
+      if (!r2.ok) throw new Error(await r2.text())
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (e: any) {
@@ -207,16 +232,85 @@ export default function DeliveryProfileForm({ initialProfile }: Props) {
         />
       </div>
 
-      {/* ── Chauffør-app info ──────────────────────────────────────── */}
-      <div className="rounded-xl bg-blue-50 p-4 ring-1 ring-blue-100 flex gap-3">
-        <Truck size={18} className="text-blue-400 shrink-0 mt-0.5" />
+      {/* ── POD-kvittering ────────────────────────────────────────── */}
+      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
         <div>
-          <p className="text-sm font-semibold text-blue-800">Chauffør-app (kommer snart)</p>
-          <p className="text-xs text-blue-600 mt-0.5">
-            Chaufføren vil via app bekræfte modtagelse af ekstra beskeder ved levering.
-            Ruteplan og leveringsstatus vises i realtid.
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Bell size={15} className="text-gray-400" /> Leveringskvittering
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Modtag automatisk besked med foto når din ordre er leveret.
           </p>
         </div>
+
+        {podRecipients.length === 0 && (
+          <p className="text-xs text-gray-400 italic">Ingen modtagere endnu — tilføj herunder.</p>
+        )}
+
+        {podRecipients.map((r, i) => (
+          <div key={i} className="rounded-lg border border-gray-200 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={r.name}
+                onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                placeholder="Navn"
+                className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setPodRecipients(prev => prev.filter((_, j) => j !== i))}
+                className="text-gray-300 hover:text-red-500 transition-colors p-1"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="email"
+                value={r.email}
+                onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, email: e.target.value } : x))}
+                placeholder="Email"
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+              />
+              <input
+                type="tel"
+                value={r.phone}
+                onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, phone: e.target.value } : x))}
+                placeholder="Mobil (SMS)"
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={r.sendEmail}
+                  onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, sendEmail: e.target.checked } : x))}
+                  className="rounded border-gray-300 text-blue-600"
+                />
+                Email
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={r.sendSms}
+                  onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, sendSms: e.target.checked } : x))}
+                  className="rounded border-gray-300 text-blue-600"
+                />
+                SMS
+              </label>
+            </div>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => setPodRecipients(prev => [...prev, { name: '', email: '', phone: '', sendEmail: true, sendSms: false }])}
+          className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
+        >
+          <Plus size={14} /> Tilføj modtager
+        </button>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
