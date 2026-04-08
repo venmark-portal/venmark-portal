@@ -52,8 +52,8 @@ export async function GET(
     )
     const { access_token: token } = await tokenRes.json()
 
-    // Slå standard-GUID op via fakturanummer i v2.0 API
-    const lookupUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices?$filter=number eq '${invoiceNumber}'&$select=id,number`
+    // Slå standard-GUID op via fakturanummer i v2.0 API (bogførte fakturaer)
+    const lookupUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/postedSalesInvoices?$filter=number eq '${invoiceNumber}'&$select=id,number`
     const lookupRes = await fetch(lookupUrl, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -68,7 +68,7 @@ export async function GET(
     console.log('[PDF] bruger GUID:', stdInvoice.id)
 
     // Hent PDF via standard API — bruger rapport fra Rapportvalg - Salg (Faktura)
-    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${stdInvoice.id})/pdfDocument/$value`
+    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/postedSalesInvoices(${stdInvoice.id})/pdfDocument/$value`
     const pdfRes = await fetch(pdfUrl, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
     })
