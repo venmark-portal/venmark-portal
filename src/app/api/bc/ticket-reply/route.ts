@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const bodyText  = body.trim()
   await prisma.$executeRaw`
     INSERT INTO "TicketMessage" ("id","ticketId","sender","senderName","body","readByCustomer","createdAt")
-    VALUES (${msgId}, ${ticketId}, 'STAFF', ${staffName}, ${bodyText}, 0, datetime('now'))
+    VALUES (${msgId}, ${ticketId}, 'STAFF', ${staffName}, ${bodyText}, false, NOW())
   `
 
   await prisma.ticket.update({

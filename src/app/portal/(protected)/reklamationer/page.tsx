@@ -28,7 +28,7 @@ export default async function ReklamationerPage() {
   // Ulæste = staff-beskeder (readByCustomer = 0 i DB) — tæl via raw da klienten ikke er regenereret endnu
   const unreadRows = await prisma.$queryRaw<{ ticketId: string; count: bigint }[]>`
     SELECT "ticketId", COUNT(*) as count FROM "TicketMessage"
-    WHERE "readByCustomer" = 0
+    WHERE "readByCustomer" = false
     AND "ticketId" IN (SELECT "id" FROM "Ticket" WHERE "customerId" = ${customerId})
     GROUP BY "ticketId"
   `

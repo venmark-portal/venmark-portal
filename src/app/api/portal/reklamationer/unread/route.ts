@@ -11,7 +11,7 @@ export async function GET() {
   // Brug $queryRaw — readByCustomer-kolonnen eksisterer i DB men klienten er ikke regenereret endnu
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) as count FROM "TicketMessage"
-    WHERE "readByCustomer" = 0
+    WHERE "readByCustomer" = false
     AND "ticketId" IN (SELECT "id" FROM "Ticket" WHERE "customerId" = ${customerId})
   `
   const unreadMessages = Number(rows[0]?.count ?? 0)

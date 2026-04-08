@@ -23,8 +23,8 @@ export default async function TicketPage({ params }: { params: { id: string } })
   // Marker ulæste som læst via raw SQL (klient ikke regenereret endnu)
   await prisma.$executeRaw`
     UPDATE "TicketMessage"
-    SET "readByCustomer" = 1
-    WHERE "ticketId" = ${params.id} AND "readByCustomer" = 0
+    SET "readByCustomer" = true
+    WHERE "ticketId" = ${params.id} AND "readByCustomer" = false
   `
 
   return (

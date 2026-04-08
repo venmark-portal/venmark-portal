@@ -21,8 +21,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // Marker ulæste beskeder som læst via raw SQL (klient ikke regenereret endnu)
   await prisma.$executeRaw`
     UPDATE "TicketMessage"
-    SET "readByCustomer" = 1
-    WHERE "ticketId" = ${params.id} AND "readByCustomer" = 0
+    SET "readByCustomer" = true
+    WHERE "ticketId" = ${params.id} AND "readByCustomer" = false
   `
 
   return NextResponse.json(ticket)
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
   await prisma.$executeRaw`
     INSERT INTO "TicketMessage" ("id","ticketId","sender","senderName","body","readByCustomer","createdAt")
-    VALUES (${msgId}, ${params.id}, 'CUSTOMER', ${name}, ${body.trim()}, 1, datetime('now'))
+    VALUES (${msgId}, ${params.id}, 'CUSTOMER', ${name}, ${body.trim()}, true, NOW())
   `
 
   // Genåbn ticket hvis lukket
