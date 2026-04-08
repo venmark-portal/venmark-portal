@@ -30,7 +30,6 @@ export default async function AdminLayout({
                 </span>
               </div>
               <nav className="flex items-center gap-1 text-sm font-medium text-gray-600 flex-wrap">
-                <a href="/admin"               className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Godkendelse</a>
                 <a href="/admin/kunder"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kunder</a>
                 <a href="/admin/anbefalinger"  className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Anbefalinger</a>
                 <a href="/admin/reklamationer" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Reklamationer</a>
