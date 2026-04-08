@@ -10,9 +10,9 @@ export const runtime = 'nodejs'
  * [id] = portal API invoice id (systemId fra Sales Invoice Header)
  *
  * Strategi:
- * 1. Prøv direkte ID-opslag i standard v2.0 salesInvoices
- * 2. Hvis 404: søg efter fakturaen via fakturanummer (håndterer ID-mismatch i sandbox)
- * 3. Hvis stadig ikke fundet: redirect til HTML-print som fallback
+ * 1. Kald custom BC endpoint (venmark/portal/v1.0/postedInvoicePdfs) → rapport 50040 som base64
+ * 2. Fallback: standard v2.0 salesInvoices pdfDocument (virker kun for nyere fakturaer)
+ * 3. Fallback: HTML-print siden
  */
 export async function GET(
   _req: NextRequest,
@@ -42,7 +42,6 @@ export async function GET(
     const tenant  = process.env.BC_TENANT_ID
     const env     = process.env.BC_ENVIRONMENT_NAME
     const company = process.env.BC_COMPANY_ID
-    const bcBase  = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
 
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
@@ -60,16 +59,40 @@ export async function GET(
     const { access_token: token } = await tokenRes.json()
     const authHeader = { Authorization: `Bearer ${token}` }
 
-    // Forsøg 1: direkte ID-opslag
-    console.log('[PDF] forsøg 1 — direkte ID:', invoiceId)
+    // Forsøg 1: custom endpoint → rapport 50040 som base64
+    // Kræver at BC extension er deployet med PortalInvoicePdfAPI (page 50175)
+    const customUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})/postedInvoicePdfs(${invoiceId})`
+    console.log('[PDF] forsøg 1 — custom endpoint:', customUrl)
+
+    const customRes = await fetch(customUrl, { headers: authHeader })
+
+    if (customRes.ok) {
+      const data = await customRes.json()
+      if (data.pdfBase64) {
+        console.log('[PDF] custom endpoint OK — returnerer rapport 50040')
+        const pdfBuffer = Buffer.from(data.pdfBase64, 'base64')
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type':        'application/pdf',
+            'Content-Disposition': `inline; filename="Faktura-${invoice.number}.pdf"`,
+            'Content-Length':      String(pdfBuffer.byteLength),
+          },
+        })
+      }
+    }
+
+    // Forsøg 2: standard v2.0 salesInvoices pdfDocument (virker for nyere fakturaer)
+    const bcBase  = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
+    console.log('[PDF] forsøg 2 — standard v2.0 direkte ID:', invoiceId)
     let pdfRes = await fetch(
       `${bcBase}/salesInvoices(${invoiceId})/pdfDocument/$value`,
       { headers: { ...authHeader, Accept: 'application/pdf' } },
     )
 
-    // Forsøg 2: opslag via fakturanummer (håndterer ID-mismatch i sandbox)
+    // Forsøg 2b: opslag via fakturanummer hvis direkte ID fejler
     if (pdfRes.status === 404) {
-      console.log('[PDF] forsøg 2 — søg via nummer:', invoice.number)
+      console.log('[PDF] forsøg 2b — søg via nummer:', invoice.number)
       const lookupRes = await fetch(
         `${bcBase}/salesInvoices?$filter=number eq '${invoice.number}'&$select=id`,
         { headers: authHeader },
@@ -77,7 +100,7 @@ export async function GET(
       if (lookupRes.ok) {
         const { value } = await lookupRes.json()
         const altId = value?.[0]?.id
-        if (altId && altId !== invoiceId) {
+        if (altId) {
           console.log('[PDF] fandt alternativt ID:', altId)
           pdfRes = await fetch(
             `${bcBase}/salesInvoices(${altId})/pdfDocument/$value`,
@@ -87,29 +110,24 @@ export async function GET(
       }
     }
 
-    // Fallback: redirect til HTML-print
-    if (pdfRes.status === 404) {
-      console.log('[PDF] ikke i BC standard API, fallback til HTML-print')
-      return NextResponse.redirect(
-        new URL(`/portal/fakturaer/${invoice.number}/print?print=1`, baseUrl)
-      )
+    if (pdfRes.ok) {
+      const pdfBuffer = await pdfRes.arrayBuffer()
+      return new NextResponse(pdfBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type':        'application/pdf',
+          'Content-Disposition': `inline; filename="Faktura-${invoice.number}.pdf"`,
+          'Content-Length':      String(pdfBuffer.byteLength),
+        },
+      })
     }
 
-    if (!pdfRes.ok) {
-      const errText = await pdfRes.text()
-      console.error('[PDF] BC fejl:', pdfRes.status, errText)
-      return NextResponse.json({ error: `BC fejl: ${pdfRes.status}` }, { status: 502 })
-    }
+    // Forsøg 3: HTML-print fallback
+    console.log('[PDF] alle BC-forsøg fejlede, fallback til HTML-print')
+    return NextResponse.redirect(
+      new URL(`/portal/fakturaer/${invoice.number}/print?print=1`, baseUrl)
+    )
 
-    const pdfBuffer = await pdfRes.arrayBuffer()
-    return new NextResponse(pdfBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type':        'application/pdf',
-        'Content-Disposition': `inline; filename="Faktura-${invoice.number}.pdf"`,
-        'Content-Length':      String(pdfBuffer.byteLength),
-      },
-    })
   } catch (e: any) {
     console.error('[PDF] fejl:', e)
     return NextResponse.json({ error: 'Kunne ikke hente PDF' }, { status: 500 })
