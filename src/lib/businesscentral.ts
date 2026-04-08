@@ -807,7 +807,6 @@ export interface BCPostedCreditMemo {
   totalAmountExcludingTax:  number
   totalAmountIncludingTax:  number
   remainingAmount:          number
-  closed:                   boolean
   paymentTermsCode:         string
   appliesToDocNo:           string
 }
@@ -847,7 +846,6 @@ export async function getPostedCreditMemos(
       totalAmountExcludingTax: cm.totalAmountExcludingTax ?? 0,
       totalAmountIncludingTax: cm.totalAmountIncludingTax ?? 0,
       remainingAmount:         cm.remainingAmount ?? 0,
-      closed:                  cm.closed ?? false,
       paymentTermsCode:        cm.paymentTermsCode ?? '',
       appliesToDocNo:          cm.appliestoDocNo ?? '',
     }))
