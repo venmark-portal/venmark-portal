@@ -60,6 +60,15 @@ export async function GET(
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
     })
 
+    if (pdfRes.status === 404) {
+      // Fakturaen er ikke i BC's standard API (typisk ældre fakturaer i sandbox)
+      // Redirect til HTML-print som fallback
+      console.log('[PDF] ikke i BC standard API, redirecter til HTML-print')
+      return NextResponse.redirect(
+        new URL(`/portal/fakturaer/${invoice.number}/print?print=1`, _req.url)
+      )
+    }
+
     if (!pdfRes.ok) {
       const errText = await pdfRes.text()
       console.error('[PDF] BC fejl:', pdfRes.status, errText)
