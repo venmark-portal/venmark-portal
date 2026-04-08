@@ -58,12 +58,14 @@ export async function GET(
       headers: { Authorization: `Bearer ${token}` },
     })
     const lookupData = await lookupRes.json()
+    console.log('[PDF] lookup status:', lookupRes.status, 'data:', JSON.stringify(lookupData).slice(0, 300))
     const stdInvoice = lookupData?.value?.[0]
 
     if (!stdInvoice?.id) {
-      console.error('Faktura-GUID ikke fundet for nummer', invoiceNumber, lookupData)
+      console.error('[PDF] Faktura-GUID ikke fundet for nummer', invoiceNumber)
       return NextResponse.json({ error: 'Faktura ikke fundet i BC' }, { status: 404 })
     }
+    console.log('[PDF] bruger GUID:', stdInvoice.id)
 
     // Hent PDF via standard API — bruger rapport fra Rapportvalg - Salg (Faktura)
     const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${stdInvoice.id})/pdfDocument/$value`
