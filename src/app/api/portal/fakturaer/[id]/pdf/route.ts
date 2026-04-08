@@ -8,6 +8,11 @@ export const runtime = 'nodejs'
 /**
  * GET /api/portal/fakturaer/[id]/pdf
  * [id] = portal API invoice id (systemId fra Sales Invoice Header)
+ *
+ * Strategi:
+ * 1. Prøv direkte ID-opslag i standard v2.0 salesInvoices
+ * 2. Hvis 404: søg efter fakturaen via fakturanummer (håndterer ID-mismatch i sandbox)
+ * 3. Hvis stadig ikke fundet: redirect til HTML-print som fallback
  */
 export async function GET(
   _req: NextRequest,
@@ -31,10 +36,13 @@ export async function GET(
     return NextResponse.json({ error: 'Faktura ikke fundet' }, { status: 404 })
   }
 
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://portal.venmark.dk'
+
   try {
     const tenant  = process.env.BC_TENANT_ID
     const env     = process.env.BC_ENVIRONMENT_NAME
     const company = process.env.BC_COMPANY_ID
+    const bcBase  = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
 
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
@@ -50,21 +58,38 @@ export async function GET(
       },
     )
     const { access_token: token } = await tokenRes.json()
+    const authHeader = { Authorization: `Bearer ${token}` }
 
-    // Brug portal API's id direkte — det er systemId fra Sales Invoice Header
-    // som matcher v2.0 pdfDocument endpoint
-    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${invoiceId})/pdfDocument/$value`
-    console.log('[PDF] henter:', pdfUrl)
+    // Forsøg 1: direkte ID-opslag
+    console.log('[PDF] forsøg 1 — direkte ID:', invoiceId)
+    let pdfRes = await fetch(
+      `${bcBase}/salesInvoices(${invoiceId})/pdfDocument/$value`,
+      { headers: { ...authHeader, Accept: 'application/pdf' } },
+    )
 
-    const pdfRes = await fetch(pdfUrl, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
-    })
-
+    // Forsøg 2: opslag via fakturanummer (håndterer ID-mismatch i sandbox)
     if (pdfRes.status === 404) {
-      // Fakturaen er ikke i BC's standard API (typisk ældre fakturaer i sandbox)
-      // Redirect til HTML-print som fallback
-      console.log('[PDF] ikke i BC standard API, redirecter til HTML-print')
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || 'https://portal.venmark.dk'
+      console.log('[PDF] forsøg 2 — søg via nummer:', invoice.number)
+      const lookupRes = await fetch(
+        `${bcBase}/salesInvoices?$filter=number eq '${invoice.number}'&$select=id`,
+        { headers: authHeader },
+      )
+      if (lookupRes.ok) {
+        const { value } = await lookupRes.json()
+        const altId = value?.[0]?.id
+        if (altId && altId !== invoiceId) {
+          console.log('[PDF] fandt alternativt ID:', altId)
+          pdfRes = await fetch(
+            `${bcBase}/salesInvoices(${altId})/pdfDocument/$value`,
+            { headers: { ...authHeader, Accept: 'application/pdf' } },
+          )
+        }
+      }
+    }
+
+    // Fallback: redirect til HTML-print
+    if (pdfRes.status === 404) {
+      console.log('[PDF] ikke i BC standard API, fallback til HTML-print')
       return NextResponse.redirect(
         new URL(`/portal/fakturaer/${invoice.number}/print?print=1`, baseUrl)
       )
