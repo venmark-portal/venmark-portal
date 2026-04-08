@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
     // Sæt de nye felter som Prisma-klienten ikke kender endnu
     await prisma.$executeRaw`
       UPDATE "Order"
-      SET driverNote     = ${body.driverNote ?? null},
-          poNumber       = ${body.poNumber ?? null},
-          orderedByName  = ${(session.user as any)?.name ?? null},
-          orderedByEmail = ${(session.user as any)?.email ?? null}
+      SET "driverNote"     = ${body.driverNote ?? null},
+          "poNumber"       = ${body.poNumber ?? null},
+          "orderedByName"  = ${(session.user as any)?.name ?? null},
+          "orderedByEmail" = ${(session.user as any)?.email ?? null}
       WHERE id = ${order.id}
     `
 

@@ -10,15 +10,14 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
   const customerId = (session.user as any)?.id as string
 
-  // Brug $queryRaw — DeliveryProfile og DeliveryPhoto er nye modeller (prisma generate DLL-lock workaround)
   const profiles = await prisma.$queryRaw<any[]>`
-    SELECT * FROM DeliveryProfile WHERE customerId = ${customerId} LIMIT 1
+    SELECT * FROM "DeliveryProfile" WHERE "customerId" = ${customerId} LIMIT 1
   `
   const profile = profiles[0]
   if (!profile) return NextResponse.json({})
 
   const photos = await prisma.$queryRaw<any[]>`
-    SELECT * FROM DeliveryPhoto WHERE profileId = ${profile.id} ORDER BY sortOrder ASC
+    SELECT * FROM "DeliveryPhoto" WHERE "profileId" = ${profile.id} ORDER BY "sortOrder" ASC
   `
 
   return NextResponse.json({ ...profile, photos })
@@ -33,9 +32,8 @@ export async function PUT(req: NextRequest) {
   const { doorCode, keyboxCode, alarmCode, deliveryDescription, driverMessage, photos } =
     await req.json()
 
-  // Tjek om profil allerede eksisterer
   const existing = await prisma.$queryRaw<any[]>`
-    SELECT id FROM DeliveryProfile WHERE customerId = ${customerId} LIMIT 1
+    SELECT id FROM "DeliveryProfile" WHERE "customerId" = ${customerId} LIMIT 1
   `
 
   let profileId: string
@@ -44,31 +42,30 @@ export async function PUT(req: NextRequest) {
   if (existing[0]) {
     profileId = existing[0].id
     await prisma.$executeRaw`
-      UPDATE DeliveryProfile
-      SET doorCode = ${doorCode ?? null},
-          keyboxCode = ${keyboxCode ?? null},
-          alarmCode = ${alarmCode ?? null},
-          deliveryDescription = ${deliveryDescription ?? null},
-          driverMessage = ${driverMessage ?? null},
-          updatedAt = ${now}
+      UPDATE "DeliveryProfile"
+      SET "doorCode"            = ${doorCode ?? null},
+          "keyboxCode"          = ${keyboxCode ?? null},
+          "alarmCode"           = ${alarmCode ?? null},
+          "deliveryDescription" = ${deliveryDescription ?? null},
+          "driverMessage"       = ${driverMessage ?? null},
+          "updatedAt"           = ${now}
       WHERE id = ${profileId}
     `
   } else {
     profileId = randomUUID()
     await prisma.$executeRaw`
-      INSERT INTO DeliveryProfile (id, customerId, doorCode, keyboxCode, alarmCode, deliveryDescription, driverMessage, createdAt, updatedAt)
+      INSERT INTO "DeliveryProfile" (id, "customerId", "doorCode", "keyboxCode", "alarmCode", "deliveryDescription", "driverMessage", "createdAt", "updatedAt")
       VALUES (${profileId}, ${customerId}, ${doorCode ?? null}, ${keyboxCode ?? null}, ${alarmCode ?? null}, ${deliveryDescription ?? null}, ${driverMessage ?? null}, ${now}, ${now})
     `
   }
 
-  // Erstat billeder (max 3): slet gamle og indsæt nye
   if (Array.isArray(photos)) {
-    await prisma.$executeRaw`DELETE FROM DeliveryPhoto WHERE profileId = ${profileId}`
+    await prisma.$executeRaw`DELETE FROM "DeliveryPhoto" WHERE "profileId" = ${profileId}`
     for (let i = 0; i < Math.min(photos.length, 3); i++) {
       const p = photos[i]
       const photoId = randomUUID()
       await prisma.$executeRaw`
-        INSERT INTO DeliveryPhoto (id, profileId, data, mimeType, fileName, sortOrder)
+        INSERT INTO "DeliveryPhoto" (id, "profileId", data, "mimeType", "fileName", "sortOrder")
         VALUES (${photoId}, ${profileId}, ${p.data}, ${p.mimeType}, ${p.fileName}, ${i})
       `
     }
