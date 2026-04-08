@@ -7,8 +7,8 @@ export const runtime = 'nodejs'
 
 /**
  * GET /api/portal/fakturaer/[id]/pdf
- * Henter PDF for en bogført faktura fra BC og returnerer den til browseren.
- * [id] = BC invoice GUID
+ * Henter PDF for en bogført faktura fra BC.
+ * [id] = fakturanummer (fx 227516) — vi slår standard-GUID op via number-filter
  */
 export async function GET(
   req: NextRequest,
@@ -19,30 +19,24 @@ export async function GET(
     return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
   }
 
-  const customerNo = (session.user as any)?.bcCustomerNumber as string ?? ''
-  const invoiceId  = params.id
+  const customerNo    = (session.user as any)?.bcCustomerNumber as string ?? ''
+  const invoiceNumber = params.id
 
-  // Verificér at denne faktura tilhører kunden (sikkerhedstjek)
+  // Verificér at fakturaen tilhører kunden
   const oneYearAgo = new Date()
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 3)
   const invoices = await getPostedInvoices(customerNo, oneYearAgo.toISOString().split('T')[0])
-  const invoice  = invoices.find(inv => inv.id === invoiceId)
+  const invoice  = invoices.find(inv => inv.number === invoiceNumber)
 
   if (!invoice) {
     return NextResponse.json({ error: 'Faktura ikke fundet' }, { status: 404 })
   }
 
-  // Hent token og kald BC standard API for PDF
-  const { getAccessToken: _getToken } = await import('@/lib/businesscentral') as any
-
   try {
-    // Vi bruger fetch direkte mod BC standard API v2.0
-    const { default: bcLib } = await import('@/lib/businesscentral') as any
     const tenant  = process.env.BC_TENANT_ID
     const env     = process.env.BC_ENVIRONMENT_NAME
     const company = process.env.BC_COMPANY_ID
 
-    // Hent access token via den eksporterede funktion
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
       {
@@ -56,18 +50,25 @@ export async function GET(
         }),
       },
     )
-    const tokenData = await tokenRes.json()
-    const token     = tokenData.access_token
+    const { access_token: token } = await tokenRes.json()
 
-    // BC standard API — bruger pdfDocument/$value som kalder den rapport der er sat i Rapportvalg - Salg (Faktura)
-    // Sæt rapport 50040 i BC: Rapportvalg - Salg → Faktura → Rapport-ID = 50040
-    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${invoiceId})/pdfDocument/$value`
+    // Slå standard-GUID op via fakturanummer i v2.0 API
+    const lookupUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices?$filter=number eq '${invoiceNumber}'&$select=id,number`
+    const lookupRes = await fetch(lookupUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const lookupData = await lookupRes.json()
+    const stdInvoice = lookupData?.value?.[0]
 
+    if (!stdInvoice?.id) {
+      console.error('Faktura-GUID ikke fundet for nummer', invoiceNumber, lookupData)
+      return NextResponse.json({ error: 'Faktura ikke fundet i BC' }, { status: 404 })
+    }
+
+    // Hent PDF via standard API — bruger rapport fra Rapportvalg - Salg (Faktura)
+    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${stdInvoice.id})/pdfDocument/$value`
     const pdfRes = await fetch(pdfUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/pdf',
-      },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
     })
 
     if (!pdfRes.ok) {
@@ -82,7 +83,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type':        'application/pdf',
-        'Content-Disposition': `attachment; filename="Faktura-${invoice.number}.pdf"`,
+        'Content-Disposition': `inline; filename="Faktura-${invoiceNumber}.pdf"`,
         'Content-Length':      String(pdfBuffer.byteLength),
       },
     })

@@ -46,7 +46,7 @@ export default async function FakturaDetailPage({ params }: { params: { number: 
         </div>
         {/* PDF-knap — henter BC rapport 50040 */}
         <a
-          href={`/api/portal/fakturaer/${invoice.id}/pdf`}
+          href={`/api/portal/fakturaer/${invoice.number}/pdf`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
