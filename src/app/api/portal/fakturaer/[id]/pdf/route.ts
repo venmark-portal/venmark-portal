@@ -64,8 +64,9 @@ export async function GET(
       // Fakturaen er ikke i BC's standard API (typisk ældre fakturaer i sandbox)
       // Redirect til HTML-print som fallback
       console.log('[PDF] ikke i BC standard API, redirecter til HTML-print')
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || 'https://portal.venmark.dk'
       return NextResponse.redirect(
-        new URL(`/portal/fakturaer/${invoice.number}/print?print=1`, _req.url)
+        new URL(`/portal/fakturaer/${invoice.number}/print?print=1`, baseUrl)
       )
     }
 
