@@ -110,7 +110,7 @@ export default async function FakturaerPage() {
                     </div>
                     {/* PDF-print knap */}
                     <a
-                      href={`/api/portal/fakturaer/${inv.number}/pdf`}
+                      href={`/api/portal/fakturaer/${inv.id}/pdf`}
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Download PDF"

@@ -7,11 +7,10 @@ export const runtime = 'nodejs'
 
 /**
  * GET /api/portal/fakturaer/[id]/pdf
- * Henter PDF for en bogført faktura fra BC.
- * [id] = fakturanummer (fx 227516) — vi slår standard-GUID op via number-filter
+ * [id] = portal API invoice id (systemId fra Sales Invoice Header)
  */
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const session = await getServerSession(authOptions)
@@ -19,14 +18,14 @@ export async function GET(
     return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
   }
 
-  const customerNo    = (session.user as any)?.bcCustomerNumber as string ?? ''
-  const invoiceNumber = params.id
+  const customerNo = (session.user as any)?.bcCustomerNumber as string ?? ''
+  const invoiceId  = params.id
 
   // Verificér at fakturaen tilhører kunden
-  const oneYearAgo = new Date()
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 3)
-  const invoices = await getPostedInvoices(customerNo, oneYearAgo.toISOString().split('T')[0])
-  const invoice  = invoices.find(inv => inv.number === invoiceNumber)
+  const threeYearsAgo = new Date()
+  threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3)
+  const invoices = await getPostedInvoices(customerNo, threeYearsAgo.toISOString().split('T')[0])
+  const invoice  = invoices.find(inv => inv.id === invoiceId)
 
   if (!invoice) {
     return NextResponse.json({ error: 'Faktura ikke fundet' }, { status: 404 })
@@ -52,45 +51,32 @@ export async function GET(
     )
     const { access_token: token } = await tokenRes.json()
 
-    // Slå standard-GUID op via fakturanummer i v2.0 API (bogførte fakturaer)
-    const lookupUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/postedSalesInvoices?$filter=number eq '${invoiceNumber}'&$select=id,number`
-    const lookupRes = await fetch(lookupUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const lookupData = await lookupRes.json()
-    console.log('[PDF] lookup status:', lookupRes.status, 'data:', JSON.stringify(lookupData).slice(0, 300))
-    const stdInvoice = lookupData?.value?.[0]
+    // Brug portal API's id direkte — det er systemId fra Sales Invoice Header
+    // som matcher v2.0 pdfDocument endpoint
+    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${invoiceId})/pdfDocument/$value`
+    console.log('[PDF] henter:', pdfUrl)
 
-    if (!stdInvoice?.id) {
-      console.error('[PDF] Faktura-GUID ikke fundet for nummer', invoiceNumber)
-      return NextResponse.json({ error: 'Faktura ikke fundet i BC' }, { status: 404 })
-    }
-    console.log('[PDF] bruger GUID:', stdInvoice.id)
-
-    // Hent PDF via standard API — bruger rapport fra Rapportvalg - Salg (Faktura)
-    const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/postedSalesInvoices(${stdInvoice.id})/pdfDocument/$value`
     const pdfRes = await fetch(pdfUrl, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
     })
 
     if (!pdfRes.ok) {
       const errText = await pdfRes.text()
-      console.error('BC PDF fejl:', pdfRes.status, errText)
-      return NextResponse.json({ error: `BC returnerede fejl: ${pdfRes.status}` }, { status: 502 })
+      console.error('[PDF] BC fejl:', pdfRes.status, errText)
+      return NextResponse.json({ error: `BC fejl: ${pdfRes.status}` }, { status: 502 })
     }
 
     const pdfBuffer = await pdfRes.arrayBuffer()
-
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type':        'application/pdf',
-        'Content-Disposition': `inline; filename="Faktura-${invoiceNumber}.pdf"`,
+        'Content-Disposition': `inline; filename="Faktura-${invoice.number}.pdf"`,
         'Content-Length':      String(pdfBuffer.byteLength),
       },
     })
   } catch (e: any) {
-    console.error('PDF-fejl:', e)
+    console.error('[PDF] fejl:', e)
     return NextResponse.json({ error: 'Kunne ikke hente PDF' }, { status: 500 })
   }
 }
