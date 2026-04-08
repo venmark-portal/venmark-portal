@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getPostedInvoices } from '@/lib/businesscentral'
+import { getPostedInvoices, getAccessToken } from '@/lib/businesscentral'
 
 export const runtime = 'nodejs'
 
@@ -10,8 +10,8 @@ export const runtime = 'nodejs'
  * [id] = portal API invoice id (systemId fra Sales Invoice Header)
  *
  * Strategi:
- * 1. Kald custom BC endpoint (venmark/portal/v1.0/postedInvoicePdfs) → rapport 50040 som base64
- * 2. Fallback: standard v2.0 salesInvoices pdfDocument (virker kun for nyere fakturaer)
+ * 1. Kald bound action generatePdf på custom portal API page 50170 (virker for ALLE fakturaer)
+ * 2. Fallback: standard v2.0 salesInvoices pdfDocument (kun nyere fakturaer)
  * 3. Fallback: HTML-print siden
  */
 export async function GET(
@@ -42,35 +42,28 @@ export async function GET(
     const tenant  = process.env.BC_TENANT_ID
     const env     = process.env.BC_ENVIRONMENT_NAME
     const company = process.env.BC_COMPANY_ID
-
-    const tokenRes = await fetch(
-      `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type:    'client_credentials',
-          client_id:     process.env.BC_CLIENT_ID!,
-          client_secret: process.env.BC_CLIENT_SECRET!,
-          scope:         'https://api.businesscentral.dynamics.com/.default',
-        }),
-      },
-    )
-    const { access_token: token } = await tokenRes.json()
+    const token   = await getAccessToken()
     const authHeader = { Authorization: `Bearer ${token}` }
 
-    // Forsøg 1: custom endpoint → rapport 50040 som base64
-    // Kræver at BC extension er deployet med PortalInvoicePdfAPI (page 50175)
-    const customUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})/postedInvoicePdfs(${invoiceId})`
-    console.log('[PDF] forsøg 1 — custom endpoint:', customUrl)
+    const customBase = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
-    const customRes = await fetch(customUrl, { headers: authHeader })
+    // Forsøg 1: bound action generatePdf på portal API page 50170
+    // Genererer PDF via BC Report Selection (rapport 50040 eller standard 1306)
+    console.log('[PDF] forsøg 1 — generatePdf bound action for:', invoice.number)
+    const genRes = await fetch(
+      `${customBase}/postedSalesInvoices(${invoiceId})/Microsoft.NAV.generatePdf`,
+      {
+        method: 'POST',
+        headers: { ...authHeader, 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+    )
 
-    if (customRes.ok) {
-      const data = await customRes.json()
-      if (data.pdfBase64) {
-        console.log('[PDF] custom endpoint OK — returnerer rapport 50040')
-        const pdfBuffer = Buffer.from(data.pdfBase64, 'base64')
+    if (genRes.ok) {
+      const { value: pdfBase64 } = await genRes.json()
+      if (pdfBase64) {
+        console.log('[PDF] genereret via bound action, base64 længde:', pdfBase64.length)
+        const pdfBuffer = Buffer.from(pdfBase64, 'base64')
         return new NextResponse(pdfBuffer, {
           status: 200,
           headers: {
@@ -80,17 +73,20 @@ export async function GET(
           },
         })
       }
+    } else {
+      console.log('[PDF] bound action fejlede:', genRes.status, await genRes.text().catch(() => ''))
     }
 
-    // Forsøg 2: standard v2.0 salesInvoices pdfDocument (virker for nyere fakturaer)
-    const bcBase  = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
-    console.log('[PDF] forsøg 2 — standard v2.0 direkte ID:', invoiceId)
+    // Forsøg 2: standard v2.0 salesInvoices pdfDocument (fallback for nyere fakturaer)
+    const bcBase = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
+
+    console.log('[PDF] forsøg 2 — standard salesInvoices pdfDocument')
     let pdfRes = await fetch(
       `${bcBase}/salesInvoices(${invoiceId})/pdfDocument/$value`,
       { headers: { ...authHeader, Accept: 'application/pdf' } },
     )
 
-    // Forsøg 2b: opslag via fakturanummer hvis direkte ID fejler
+    // Forsøg 2b: søg via fakturanummer (ID-mismatch i sandbox)
     if (pdfRes.status === 404) {
       console.log('[PDF] forsøg 2b — søg via nummer:', invoice.number)
       const lookupRes = await fetch(
@@ -100,7 +96,7 @@ export async function GET(
       if (lookupRes.ok) {
         const { value } = await lookupRes.json()
         const altId = value?.[0]?.id
-        if (altId) {
+        if (altId && altId !== invoiceId) {
           console.log('[PDF] fandt alternativt ID:', altId)
           pdfRes = await fetch(
             `${bcBase}/salesInvoices(${altId})/pdfDocument/$value`,

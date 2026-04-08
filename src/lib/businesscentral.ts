@@ -795,6 +795,105 @@ export async function getPostedInvoiceLines(invoiceNo: string): Promise<BCInvoic
   }
 }
 
+// ─── Kreditnotaer ────────────────────────────────────────────────────────────
+
+export interface BCPostedCreditMemo {
+  id:                       string
+  number:                   string
+  postingDate:              string
+  documentDate:             string
+  customerNumber:           string
+  customerName:             string
+  totalAmountExcludingTax:  number
+  totalAmountIncludingTax:  number
+  remainingAmount:          number
+  closed:                   boolean
+  paymentTermsCode:         string
+  appliesToDocNo:           string
+}
+
+export async function getPostedCreditMemos(
+  customerNo: string,
+  fromDate: string,
+): Promise<BCPostedCreditMemo[]> {
+  if (!customerNo) return []
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+    const filter = encodeURIComponent(
+      `customerNumber eq '${customerNo}' and postingDate ge ${fromDate}`,
+    )
+
+    const res = await fetch(
+      `${base}/postedCreditMemos?$filter=${filter}&$orderby=postingDate desc&$top=200`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        next: { revalidate: 300 },
+      },
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((cm: any) => ({
+      id:                      cm.id,
+      number:                  cm.number,
+      postingDate:             cm.postingDate,
+      documentDate:            cm.documentDate ?? cm.postingDate,
+      customerNumber:          cm.customerNumber,
+      customerName:            cm.customerName ?? '',
+      totalAmountExcludingTax: cm.totalAmountExcludingTax ?? 0,
+      totalAmountIncludingTax: cm.totalAmountIncludingTax ?? 0,
+      remainingAmount:         cm.remainingAmount ?? 0,
+      closed:                  cm.closed ?? false,
+      paymentTermsCode:        cm.paymentTermsCode ?? '',
+      appliesToDocNo:          cm.appliestoDocNo ?? '',
+    }))
+  } catch {
+    return []
+  }
+}
+
+export async function getPostedCreditMemoLines(creditMemoNo: string): Promise<BCInvoiceLine[]> {
+  if (!creditMemoNo) return []
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+    const filter = encodeURIComponent(`documentNumber eq '${creditMemoNo}'`)
+
+    const res = await fetch(
+      `${base}/postedCreditMemoLines?$filter=${filter}&$orderby=lineNumber`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        next: { revalidate: 300 },
+      },
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((l: any) => ({
+      id:                 l.id,
+      documentNumber:     l.documentNumber,
+      lineNumber:         l.lineNumber ?? 0,
+      type:               l.type ?? '',
+      itemNumber:         l.itemNumber ?? '',
+      description:        l.description ?? '',
+      unitOfMeasureCode:  l.unitOfMeasureCode ?? '',
+      quantity:           l.quantity ?? 0,
+      unitPrice:          l.unitPrice ?? 0,
+      lineAmount:         l.lineAmount ?? 0,
+      amountIncludingVAT: l.amountIncludingVAT ?? 0,
+    }))
+  } catch {
+    return []
+  }
+}
+
 // ─── Hent specifikke varer via varenumre ─────────────────────────────────────
 
 /**
