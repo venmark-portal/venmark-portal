@@ -59,7 +59,8 @@ export async function GET(
     const tokenData = await tokenRes.json()
     const token     = tokenData.access_token
 
-    // BC standard API — salesInvoices PDF via $value for rå PDF-stream
+    // BC standard API — bruger pdfDocument/$value som kalder den rapport der er sat i Rapportvalg - Salg (Faktura)
+    // Sæt rapport 50040 i BC: Rapportvalg - Salg → Faktura → Rapport-ID = 50040
     const pdfUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})/salesInvoices(${invoiceId})/pdfDocument/$value`
 
     const pdfRes = await fetch(pdfUrl, {

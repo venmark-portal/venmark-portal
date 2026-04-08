@@ -44,9 +44,9 @@ export default async function FakturaDetailPage({ params }: { params: { number: 
             Bogført {new Date(invoice.postingDate).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        {/* Print/PDF knap */}
+        {/* PDF-knap — henter BC rapport 50040 */}
         <a
-          href={`/portal/fakturaer/${invoice.number}/print?print=1`}
+          href={`/api/portal/fakturaer/${invoice.id}/pdf`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
