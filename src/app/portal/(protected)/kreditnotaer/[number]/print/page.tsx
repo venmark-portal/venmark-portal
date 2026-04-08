@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { getPostedCreditMemos, getPostedCreditMemoLines } from '@/lib/businesscentral'
-import PrintButtons from '../../fakturaer/[number]/print/PrintButtons'
+import PrintButtons from '../../../../../fakturaer/[number]/print/PrintButtons'
 
 export const dynamic = 'force-dynamic'
 
