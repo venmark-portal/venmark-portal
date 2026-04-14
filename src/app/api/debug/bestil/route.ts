@@ -49,34 +49,35 @@ export async function GET(req: Request) {
   const cutoffUrl = `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
   const cutoffResult = await rawFetch(cutoffUrl)
 
-  // Test 5: Tæl saelgForH=true i første side
-  const saelgForHCount = cutoffResult.sample
-    ? '(kun sample)'
-    : null
+  // Test 5: itemCutoffs MED filter på saelgForH (tester om BC tillader det)
+  const cutoffFilteredUrl = `${base}/itemCutoffs?$filter=${encodeURIComponent('portalSaelgForH eq true')}&$select=itemNo,portalSaelgForH&$top=50`
+  const cutoffFiltered = await rawFetch(cutoffFilteredUrl)
+
+  // Test 6: itemCutoffs uden filter men kun de første 50 — tæl saelgForH
+  const cutoffSample50Url = `${base}/itemCutoffs?$select=itemNo,portalSaelgForH&$top=50&$skip=0`
+  const cutoffSample50 = await rawFetch(cutoffSample50Url)
+  const saelgForHInFirst50 = cutoffSample50.sample?.filter((i: any) => i.portalSaelgForH === true)?.length ?? 0
 
   return NextResponse.json({
     params: { customerNo, priceGroup },
-    customerFavorites: {
-      url: favUrl,
-      ...favResult,
-    },
+    customerFavorites: { url: favUrl, ...favResult },
     portalPrices_customer: {
-      url: pricesCustUrl,
-      ...pricesCust,
+      url: pricesCustUrl, ...pricesCust,
       favoritesInSample: pricesCust.sample?.filter((p: any) => p.portalFavorite)?.length ?? 0,
     },
-    portalPrices_allCustomers_v1: {
-      url: pricesAll1Url,
-      ...pricesAll1,
-    },
-    portalPrices_allCustomers_v2: {
-      url: pricesAll2Url,
-      ...pricesAll2,
-    },
-    itemCutoffs: {
-      url: cutoffUrl,
-      ...cutoffResult,
+    portalPrices_allCustomers_v1: { url: pricesAll1Url, ...pricesAll1 },
+    portalPrices_allCustomers_v2: { url: pricesAll2Url, ...pricesAll2 },
+    itemCutoffs_noFilter: {
+      url: cutoffUrl, ...cutoffResult,
       saelgForHInSample: cutoffResult.sample?.filter((i: any) => i.portalSaelgForH === true)?.length ?? 0,
+    },
+    itemCutoffs_withFilter: {
+      url: cutoffFilteredUrl, ...cutoffFiltered,
+      filterWorks: cutoffFiltered.status === 200,
+    },
+    itemCutoffs_first50: {
+      saelgForHCount: saelgForHInFirst50,
+      sample: cutoffSample50.sample?.filter((i: any) => i.portalSaelgForH === true),
     },
   })
 }
