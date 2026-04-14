@@ -835,16 +835,16 @@ export default function OrderList({
   }
 
   // ── Tilføj via søgning ──────────────────────────────────────────────────────
-  function addSearchedItems(items: EnrichedItem[]) {
+  function addSearchedItems(items: { item: EnrichedItem; quantity: number }[]) {
     setLines(prev => {
       const next = new Map(prev)
-      for (const item of items) {
+      for (const { item, quantity } of items) {
         const existing = next.get(item.number)
-        next.set(item.number, { item, quantity: (existing?.quantity ?? 0) + 1, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+        next.set(item.number, { item, quantity: (existing?.quantity ?? 0) + quantity, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
       }
       return next
     })
-    // Modal lukkes ikke her — brugeren lukker selv med ESC eller X
+    setShowSearch(false)
   }
 
   // ── Indsend ordre ────────────────────────────────────────────────────────────
@@ -1325,7 +1325,12 @@ export default function OrderList({
 
       {/* Søgning/katalog modal */}
       {showSearch && (
-        <ItemSearchModal onAddItems={addSearchedItems} onClose={() => setShowSearch(false)} />
+        <ItemSearchModal
+          onAddItems={addSearchedItems}
+          onClose={() => setShowSearch(false)}
+          favNos={favSet}
+          onToggleFav={toggleFavorite}
+        />
       )}
 
       {/* Vare-detalje modal */}
