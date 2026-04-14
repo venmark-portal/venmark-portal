@@ -1,26 +1,17 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Search, X, Plus, ShoppingCart, Tag, Filter } from 'lucide-react'
+import { Search, X, Plus, ShoppingCart, Tag, Filter, Check, ShoppingBag } from 'lucide-react'
 import type { BCItem, BCItemCategory } from '@/lib/businesscentral'
 
 type EnrichedItem = BCItem & { unitPrice: number }
 
 interface Props {
-  onSelect: (item: EnrichedItem) => void
-  onClose:  () => void
+  onAddItems: (items: EnrichedItem[]) => void
+  onClose:    () => void
 }
 
-// Egenskabs-chips til hurtigfilter
-const ATTR_CHIPS = [
-  { label: '❄ Frost',       value: 'frost'     },
-  { label: '🎣 Vildfanget', value: 'vildfanget' },
-  { label: '🌿 Økologisk',  value: 'okologisk'  },
-  { label: '🔥 Røget',      value: 'roget'      },
-  { label: '💧 Fersk',      value: 'fersk'      },
-]
-
-export default function ItemSearchModal({ onSelect, onClose }: Props) {
+export default function ItemSearchModal({ onAddItems, onClose }: Props) {
   const [query,      setQuery]      = useState('')
   const [results,    setResults]    = useState<EnrichedItem[]>([])
   const [loading,    setLoading]    = useState(false)
@@ -28,14 +19,21 @@ export default function ItemSearchModal({ onSelect, onClose }: Props) {
   const [categories, setCategories] = useState<BCItemCategory[]>([])
   const [selCat,     setSelCat]     = useState<string | null>(null)
   const [showCats,   setShowCats]   = useState(false)
+  const [selected,   setSelected]   = useState<Map<string, EnrichedItem>>(new Map())
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Focus ved åbning
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
-  // Hent kategori-liste én gang
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   useEffect(() => {
     fetch('/api/products/categories')
       .then(r => r.json())
@@ -43,7 +41,6 @@ export default function ItemSearchModal({ onSelect, onClose }: Props) {
       .catch(() => {})
   }, [])
 
-  // Søg ved ændring i query eller kategori
   useEffect(() => {
     const hasQuery = query.trim().length >= 2
     const hasCat   = !!selCat
@@ -76,6 +73,21 @@ export default function ItemSearchModal({ onSelect, onClose }: Props) {
 
     return () => clearTimeout(timer)
   }, [query, selCat])
+
+  function toggleItem(item: EnrichedItem) {
+    setSelected(prev => {
+      const next = new Map(prev)
+      if (next.has(item.number)) next.delete(item.number)
+      else next.set(item.number, item)
+      return next
+    })
+  }
+
+  function handleAdd() {
+    if (selected.size === 0) return
+    onAddItems(Array.from(selected.values()))
+    setSelected(new Map()) // ryd valg — modal forbliver åben
+  }
 
   const fmt = new Intl.NumberFormat('da-DK', {
     style: 'currency', currency: 'DKK', minimumFractionDigits: 2,
@@ -178,16 +190,26 @@ export default function ItemSearchModal({ onSelect, onClose }: Props) {
             </div>
           )}
           {results.map((item) => {
-            const picUrl = item.picture?.id
+            const picUrl   = item.picture?.id
               ? `/api/portal/item-image/${item.id}?pictureId=${item.picture.id}`
               : null
+            const isSelected = selected.has(item.number)
 
             return (
               <button
                 key={item.id}
-                onClick={() => onSelect(item as EnrichedItem)}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-blue-50 transition border-b border-gray-50 last:border-0"
+                onClick={() => toggleItem(item as EnrichedItem)}
+                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition border-b border-gray-50 last:border-0 ${
+                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
               >
+                {/* Checkbox */}
+                <div className={`shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition ${
+                  isSelected ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+                }`}>
+                  {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
+                </div>
+
                 {/* Thumbnail */}
                 <div className="h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
                   {picUrl ? (
@@ -205,34 +227,46 @@ export default function ItemSearchModal({ onSelect, onClose }: Props) {
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <span className="font-mono">{item.number}</span>
                     {item.itemCategoryCode && (
-                      <span className="text-gray-300">·</span>
-                    )}
-                    {item.itemCategoryCode && (
-                      <span className="text-gray-400">{item.itemCategoryCode}</span>
+                      <><span className="text-gray-300">·</span>
+                      <span className="text-gray-400">{item.itemCategoryCode}</span></>
                     )}
                     {item.unitPrice > 0 && (
-                      <>
-                        <span className="text-gray-300">·</span>
-                        <span className="font-semibold text-gray-700">
-                          {fmt.format(item.unitPrice)}/{item.baseUnitOfMeasureCode}
-                        </span>
-                      </>
+                      <><span className="text-gray-300">·</span>
+                      <span className="font-semibold text-gray-700">
+                        {fmt.format(item.unitPrice)}/{item.baseUnitOfMeasureCode}
+                      </span></>
                     )}
                   </div>
                 </div>
-
-                <Plus size={18} className="shrink-0 text-blue-500" />
               </button>
             )
           })}
         </div>
 
-        {/* Resultat-tæller */}
-        {results.length > 0 && (
-          <div className="border-t border-gray-100 px-4 py-2 shrink-0 text-center text-xs text-gray-400">
-            {results.length} varer — klik for at tilføje til bestilling
-          </div>
-        )}
+        {/* ── Bund: tæller + tilføj-knap ── */}
+        <div className="border-t border-gray-100 px-4 py-3 shrink-0 flex items-center gap-3">
+          <span className="flex-1 text-xs text-gray-400">
+            {results.length > 0
+              ? selected.size > 0
+                ? `${selected.size} valgt af ${results.length}`
+                : `${results.length} varer — klik for at vælge`
+              : ''}
+          </span>
+          {selected.size > 0 && (
+            <button
+              onClick={handleAdd}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              <ShoppingBag size={15} />
+              Tilføj {selected.size} {selected.size === 1 ? 'vare' : 'varer'}
+            </button>
+          )}
+          {selected.size === 0 && (
+            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
+              Luk
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

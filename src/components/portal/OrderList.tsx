@@ -495,7 +495,7 @@ function OrderRow({
             <span className="w-6 text-[11px] text-gray-400 text-right">{item.baseUnitOfMeasureCode}</span>
           )}
 
-          {/* Minus / antal-felt / Plus */}
+          {/* Minus / antal-felt / Plus / +10 / +50 */}
           <button
             onClick={() => onQty(Math.max(0, quantity - 1))}
             disabled={quantity === 0}
@@ -516,6 +516,18 @@ function OrderRow({
             className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
           >
             <Plus size={12} />
+          </button>
+          <button
+            onClick={() => onQty(quantity + 10)}
+            className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+          >
+            +10
+          </button>
+          <button
+            onClick={() => onQty(quantity + 50)}
+            className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+          >
+            +50
           </button>
         </div>
 
@@ -823,14 +835,16 @@ export default function OrderList({
   }
 
   // ── Tilføj via søgning ──────────────────────────────────────────────────────
-  function addSearchedItem(item: EnrichedItem) {
+  function addSearchedItems(items: EnrichedItem[]) {
     setLines(prev => {
       const next = new Map(prev)
-      const existing = next.get(item.number)
-      next.set(item.number, { item, quantity: (existing?.quantity ?? 0) + 1, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+      for (const item of items) {
+        const existing = next.get(item.number)
+        next.set(item.number, { item, quantity: (existing?.quantity ?? 0) + 1, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+      }
       return next
     })
-    setShowSearch(false)
+    // Modal lukkes ikke her — brugeren lukker selv med ESC eller X
   }
 
   // ── Indsend ordre ────────────────────────────────────────────────────────────
@@ -1311,7 +1325,7 @@ export default function OrderList({
 
       {/* Søgning/katalog modal */}
       {showSearch && (
-        <ItemSearchModal onSelect={addSearchedItem} onClose={() => setShowSearch(false)} />
+        <ItemSearchModal onAddItems={addSearchedItems} onClose={() => setShowSearch(false)} />
       )}
 
       {/* Vare-detalje modal */}
