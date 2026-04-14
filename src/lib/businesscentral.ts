@@ -589,11 +589,12 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
     const company = process.env.BC_COMPANY_ID
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
-    // Hent alle varer med cutoff/saelgForH — paginer med nextLink
+    // Kun varer med saelgForH=true ELLER cutoff sat — undgår BC's 1000-poster-cap på alle varer
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     const allItems: any[] = []
+    const filter  = encodeURIComponent(`portalSaelgForH eq true or portalCutoffWeekday gt 0`)
     let nextUrl: string | null =
-      `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
+      `${base}/itemCutoffs?$filter=${filter}&$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
     while (nextUrl) {
       const res = await fetch(nextUrl, { headers, next: { revalidate: 3600 } } as any)
       if (!res.ok) break
@@ -915,24 +916,25 @@ export async function getItemsByNumbers(numbers: string[]): Promise<BCItem[]> {
   const token = await getAccessToken()
   const base  = bcBaseUrl()
 
-  // BC understøtter ikke "in" operator — vi henter batch med startswith + OR (max 15 ad gangen)
-  // Enkleste approach: hent de første 1000 og filtrer klient-side
-  const filter = numbers
-    .slice(0, 20)
-    .map((n) => `number eq '${n}'`)
-    .join(' or ')
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  const res = await fetch(
-    `${base}/items?$filter=${encodeURIComponent(filter)}&$select=id,number,displayName,baseUnitOfMeasureCode,itemCategoryCode,unitPrice,inventory&$expand=picture`,
-    {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 300 },
-    }
-  )
+  // BC OData OR-filter har URL-grænse — hent i batches af 15
+  const BATCH = 15
+  const results: BCItem[] = []
 
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.value ?? []
+  for (let i = 0; i < numbers.length; i += BATCH) {
+    const batch  = numbers.slice(i, i + BATCH)
+    const filter = batch.map((n) => `number eq '${n}'`).join(' or ')
+    const res = await fetch(
+      `${base}/items?$filter=${encodeURIComponent(filter)}&$select=id,number,displayName,baseUnitOfMeasureCode,itemCategoryCode,unitPrice,inventory&$expand=picture`,
+      { headers, next: { revalidate: 300 } } as any,
+    )
+    if (!res.ok) continue
+    const data = await res.json()
+    results.push(...(data.value ?? []))
+  }
+
+  return results
 }
 
 // ─── Opret salgsordre i BC ───────────────────────────────────────────────────
