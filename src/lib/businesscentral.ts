@@ -330,37 +330,42 @@ export async function getPortalPrices(
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
     const headers  = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-    const cacheOpts = { next: { revalidate: 300 } } as const
 
-    // BC OData understøtter ikke OR på tværs af felter — brug parallelle kald
-    const fetches: Promise<Response>[] = []
+    // Hjælpefunktion: paginér ét OData-endpoint til ende
+    async function fetchAllPages(startUrl: string): Promise<any[]> {
+      const items: any[] = []
+      let url: string | null = startUrl
+      while (url) {
+        const res: Response = await fetch(url, { headers, next: { revalidate: 300 } } as any)
+        if (!res.ok) break
+        const data = await res.json()
+        items.push(...(data.value ?? []))
+        url = data['@odata.nextLink'] ?? null
+      }
+      return items
+    }
+
+    // BC OData understøtter ikke OR på tværs af felter — kald parallelt, paginer hvert
+    const fetchJobs: Promise<any[]>[] = []
 
     if (customerNo) {
       const f = encodeURIComponent(`sourceType eq 'Customer' and sourceNo eq '${customerNo}'`)
-      fetches.push(fetch(`${base}/portalPrices?$filter=${f}&$top=2000`, { headers, ...cacheOpts }))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
     }
     if (priceGroup) {
-      // BC serialiserer enum-værdien som "Customer_x0020_Price_x0020_Group" i JSON-svar,
-      // men OData-filter bruger den rå enum-tekst. Prøv begge varianter parallelt.
       const f1 = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
       const f2 = encodeURIComponent(`sourceType eq 'Customer_x0020_Price_x0020_Group' and sourceNo eq '${priceGroup}'`)
-      fetches.push(fetch(`${base}/portalPrices?$filter=${f1}&$top=2000`, { headers, ...cacheOpts }))
-      fetches.push(fetch(`${base}/portalPrices?$filter=${f2}&$top=2000`, { headers, ...cacheOpts }))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f1}&$top=1000`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f2}&$top=1000`))
     }
-    // All Customers priser — prøv begge varianter
+    // All Customers priser — prøv begge enum-varianter
     const fAll1 = encodeURIComponent(`sourceType eq 'All Customers'`)
     const fAll2 = encodeURIComponent(`sourceType eq 'All_x0020_Customers'`)
-    fetches.push(fetch(`${base}/portalPrices?$filter=${fAll1}&$top=2000`, { headers, ...cacheOpts }))
-    fetches.push(fetch(`${base}/portalPrices?$filter=${fAll2}&$top=2000`, { headers, ...cacheOpts }))
+    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll1}&$top=1000`))
+    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll2}&$top=1000`))
 
-    const responses = await Promise.all(fetches)
-    const allItems: any[] = []
-    for (const res of responses) {
-      if (res.ok) {
-        const data = await res.json()
-        allItems.push(...(data.value ?? []))
-      }
-    }
+    const pages = await Promise.all(fetchJobs)
+    const allItems: any[] = pages.flat()
 
     // Dedupliker på id
     const seen = new Set<string>()
