@@ -589,19 +589,30 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
     const company = process.env.BC_COMPANY_ID
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
-    // Kun varer med saelgForH=true ELLER cutoff sat — undgår BC's 1000-poster-cap på alle varer
+    // To separate kald — BC OData understøtter ikke OR på tværs af custom felter
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-    const allItems: any[] = []
-    const filter  = encodeURIComponent(`portalSaelgForH eq true or portalCutoffWeekday gt 0`)
-    let nextUrl: string | null =
-      `${base}/itemCutoffs?$filter=${filter}&$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
-    while (nextUrl) {
-      const res = await fetch(nextUrl, { headers, next: { revalidate: 3600 } } as any)
-      if (!res.ok) break
-      const data = await res.json()
-      allItems.push(...(data.value ?? []))
-      nextUrl = data['@odata.nextLink'] ?? null
+    const sel     = `$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
+    const f1      = encodeURIComponent(`portalSaelgForH eq true`)
+    const f2      = encodeURIComponent(`portalCutoffWeekday gt 0`)
+
+    async function fetchCutoffPages(startUrl: string): Promise<any[]> {
+      const items: any[] = []
+      let url: string | null = startUrl
+      while (url) {
+        const res: Response = await fetch(url, { headers, next: { revalidate: 3600 } } as any)
+        if (!res.ok) break
+        const data = await res.json()
+        items.push(...(data.value ?? []))
+        url = data['@odata.nextLink'] ?? null
+      }
+      return items
     }
+
+    const [saelgItems, cutoffItems] = await Promise.all([
+      fetchCutoffPages(`${base}/itemCutoffs?$filter=${f1}&${sel}`),
+      fetchCutoffPages(`${base}/itemCutoffs?$filter=${f2}&${sel}`),
+    ])
+    const allItems = [...saelgItems, ...cutoffItems]
 
     const result = new Map<string, BCItemPortalData>()
     for (const item of allItems) {
