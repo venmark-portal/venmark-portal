@@ -479,15 +479,19 @@ export async function getCustomerFavorites(customerNo: string): Promise<BCCustom
     const company = process.env.BC_COMPANY_ID
     const base   = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const filter = encodeURIComponent(`customerNo eq '${customerNo}'`)
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-    const res = await fetch(`${base}/customerFavorites?$filter=${filter}&$orderby=sortOrder`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 120 },
-    })
-    if (!res.ok) return []
+    const allItems: any[] = []
+    let nextUrl: string | null = `${base}/customerFavorites?$filter=${filter}&$orderby=sortOrder&$top=500`
+    while (nextUrl) {
+      const res = await fetch(nextUrl, { headers, next: { revalidate: 120 } } as any)
+      if (!res.ok) break
+      const data = await res.json()
+      allItems.push(...(data.value ?? []))
+      nextUrl = data['@odata.nextLink'] ?? null
+    }
 
-    const data = await res.json()
-    return (data.value ?? []).map((f: any) => ({
+    return allItems.map((f: any) => ({
       customerNo:      f.customerNo ?? '',
       lineNo:          f.lineNo ?? 0,
       itemNo:          f.itemNo ?? '',
@@ -580,19 +584,21 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
     const company = process.env.BC_COMPANY_ID
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
-    // Hent alle varer med enten cutoff ELLER saelgForH sat
-    const res = await fetch(
-      `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`,
-      {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        next: { revalidate: 3600 },
-      }
-    )
-    if (!res.ok) return new Map()
+    // Hent alle varer med cutoff/saelgForH — paginer med nextLink
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    const allItems: any[] = []
+    let nextUrl: string | null =
+      `${base}/itemCutoffs?$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
+    while (nextUrl) {
+      const res = await fetch(nextUrl, { headers, next: { revalidate: 3600 } } as any)
+      if (!res.ok) break
+      const data = await res.json()
+      allItems.push(...(data.value ?? []))
+      nextUrl = data['@odata.nextLink'] ?? null
+    }
 
-    const data = await res.json()
     const result = new Map<string, BCItemPortalData>()
-    for (const item of data.value ?? []) {
+    for (const item of allItems) {
       if (!item.itemNo) continue
       result.set(item.itemNo, {
         cutoffWeekday:    item.portalCutoffWeekday ?? 0,
