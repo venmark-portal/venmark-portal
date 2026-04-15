@@ -257,17 +257,20 @@ model OrderLine {
 // ─── Levering & Logistik ──────────────────────────────────────────────────────
 
 model DriverUser {
-  id        String      @id @default(cuid())
-  name      String
-  phone     String?
-  email     String?
-  pinHash   String
-  isDefault Boolean     @default(false)
-  isActive  Boolean     @default(true)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  vehicles  RouteVehicle[] @relation("VehicleDriver")
-  stops     RouteStop[]
+  id                   String      @id @default(cuid())
+  name                 String
+  phone                String?
+  email                String?
+  pinHash              String
+  isDefault            Boolean     @default(false)
+  isActive             Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  bcDriverCode         String?     @unique
+  defaultVehicleLabel  String      @default("Bil 1")
+  bcShipmentMethodCode String?
+  vehicles             RouteVehicle[] @relation("VehicleDriver")
+  stops                RouteStop[]
 }
 
 model DeliveryCode {
@@ -345,17 +348,38 @@ model RouteStop {
   failureNote String?
   packedStatus String?  // læst fra BC: READY | PARTIAL | PENDING
 
-  createdAt DateTime    @default(now())
-  photos    StopPhoto[]
+  kobSalesOrderNo String?
+  createdAt       DateTime    @default(now())
+  photos          RouteStopPhoto[]
 }
 
-model StopPhoto {
+model RouteStopPhoto {
   id        String    @id @default(cuid())
   stop      RouteStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
   stopId    String
   filename  String
   takenAt   DateTime  @default(now())
   expiresAt DateTime
+  lat       Float?
+  lng       Float?
+}
+
+model CustomerRouteProfile {
+  customerNo     String   @id
+  routeOrder     Int      @default(5000)
+  defaultVehicle Int      @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
+model PodRecipient {
+  id           String  @id @default(cuid())
+  bcCustomerNo String
+  name         String?
+  email        String?
+  phone        String?
+  sendEmail    Boolean @default(false)
+  sendSms      Boolean @default(false)
+  sortOrder    Int     @default(0)
 }
 
 // ─── Specialvarer (Netvarer) ──────────────────────────────────────────────────
