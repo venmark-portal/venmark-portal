@@ -39,6 +39,7 @@ export default async function AdminLayout({
                 <a href="/admin/leveringshistorik" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Historik</a>
                 <a href="/admin/chauffoerer"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Chauffører</a>
                 <a href="/admin/leveringskoder"   className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Leveringskoder</a>
+                <a href="/admin/kassefoto"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kassefoto</a>
               </nav>
               <a
                 href="/api/auth/signout"
