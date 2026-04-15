@@ -28,16 +28,21 @@ export default function KassefotoPage() {
     setLoading(true)
     setSearched(true)
 
-    // Afgør om det er et kassesnummer (heltal) eller en salgsordre
-    const isEntryNo = /^\d+$/.test(q)
-    const url = isEntryNo
-      ? `/api/foto/kasse?entryNo=${encodeURIComponent(q)}`
-      : `/api/foto/ordre?salesOrderNo=${encodeURIComponent(q)}`
-
     try {
-      const res = await fetch(url)
-      const data = res.ok ? await res.json() : []
-      setPhotos(Array.isArray(data) ? data : [])
+      // Søg altid på begge — ordrenummer kan også være et rent tal (f.eks. 265803)
+      const byOrder = fetch(`/api/foto/ordre?salesOrderNo=${encodeURIComponent(q)}`)
+        .then(r => r.ok ? r.json() : []).catch(() => [])
+      const byEntry = /^\d+$/.test(q)
+        ? fetch(`/api/foto/kasse?entryNo=${encodeURIComponent(q)}`)
+            .then(r => r.ok ? r.json() : []).catch(() => [])
+        : Promise.resolve([])
+
+      const [fromOrder, fromEntry] = await Promise.all([byOrder, byEntry])
+      // Slå sammen, undgå dubletter på id
+      const seen = new Set<string>()
+      const combined = [...(Array.isArray(fromOrder) ? fromOrder : []), ...(Array.isArray(fromEntry) ? fromEntry : [])]
+        .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true })
+      setPhotos(combined)
     } catch {
       setPhotos([])
     } finally {
