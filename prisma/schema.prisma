@@ -31,6 +31,7 @@ model Customer {
   standingOrders StandingOrder[]
   tickets        Ticket[]
   deliveryProfile DeliveryProfile?
+  specialVareReservations SpecialVareReservation[]
   requirePoNumber     Boolean  @default(false)
   bcDebitorBookingGroup String? // e.g. "Salling", "COOP" — triggers mandatory PO
   contacts            ContactUser[]
@@ -355,4 +356,86 @@ model StopPhoto {
   filename  String
   takenAt   DateTime  @default(now())
   expiresAt DateTime
+}
+
+// ─── Specialvarer (Netvarer) ──────────────────────────────────────────────────
+// Oprettes automatisk fra BC når en Netvare-kasse registreres.
+// Vises øverst på bestillingssiden og udløber automatisk kl. 23:59 samme dag.
+
+model SpecialVare {
+  id           String   @id @default(cuid())
+  bcItemNumber String
+  itemName     String
+  boxEntryNo   Int?     // BC Portal Production Box Entry No. → kobler til foto
+  availableKg  Float
+  reservedKg   Float    @default(0)
+  pricePerKg   Float?   // valgfri — vises på portalen
+  note         String?
+  expiresAt    DateTime // automatisk sat til i dag kl. 23:59
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  reservations SpecialVareReservation[]
+
+  @@index([isActive, expiresAt])
+}
+
+model SpecialVareReservation {
+  id            String      @id @default(cuid())
+  specialVare   SpecialVare @relation(fields: [specialVareId], references: [id], onDelete: Cascade)
+  specialVareId String
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  customerId    String
+  kg            Float
+  status        String      @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+  orderId       String?     // sættes når overført til ordre
+  createdAt     DateTime    @default(now())
+
+  @@index([customerId, status])
+  @@index([specialVareId])
+}
+
+// ─── Kassefoto-system ─────────────────────────────────────────────────────────
+// Fotos tages automatisk ved label-print via foto-station i browser.
+// Kobles til salgsordre/kunde når kassen scannes.
+// Slettes automatisk efter 7 dage via cleanup-job.
+
+model BoxPhoto {
+  id             String   @id @default(cuid())
+  bcBoxEntryNo   Int      // Portal Production Box Entry No. i BC
+  filePath       String   // relativ sti: uploads/boxfotos/YYYY-MM/id.jpg
+  takenAt        DateTime @default(now())
+  expiresAt      DateTime // takenAt + 7 dage
+  bcSalesOrderNo String?  // sættes når kassen scannes til salgsordre
+  bcCustomerNo   String?  // sættes når kassen scannes til salgsordre
+  boxWeight      Float?   // kopi af Box.Weight fra BC (til hurtig visning)
+  itemNo         String?  // kopi af Box.ItemNo
+
+  @@index([bcBoxEntryNo])
+  @@index([bcSalesOrderNo])
+  @@index([bcCustomerNo])
+  @@index([expiresAt])
+}
+
+// PendingCapture: BC opretter en post når label printes.
+// Foto-stationen poller og fanger billedet, markerer captured = true.
+model PendingCapture {
+  id           String   @id @default(cuid())
+  bcBoxEntryNo Int
+  stationId    String   @default("default") // til flere pakstationer
+  requestedAt  DateTime @default(now())
+  captured     Boolean  @default(false)
+
+  @@index([stationId, captured])
+}
+
+// BoxPallet: gruppe af kasser/subtotaler der udgør en palle.
+// Oprettes når palle-label printes eller palle scannes færdig.
+model BoxPallet {
+  id             String   @id @default(cuid())
+  palletRef      String   @unique // barcode-reference (f.eks. PAL-{id})
+  bcSalesOrderNo String?
+  bcCustomerNo   String?
+  createdAt      DateTime @default(now())
+  boxEntries     String   @default("[]") // JSON-array af bcBoxEntryNo
 }

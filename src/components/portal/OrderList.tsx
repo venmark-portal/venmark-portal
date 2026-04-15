@@ -3,7 +3,7 @@
 import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from 'react'
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
-  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw,
+  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory } from '@/lib/businesscentral'
@@ -60,6 +60,23 @@ interface Props {
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
+
+interface SpecialVareItem {
+  id: string
+  bcItemNumber: string
+  itemName: string
+  boxEntryNo: number | null
+  availableKg: number
+  reservedKg: number
+  pricePerKg: number | null
+  note: string | null
+  expiresAt: string
+}
+
+interface SpecialReservation {
+  reservationId: string
+  kg: number
+}
 
 // ─── Katalog-kategori-træ ─────────────────────────────────────────────────────
 
@@ -727,8 +744,13 @@ export default function OrderList({
   const [notes,      setNotes]        = useState('')
   const [driverNote, setDriverNote]   = useState('')
   const [poNumber,   setPoNumber]     = useState('')
-  const [detailItem, setDetailItem]   = useState<EnrichedItem | null>(null)
-  const [, startTransition]           = useTransition()
+  const [detailItem, setDetailItem]           = useState<EnrichedItem | null>(null)
+  const [, startTransition]                   = useTransition()
+  const [specialVarer, setSpecialVarer]       = useState<SpecialVareItem[]>([])
+  const [specialReservations, setSpecialReservations] = useState<Map<string, SpecialReservation>>(new Map())
+  const [specialKgInputs, setSpecialKgInputs] = useState<Map<string, string>>(new Map())
+  const [specialReserving, setSpecialReserving] = useState<string | null>(null) // specialVareId under reservation
+  const [showSpecial, setShowSpecial]         = useState(true)
 
   // (Faste ordrer redigeres i BC — ikke fra portalen)
 
@@ -782,6 +804,99 @@ export default function OrderList({
   }, [])
 
   const getQty = (itemNumber: string) => lines.get(itemNumber)?.quantity ?? 0
+
+  // ── Hent specialvarer ved mount og hvert 60. sekund ────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    async function fetchSpecial() {
+      try {
+        const res = await fetch('/api/specialvarer')
+        if (!res.ok || cancelled) return
+        const data: SpecialVareItem[] = await res.json()
+        if (!cancelled) {
+          setSpecialVarer(data)
+          // Sæt standard kg-input til 1 for nye varer uden eksisterende input
+          setSpecialKgInputs(prev => {
+            const next = new Map(prev)
+            for (const v of data) {
+              if (!next.has(v.id)) next.set(v.id, '1')
+            }
+            return next
+          })
+        }
+      } catch { /* stil */ }
+    }
+    fetchSpecial()
+    const interval = setInterval(fetchSpecial, 60_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
+  async function handleReserver(vare: SpecialVareItem) {
+    const kgStr = specialKgInputs.get(vare.id) ?? '1'
+    const kg = parseFloat(kgStr.replace(',', '.'))
+    if (!kg || kg <= 0) return
+    setSpecialReserving(vare.id)
+    try {
+      const res = await fetch('/api/specialvarer/reserver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ specialVareId: vare.id, kg }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setError(err.error ?? 'Reservation fejlede')
+        return
+      }
+      const data = await res.json()
+      // Gem reservation
+      setSpecialReservations(prev => new Map(prev).set(vare.id, { reservationId: data.reservationId, kg }))
+      // Opdater specialvarer med ny reserveret mængde
+      setSpecialVarer(prev => prev.map(v => v.id === vare.id
+        ? { ...v, reservedKg: v.reservedKg + kg }
+        : v
+      ))
+      // Tilføj som ordrelinje (brug et simpelt EnrichedItem-lignende objekt)
+      const fakeItem: EnrichedItem = {
+        id: `sv-${vare.id}`,
+        number: vare.bcItemNumber,
+        displayName: vare.itemName,
+        unitPrice: vare.pricePerKg ?? 0,
+        baseUnitOfMeasureCode: 'KG',
+        inventory: 9999,
+        blocked: false,
+        itemCategoryCode: '',
+        productGroupCode: '',
+        picture: null,
+        attributes: [],
+        uoms: [{ code: 'KG', displayName: 'KG', qtyPerUnitOfMeasure: 1, baseUnitOfMeasure: true }],
+        pictureId: null,
+      } as any
+      setLines(prev => new Map(prev).set(vare.bcItemNumber, { item: fakeItem, quantity: kg, uom: 'KG' }))
+      setLineUoms(prev => new Map(prev).set(vare.bcItemNumber, 'KG'))
+    } catch {
+      setError('Serverfejl ved reservation')
+    } finally {
+      setSpecialReserving(null)
+    }
+  }
+
+  async function handleCancelReservation(vare: SpecialVareItem) {
+    const res = specialReservations.get(vare.id)
+    if (!res) return
+    try {
+      await fetch('/api/specialvarer/reserver', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservationId: res.reservationId }),
+      })
+      setSpecialReservations(prev => { const n = new Map(prev); n.delete(vare.id); return n })
+      setSpecialVarer(prev => prev.map(v => v.id === vare.id
+        ? { ...v, reservedKg: Math.max(0, v.reservedKg - res.kg) }
+        : v
+      ))
+      setLines(prev => { const n = new Map(prev); n.delete(vare.bcItemNumber); return n })
+    } catch { /* stil */ }
+  }
 
   // ── Opdater faste ordrelinjer når leveringsdagen skifter ─────────────────────
   // Sæt der tracker hvilke varenumre brugeren har manuelt redigeret
@@ -871,7 +986,10 @@ export default function OrderList({
       const res = await fetch('/api/portal/order', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ deliveryDate: deliveryDate.toISOString(), notes, driverNote, poNumber, lines: orderLines }),
+        body:    JSON.stringify({
+          deliveryDate: deliveryDate.toISOString(), notes, driverNote, poNumber, lines: orderLines,
+          reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
+        }),
       })
       if (!res.ok) throw new Error(await res.text())
       setSubmitted(true)
@@ -930,8 +1048,14 @@ export default function OrderList({
     return () => { cancelled = true }
   }, [activeCategory])
 
+  const specialReservedNos = new Set(
+    Array.from(specialReservations.keys())
+      .map(vId => specialVarer.find(v => v.id === vId)?.bcItemNumber)
+      .filter(Boolean) as string[]
+  )
+
   const searchedLines = Array.from(lines.values()).filter(
-    l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number) && !standingNos.has(l.item.number)
+    l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number) && !standingNos.has(l.item.number) && !specialReservedNos.has(l.item.number)
   )
 
   // Ugedagsnavn til sektion-header
@@ -1048,6 +1172,101 @@ export default function OrderList({
             </div>
           )}
         </div>
+
+        {/* Specialvarer (Netvarer) */}
+        {!isCatalogMode && specialVarer.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowSpecial(v => !v)}
+              className="flex w-full items-center justify-between bg-teal-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-teal-700 border-b border-teal-100"
+            >
+              <span className="flex items-center gap-1.5"><Fish size={12} /> Dagens specialvarer ({specialVarer.length})</span>
+              {showSpecial ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showSpecial && (
+              <div className="divide-y divide-teal-50">
+                {specialVarer.map(vare => {
+                  const fmt2 = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+                  const remaining = vare.availableKg - vare.reservedKg
+                  const myRes = specialReservations.get(vare.id)
+                  const kgInput = specialKgInputs.get(vare.id) ?? '1'
+                  const isReserving = specialReserving === vare.id
+                  return (
+                    <div key={vare.id} className="px-3 py-3 bg-teal-50/40">
+                      <div className="flex items-start gap-3">
+                        {/* Kassefoto */}
+                        {vare.boxEntryNo ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={`/api/foto/thumb?entryNo=${vare.boxEntryNo}`}
+                            alt=""
+                            className="shrink-0 h-14 w-14 rounded-lg object-cover border border-teal-200 bg-teal-100"
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                          />
+                        ) : (
+                          <div className="shrink-0 h-14 w-14 rounded-lg bg-teal-100 flex items-center justify-center">
+                            <Fish size={22} className="text-teal-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{vare.itemName}</p>
+                          <p className="text-[11px] text-gray-400 font-mono">{vare.bcItemNumber}</p>
+                          {vare.note && (
+                            <p className="mt-0.5 text-xs text-teal-700 italic">{vare.note}</p>
+                          )}
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                            <span className="rounded-full bg-teal-100 px-2 py-0.5 font-medium text-teal-800">
+                              {remaining.toFixed(1)} kg tilbage
+                            </span>
+                            {vare.pricePerKg && (
+                              <span className="font-semibold text-gray-700">{fmt2.format(vare.pricePerKg)}/kg</span>
+                            )}
+                          </div>
+                          {myRes ? (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="rounded-full bg-teal-600 text-white px-3 py-1 text-xs font-semibold">
+                                Reserveret: {myRes.kg} kg
+                              </span>
+                              <button
+                                onClick={() => handleCancelReservation(vare)}
+                                className="flex items-center gap-1 rounded-full border border-red-200 px-2 py-0.5 text-xs text-red-500 hover:bg-red-50"
+                              >
+                                <X size={10} /> Fortryd
+                              </button>
+                            </div>
+                          ) : remaining > 0 ? (
+                            <div className="mt-2 flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0.1"
+                                step="0.1"
+                                max={remaining}
+                                value={kgInput}
+                                onChange={e => setSpecialKgInputs(prev => new Map(prev).set(vare.id, e.target.value))}
+                                className="w-20 rounded-lg border border-teal-300 px-2 py-1 text-sm text-center focus:outline-none focus:border-teal-500"
+                                placeholder="kg"
+                              />
+                              <span className="text-xs text-gray-500">kg</span>
+                              <button
+                                onClick={() => handleReserver(vare)}
+                                disabled={isReserving}
+                                className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50 transition"
+                              >
+                                {isReserving ? '…' : 'Tilføj til bestilling'}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-red-500 font-medium">Udsolgt</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
 
         {/* Promos */}
         {!isCatalogMode && promotions.length > 0 && (
@@ -1215,7 +1434,7 @@ export default function OrderList({
           </>
         )}
 
-        {!isCatalogMode && promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && standingOrders.length === 0 && searchedLines.length === 0 && (
+        {!isCatalogMode && specialVarer.length === 0 && promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && standingOrders.length === 0 && searchedLines.length === 0 && (
           <div className="px-4 py-10 text-center text-sm text-gray-400">
             Ingen favoritter endnu — brug søgning nedenfor
           </div>

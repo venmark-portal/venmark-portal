@@ -73,6 +73,14 @@ export async function POST(req: NextRequest) {
       WHERE id = ${order.id}
     `
 
+    // Link specialvare-reservationer til ordren
+    if (body.reservationIds?.length) {
+      await prisma.specialVareReservation.updateMany({
+        where: { id: { in: body.reservationIds }, customerId: userId, status: 'PENDING' },
+        data: { orderId: order.id, status: 'CONFIRMED' },
+      })
+    }
+
     // Send direkte til BC — linjer oprettes med shipQuantity=0 (afventer godkendelse)
     try {
       const bc = await createBCSalesOrder(
