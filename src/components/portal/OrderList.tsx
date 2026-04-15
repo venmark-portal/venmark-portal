@@ -748,7 +748,6 @@ export default function OrderList({
   const [, startTransition]                   = useTransition()
   const [specialVarer, setSpecialVarer]       = useState<SpecialVareItem[]>([])
   const [specialReservations, setSpecialReservations] = useState<Map<string, SpecialReservation>>(new Map())
-  const [specialKgInputs, setSpecialKgInputs] = useState<Map<string, string>>(new Map())
   const [specialReserving, setSpecialReserving] = useState<string | null>(null) // specialVareId under reservation
   const [showSpecial, setShowSpecial]         = useState(true)
 
@@ -815,14 +814,6 @@ export default function OrderList({
         const data: SpecialVareItem[] = await res.json()
         if (!cancelled) {
           setSpecialVarer(data)
-          // Sæt standard kg-input til 1 for nye varer uden eksisterende input
-          setSpecialKgInputs(prev => {
-            const next = new Map(prev)
-            for (const v of data) {
-              if (!next.has(v.id)) next.set(v.id, '1')
-            }
-            return next
-          })
         }
       } catch { /* stil */ }
     }
@@ -832,9 +823,9 @@ export default function OrderList({
   }, [])
 
   async function handleReserver(vare: SpecialVareItem) {
-    const kgStr = specialKgInputs.get(vare.id) ?? '1'
-    const kg = parseFloat(kgStr.replace(',', '.'))
-    if (!kg || kg <= 0) return
+    // Kunden tager hele det resterende parti
+    const kg = vare.availableKg - vare.reservedKg
+    if (kg <= 0) return
     setSpecialReserving(vare.id)
     try {
       const res = await fetch('/api/specialvarer/reserver', {
@@ -848,18 +839,19 @@ export default function OrderList({
         return
       }
       const data = await res.json()
-      // Gem reservation
       setSpecialReservations(prev => new Map(prev).set(vare.id, { reservationId: data.reservationId, kg }))
-      // Opdater specialvarer med ny reserveret mængde
       setSpecialVarer(prev => prev.map(v => v.id === vare.id
         ? { ...v, reservedKg: v.reservedKg + kg }
         : v
       ))
-      // Tilføj som ordrelinje (brug et simpelt EnrichedItem-lignende objekt)
+      // Ordrelinjenavn inkl. kassesnummer så lager/BC ved hvilken kasse
+      const lineName = vare.boxEntryNo
+        ? `${vare.itemName} (kasse #${vare.boxEntryNo})`
+        : vare.itemName
       const fakeItem: EnrichedItem = {
         id: `sv-${vare.id}`,
         number: vare.bcItemNumber,
-        displayName: vare.itemName,
+        displayName: lineName,
         unitPrice: vare.pricePerKg ?? 0,
         baseUnitOfMeasureCode: 'KG',
         inventory: 9999,
@@ -1189,7 +1181,6 @@ export default function OrderList({
                   const fmt2 = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
                   const remaining = vare.availableKg - vare.reservedKg
                   const myRes = specialReservations.get(vare.id)
-                  const kgInput = specialKgInputs.get(vare.id) ?? '1'
                   const isReserving = specialReserving === vare.id
                   return (
                     <div key={vare.id} className="px-3 py-3 bg-teal-50/40">
@@ -1235,24 +1226,13 @@ export default function OrderList({
                               </button>
                             </div>
                           ) : remaining > 0 ? (
-                            <div className="mt-2 flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="0.1"
-                                step="0.1"
-                                max={remaining}
-                                value={kgInput}
-                                onChange={e => setSpecialKgInputs(prev => new Map(prev).set(vare.id, e.target.value))}
-                                className="w-20 rounded-lg border border-teal-300 px-2 py-1 text-sm text-center focus:outline-none focus:border-teal-500"
-                                placeholder="kg"
-                              />
-                              <span className="text-xs text-gray-500">kg</span>
+                            <div className="mt-2">
                               <button
                                 onClick={() => handleReserver(vare)}
                                 disabled={isReserving}
-                                className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50 transition"
+                                className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50 transition"
                               >
-                                {isReserving ? '…' : 'Tilføj til bestilling'}
+                                {isReserving ? '…' : `Reservér hele partiet (${remaining.toFixed(1)} kg)`}
                               </button>
                             </div>
                           ) : (
