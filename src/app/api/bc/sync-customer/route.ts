@@ -86,19 +86,19 @@ export async function POST(req: NextRequest) {
     if (existing) {
       // Opdater eksisterende — brug $executeRaw for nye felter (prisma generate DLL-lock workaround)
       await prisma.$executeRaw`
-        UPDATE Customer
-        SET name                 = ${name ?? existing.name},
-            email                = ${emailLower},
-            phone                = ${phone ?? null},
-            address              = ${address ?? null},
-            city                 = ${city ?? null},
-            zipCode              = ${zipCode ?? null},
-            bcPriceGroup         = ${priceGroup ?? existing.bcPriceGroup},
-            bcDebitorBookingGroup = ${debitorGroup ?? (existing as any).bcDebitorBookingGroup},
-            requirePoNumber      = ${requirePoNumber ? 1 : 0},
-            isActive             = ${portalAktiv ? 1 : 0},
-            bcBlocked            = ${blocked ? 1 : 0},
-            updatedAt            = ${new Date().toISOString()}
+        UPDATE "Customer"
+        SET name                  = ${name ?? existing.name},
+            email                 = ${emailLower},
+            phone                 = ${phone ?? null},
+            address               = ${address ?? null},
+            city                  = ${city ?? null},
+            "zipCode"             = ${zipCode ?? null},
+            "bcPriceGroup"        = ${priceGroup ?? existing.bcPriceGroup},
+            "bcDebitorBookingGroup" = ${debitorGroup ?? (existing as any).bcDebitorBookingGroup},
+            "requirePoNumber"     = ${requirePoNumber},
+            "isActive"            = ${portalAktiv},
+            "bcBlocked"           = ${blocked},
+            "updatedAt"           = ${new Date()}
         WHERE id = ${existing.id}
       `
       customerId = existing.id
@@ -125,12 +125,12 @@ export async function POST(req: NextRequest) {
 
       // Sæt felter der ikke er i den genererede Prisma-klient endnu
       await prisma.$executeRaw`
-        UPDATE Customer
-        SET phone     = ${phone ?? null},
-            address   = ${address ?? null},
-            city      = ${city ?? null},
-            zipCode   = ${zipCode ?? null},
-            bcBlocked = ${blocked ? 1 : 0}
+        UPDATE "Customer"
+        SET phone       = ${phone ?? null},
+            address     = ${address ?? null},
+            city        = ${city ?? null},
+            "zipCode"   = ${zipCode ?? null},
+            "bcBlocked" = ${blocked}
         WHERE id = ${customerId}
       `
       action = 'created'
@@ -144,13 +144,13 @@ export async function POST(req: NextRequest) {
       const contactEmail = c.email.toLowerCase().trim()
 
       const existingContacts = await prisma.$queryRaw<any[]>`
-        SELECT id FROM ContactUser WHERE email = ${contactEmail} LIMIT 1
+        SELECT id FROM "ContactUser" WHERE email = ${contactEmail} LIMIT 1
       `
 
       if (existingContacts[0]) {
         await prisma.$executeRaw`
-          UPDATE ContactUser
-          SET name = ${c.name ?? contactEmail}, isActive = 1, updatedAt = ${new Date().toISOString()}
+          UPDATE "ContactUser"
+          SET name = ${c.name ?? contactEmail}, "isActive" = true, "updatedAt" = ${new Date()}
           WHERE email = ${contactEmail}
         `
         contactResults.push({ email: contactEmail, action: 'updated' })
@@ -161,8 +161,8 @@ export async function POST(req: NextRequest) {
         const now           = new Date().toISOString()
 
         await prisma.$executeRaw`
-          INSERT INTO ContactUser (id, customerId, name, email, passwordHash, isActive, createdAt, updatedAt)
-          VALUES (${contactId}, ${customerId}, ${c.name ?? contactEmail}, ${contactEmail}, ${contactPwHash}, 1, ${now}, ${now})
+          INSERT INTO "ContactUser" (id, "customerId", name, email, "passwordHash", "isActive", "createdAt", "updatedAt")
+          VALUES (${contactId}, ${customerId}, ${c.name ?? contactEmail}, ${contactEmail}, ${contactPwHash}, true, ${new Date()}, ${new Date()})
         `
         contactResults.push({
           email:       contactEmail,
