@@ -8,6 +8,7 @@ import {
   Truck, MapPin, Phone, Package, CheckCircle2, XCircle,
   Clock, ChevronDown, ChevronUp, LogOut, AlertTriangle,
   Camera, Navigation, ChevronLeft, ChevronRight, Calendar,
+  Info, MessageCircleWarning, DoorOpen, KeyRound, ShieldAlert,
 } from 'lucide-react'
 
 function defaultDate(): string {
@@ -44,6 +45,13 @@ interface Stop {
   deliveredAt:     string | null
   failureNote:     string | null
   packedStatus:    string | null
+  deliveryProfile: {
+    doorCode:            string | null
+    keyboxCode:          string | null
+    alarmCode:           string | null
+    deliveryDescription: string | null
+  } | null
+  openTickets: { id: string; subject: string; body: string; createdAt: string; status: string }[]
 }
 
 interface Vehicle {
@@ -75,9 +83,10 @@ export default function ChauffeurRutePage() {
   const [loading,     setLoading]     = useState(true)
   const [preliminary, setPreliminary] = useState(false)
   const [codeFilter,  setCodeFilter]  = useState<string | null>(null) // null = ikke sat endnu
-  const [expanded,  setExpanded]  = useState<Set<string>>(new Set())
-  const [updating,  setUpdating]  = useState<Set<string>>(new Set())
-  const [failNotes, setFailNotes] = useState<Record<string, string>>({})
+  const [expanded,     setExpanded]     = useState<Set<string>>(new Set())
+  const [infoOpen,     setInfoOpen]     = useState<Set<string>>(new Set())
+  const [updating,     setUpdating]     = useState<Set<string>>(new Set())
+  const [failNotes,    setFailNotes]    = useState<Record<string, string>>({})
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({})
 
   const load = useCallback(async (d: string) => {
@@ -113,6 +122,14 @@ export default function ChauffeurRutePage() {
 
   function toggleExpand(id: string) {
     setExpanded(prev => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
+  function toggleInfo(id: string) {
+    setInfoOpen(prev => {
       const n = new Set(prev)
       n.has(id) ? n.delete(id) : n.add(id)
       return n
@@ -302,10 +319,16 @@ export default function ChauffeurRutePage() {
 
           {v.stops.map((s, idx) => {
             const isExpanded  = expanded.has(s.id)
+            const isInfoOpen  = infoOpen.has(s.id)
             const isUpdating  = updating.has(s.id)
             const isDone      = s.status !== 'PENDING'
             const showFailBox = isExpanded && s.status === 'PENDING'
             const isPrelim    = s.id.startsWith('bc-')
+            const hasInfo     = Boolean(
+              s.deliveryProfile?.doorCode || s.deliveryProfile?.keyboxCode ||
+              s.deliveryProfile?.alarmCode || s.deliveryProfile?.deliveryDescription ||
+              s.openTickets?.length
+            )
 
             return (
               <div key={s.id}
@@ -316,9 +339,10 @@ export default function ChauffeurRutePage() {
                 }`}
               >
                 {/* Stop-header */}
+                <div className="flex items-start gap-2 p-4">
                 <button
                   onClick={() => toggleExpand(s.id)}
-                  className="w-full flex items-start gap-3 p-4 text-left"
+                  className="flex-1 flex items-start gap-3 text-left min-w-0"
                 >
                   {/* Stop-nummer */}
                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
@@ -353,6 +377,66 @@ export default function ChauffeurRutePage() {
 
                   {isExpanded ? <ChevronUp size={16} className="shrink-0 text-gray-400 mt-1" /> : <ChevronDown size={16} className="shrink-0 text-gray-400 mt-1" />}
                 </button>
+                {/* Leveringsinfo-knap */}
+                {hasInfo && (
+                  <button
+                    onClick={() => toggleInfo(s.id)}
+                    className={`shrink-0 mt-0.5 rounded-lg p-1.5 transition ${
+                      isInfoOpen
+                        ? 'bg-amber-100 text-amber-700'
+                        : s.openTickets?.length
+                          ? 'bg-red-50 text-red-500'
+                          : 'bg-blue-50 text-blue-500'
+                    }`}
+                    title="Leveringsoplysninger"
+                  >
+                    {s.openTickets?.length ? <MessageCircleWarning size={16} /> : <Info size={16} />}
+                  </button>
+                )}
+                </div>
+
+                {/* Leveringsinfo-panel */}
+                {isInfoOpen && hasInfo && (
+                  <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 space-y-2 text-sm">
+                    {s.deliveryProfile?.deliveryDescription && (
+                      <div className="flex gap-2">
+                        <MapPin size={14} className="shrink-0 mt-0.5 text-amber-600" />
+                        <span className="text-gray-800">{s.deliveryProfile.deliveryDescription}</span>
+                      </div>
+                    )}
+                    {s.deliveryProfile?.doorCode && (
+                      <div className="flex gap-2 items-center">
+                        <DoorOpen size={14} className="shrink-0 text-amber-600" />
+                        <span className="text-gray-700">Dørode: <span className="font-mono font-bold text-gray-900">{s.deliveryProfile.doorCode}</span></span>
+                      </div>
+                    )}
+                    {s.deliveryProfile?.keyboxCode && (
+                      <div className="flex gap-2 items-center">
+                        <KeyRound size={14} className="shrink-0 text-amber-600" />
+                        <span className="text-gray-700">Nøgleboks: <span className="font-mono font-bold text-gray-900">{s.deliveryProfile.keyboxCode}</span></span>
+                      </div>
+                    )}
+                    {s.deliveryProfile?.alarmCode && (
+                      <div className="flex gap-2 items-center">
+                        <ShieldAlert size={14} className="shrink-0 text-amber-600" />
+                        <span className="text-gray-700">Alarmkode: <span className="font-mono font-bold text-gray-900">{s.deliveryProfile.alarmCode}</span></span>
+                      </div>
+                    )}
+                    {s.openTickets?.length > 0 && (
+                      <div className="mt-1 space-y-1.5 border-t border-amber-200 pt-2">
+                        <div className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                          <MessageCircleWarning size={12} /> {s.openTickets.length} åben reklamation{s.openTickets.length > 1 ? 'er' : ''}
+                        </div>
+                        {s.openTickets.map(t => (
+                          <div key={t.id} className="rounded-lg bg-red-50 px-3 py-2 ring-1 ring-red-200">
+                            <div className="font-medium text-red-800 text-xs">{t.subject}</div>
+                            <div className="text-red-700 text-xs mt-0.5 line-clamp-2">{t.body}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Udvidet indhold */}
                 {isExpanded && (

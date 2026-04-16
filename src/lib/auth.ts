@@ -20,7 +20,7 @@ export const authOptions: NextAuthOptions = {
         const customer = await prisma.customer.findUnique({
           where: { email: emailLower },
         })
-        if (customer && customer.isActive) {
+        if (customer && customer.isActive && !(customer as any).bcBlocked) {
           const valid = await compare(credentials.password, customer.passwordHash)
           if (valid) {
             return {
@@ -41,14 +41,15 @@ export const authOptions: NextAuthOptions = {
         // Bruger $queryRaw pga. ContactUser er ny model og prisma generate er ikke kørt
         const contactRows = await prisma.$queryRaw<any[]>`
           SELECT cu.*, c.id as customerId_ref, c.bcCustomerNumber, c.bcPriceGroup,
-                 c.requirePoNumber, c.bcDebitorBookingGroup, c.isActive as customerIsActive
+                 c.requirePoNumber, c.bcDebitorBookingGroup, c.isActive as customerIsActive,
+                 c.bcBlocked as customerBcBlocked
           FROM ContactUser cu
           JOIN Customer c ON c.id = cu.customerId
           WHERE cu.email = ${emailLower}
           LIMIT 1
         `
         const contactRow = contactRows[0]
-        if (contactRow && contactRow.isActive && contactRow.customerIsActive) {
+        if (contactRow && contactRow.isActive && contactRow.customerIsActive && !contactRow.customerBcBlocked) {
           const valid = await compare(credentials.password, contactRow.passwordHash)
           if (valid) {
             return {

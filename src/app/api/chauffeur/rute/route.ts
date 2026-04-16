@@ -39,6 +39,9 @@ export async function GET(req: NextRequest) {
   const driverCode    = alle ? null : (driverRows[0]?.bcShipmentMethodCode ?? null)
   const driverVehicle = driverRows[0]?.defaultVehicleLabel ?? 'Bil 1'
 
+  // Sikr kolonnen eksisterer (kan mangle på ældre rækker)
+  await prisma.$executeRaw`ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "bcCustomerNo" TEXT`
+
   // Hent gemte rutestop fra DB
   const routeRows = await prisma.$queryRaw<any[]>`
     SELECT r.id AS "routeId", r.notes AS "routeNotes",
@@ -49,7 +52,7 @@ export async function GET(req: NextRequest) {
       s."customerName", s."customerAddress", s."customerPhone",
       s."totalWeightKg", s.status AS "stopStatus",
       s."deliveredAt", s."failureNote", s."packedStatus",
-      s."deliveryCodeOverride"
+      s."deliveryCodeOverride", s."bcCustomerNo"
     FROM "DeliveryRoute" r
     JOIN "RouteVehicle" v ON v."routeId" = r.id
     LEFT JOIN "RouteStop" s ON s."vehicleId" = v.id
@@ -65,6 +68,41 @@ export async function GET(req: NextRequest) {
       ? routeRows.filter(r => !r.stopId || r.deliveryCodeOverride === driverCode || r.deliveryCodeOverride === null)
       : routeRows
 
+    // Hent leveringsprofiler + åbne tickets for unikke kunder
+    const customerNos = [...new Set(filtered.map(r => r.bcCustomerNo).filter(Boolean))]
+    const profileMap  = new Map<string, any>()
+    const ticketMap   = new Map<string, any[]>()
+
+    if (customerNos.length > 0) {
+      const placeholders = customerNos.map((_, i) => `$${i + 1}`).join(', ')
+      const profileRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT c."bcCustomerNumber",
+          dp."doorCode", dp."keyboxCode", dp."alarmCode", dp."deliveryDescription"
+        FROM "Customer" c
+        JOIN "DeliveryProfile" dp ON dp."customerId" = c.id
+        WHERE c."bcCustomerNumber" IN (${placeholders})`,
+        ...customerNos
+      )
+      for (const p of profileRows) profileMap.set(p.bcCustomerNumber, p)
+
+      const ticketRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT c."bcCustomerNumber", t.id, t.subject, t.body, t."createdAt", t.status
+        FROM "Customer" c
+        JOIN "Ticket" t ON t."customerId" = c.id
+        WHERE c."bcCustomerNumber" IN (${placeholders})
+          AND t.status IN ('OPEN', 'IN_PROGRESS')
+          AND t.type = 'COMPLAINT'
+        ORDER BY t."createdAt" DESC`,
+        ...customerNos
+      )
+      for (const t of ticketRows) {
+        if (!ticketMap.has(t.bcCustomerNumber)) ticketMap.set(t.bcCustomerNumber, [])
+        ticketMap.get(t.bcCustomerNumber)!.push({
+          id: t.id, subject: t.subject, body: t.body, createdAt: t.createdAt, status: t.status,
+        })
+      }
+    }
+
     const vMap = new Map<string, any>()
     for (const r of filtered) {
       if (!r.vehicleId) continue
@@ -72,6 +110,8 @@ export async function GET(req: NextRequest) {
         vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, stops: [] })
       }
       if (r.stopId) {
+        const profile = r.bcCustomerNo ? profileMap.get(r.bcCustomerNo) : null
+        const tickets = r.bcCustomerNo ? (ticketMap.get(r.bcCustomerNo) ?? []) : []
         vMap.get(r.vehicleId)!.stops.push({
           id:              r.stopId,
           sortOrder:       r.sortOrder,
@@ -88,6 +128,13 @@ export async function GET(req: NextRequest) {
           deliveredAt:     r.deliveredAt,
           failureNote:     r.failureNote,
           packedStatus:    r.packedStatus,
+          deliveryProfile: profile ? {
+            doorCode:            profile.doorCode,
+            keyboxCode:          profile.keyboxCode,
+            alarmCode:           profile.alarmCode,
+            deliveryDescription: profile.deliveryDescription,
+          } : null,
+          openTickets: tickets,
         })
       }
     }

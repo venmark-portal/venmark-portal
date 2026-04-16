@@ -287,6 +287,7 @@ export default function LeveringDagPage() {
         bcSalesOrderId:       r.isExtraTask ? null : r.id,
         bcSalesOrderNo:       r.isExtraTask ? null : [r.number, ...(r.merged?.map(m => m.number) ?? [])].join(' + '),
         kobSalesOrderNo:      r.isExtraTask ? null : (r.merged?.[0]?.number ?? null),
+        bcCustomerNo:         r.isExtraTask ? null : (r.customerNo ?? null),
         customerName:         r.isExtraTask ? null : r.customerName,
         customerAddress:      r.isExtraTask ? null : [r.address, r.postCode, r.city].filter(Boolean).join(', '),
         totalWeightKg:        r.isExtraTask ? null : (r.weightKg || null),

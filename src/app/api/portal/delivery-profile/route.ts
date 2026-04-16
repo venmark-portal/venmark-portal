@@ -54,8 +54,8 @@ export async function PUT(req: NextRequest) {
   } else {
     profileId = randomUUID()
     await prisma.$executeRaw`
-      INSERT INTO "DeliveryProfile" (id, "customerId", "doorCode", "keyboxCode", "alarmCode", "deliveryDescription", "driverMessage", "createdAt", "updatedAt")
-      VALUES (${profileId}, ${customerId}, ${doorCode ?? null}, ${keyboxCode ?? null}, ${alarmCode ?? null}, ${deliveryDescription ?? null}, ${driverMessage ?? null}, ${now}, ${now})
+      INSERT INTO "DeliveryProfile" (id, "customerId", "doorCode", "keyboxCode", "alarmCode", "deliveryDescription", "driverMessage", "updatedAt")
+      VALUES (${profileId}, ${customerId}, ${doorCode ?? null}, ${keyboxCode ?? null}, ${alarmCode ?? null}, ${deliveryDescription ?? null}, ${driverMessage ?? null}, ${now})
     `
   }
 

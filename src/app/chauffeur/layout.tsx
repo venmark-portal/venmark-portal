@@ -3,9 +3,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import SessionProvider from '@/components/portal/SessionProvider'
 import ChauffeurNav from '@/components/chauffeur/ChauffeurNav'
+import SwRegister from '@/components/chauffeur/SwRegister'
 
 export const metadata: Metadata = {
   title: 'Chauffør | Venmark',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Chauffør',
+  },
 }
 
 export default async function ChauffeurLayout({ children }: { children: React.ReactNode }) {
@@ -16,6 +23,7 @@ export default async function ChauffeurLayout({ children }: { children: React.Re
         {children}
         <ChauffeurNav />
       </div>
+      <SwRegister />
     </SessionProvider>
   )
 }

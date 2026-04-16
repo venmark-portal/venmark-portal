@@ -107,12 +107,15 @@ export async function POST(
         ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "kobSalesOrderNo" TEXT
       `
       await prisma.$executeRaw`
+        ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "bcCustomerNo" TEXT
+      `
+      await prisma.$executeRaw`
         INSERT INTO "RouteStop" (
           id, "vehicleId", "driverId", "sortOrder", "deliveryCodeId", "deliveryCodeOverride",
           "bcSalesOrderNo", "bcSalesOrderId", "bcPurchaseOrderNo", "bcPurchaseOrderId",
           "isExtraTask", "extraTaskTitle", "extraTaskNote",
           "customerName", "customerAddress", "customerPhone", "totalWeightKg",
-          "kobSalesOrderNo", status, "deliveredAt", "failureNote", "createdAt"
+          "kobSalesOrderNo", "bcCustomerNo", status, "deliveredAt", "failureNote", "createdAt"
         ) VALUES (
           ${randomUUID()}, ${vehicleId}, ${s.driverId ?? null}, ${si},
           ${s.deliveryCodeId ?? null}, ${s.deliveryCodeOverride ?? null},
@@ -120,7 +123,7 @@ export async function POST(
           ${s.bcPurchaseOrderNo ?? null}, ${s.bcPurchaseOrderId ?? null},
           ${s.isExtraTask ? true : false}, ${s.extraTaskTitle ?? null}, ${s.extraTaskNote ?? null},
           ${s.customerName ?? null}, ${s.customerAddress ?? null}, ${s.customerPhone ?? null},
-          ${s.totalWeightKg ?? null}, ${s.kobSalesOrderNo ?? null},
+          ${s.totalWeightKg ?? null}, ${s.kobSalesOrderNo ?? null}, ${s.bcCustomerNo ?? null},
           ${stopStatus}, ${deliveredAt}, ${failureNote}, ${now}::timestamp
         )
       `

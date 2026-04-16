@@ -13,13 +13,13 @@ export default async function LeveringPage() {
   const bcCustomerNo = (session.user as any).bcCustomerNumber ?? ''
 
   const profiles = await prisma.$queryRaw<any[]>`
-    SELECT * FROM DeliveryProfile WHERE customerId = ${customerId} LIMIT 1
+    SELECT * FROM "DeliveryProfile" WHERE "customerId" = ${customerId} LIMIT 1
   `
   const profileRow = profiles[0] ?? null
   let profile: any = null
   if (profileRow) {
     const photos = await prisma.$queryRaw<any[]>`
-      SELECT * FROM DeliveryPhoto WHERE profileId = ${profileRow.id} ORDER BY sortOrder ASC
+      SELECT * FROM "DeliveryPhoto" WHERE "profileId" = ${profileRow.id} ORDER BY "sortOrder" ASC
     `
     profile = { ...profileRow, photos }
   }

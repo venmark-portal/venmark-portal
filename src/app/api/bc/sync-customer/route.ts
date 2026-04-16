@@ -16,6 +16,8 @@
  *   "priceGroup": "FISK01",
  *   "debitorGroup": "Standard",
  *   "requirePoNumber": false,
+ *   "portalAktiv": true,           // BC "Portal Aktiv" — styrer om kunden kan logge ind
+ *   "blocked": false,              // BC "Blocked" felt — blokerer login uanset portalAktiv
  *   "contacts": [                  // Ansatte der kan bestille for kunden
  *     { "name": "Ole Hansen", "email": "ole@firma.dk" }
  *   ]
@@ -54,6 +56,8 @@ export async function POST(req: NextRequest) {
     priceGroup,
     debitorGroup,
     requirePoNumber = false,
+    portalAktiv = true,
+    blocked = false,
     contacts = [],
   } = body
 
@@ -91,6 +95,8 @@ export async function POST(req: NextRequest) {
             bcPriceGroup         = ${priceGroup ?? existing.bcPriceGroup},
             bcDebitorBookingGroup = ${debitorGroup ?? (existing as any).bcDebitorBookingGroup},
             requirePoNumber      = ${requirePoNumber ? 1 : 0},
+            isActive             = ${portalAktiv ? 1 : 0},
+            bcBlocked            = ${blocked ? 1 : 0},
             updatedAt            = ${new Date().toISOString()}
         WHERE id = ${existing.id}
       `
@@ -111,18 +117,19 @@ export async function POST(req: NextRequest) {
           requirePoNumber:       requirePoNumber,
           bcDebitorBookingGroup: debitorGroup ?? null,
           passwordHash,
-          isActive:              true,
+          isActive:              portalAktiv,
         } as any,
       })
       customerId = newCustomer.id
 
-      // Sæt de nye felter (phone, address, city, zipCode) via raw
+      // Sæt felter der ikke er i den genererede Prisma-klient endnu
       await prisma.$executeRaw`
         UPDATE Customer
-        SET phone   = ${phone ?? null},
-            address = ${address ?? null},
-            city    = ${city ?? null},
-            zipCode = ${zipCode ?? null}
+        SET phone     = ${phone ?? null},
+            address   = ${address ?? null},
+            city      = ${city ?? null},
+            zipCode   = ${zipCode ?? null},
+            bcBlocked = ${blocked ? 1 : 0}
         WHERE id = ${customerId}
       `
       action = 'created'
