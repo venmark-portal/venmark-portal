@@ -40,11 +40,11 @@ export const authOptions: NextAuthOptions = {
         // ── Tjek kontakt-bruger (ansat der bestiller for kunden) ─
         // Bruger $queryRaw pga. ContactUser er ny model og prisma generate er ikke kørt
         const contactRows = await prisma.$queryRaw<any[]>`
-          SELECT cu.*, c.id as customerId_ref, c.bcCustomerNumber, c.bcPriceGroup,
-                 c.requirePoNumber, c.bcDebitorBookingGroup, c.isActive as customerIsActive,
-                 c.bcBlocked as customerBcBlocked
-          FROM ContactUser cu
-          JOIN Customer c ON c.id = cu.customerId
+          SELECT cu.*, c.id as customerId_ref, c."bcCustomerNumber", c."bcPriceGroup",
+                 c."requirePoNumber", c."bcDebitorBookingGroup", c."isActive" as "customerIsActive",
+                 c."bcBlocked" as "customerBcBlocked"
+          FROM "ContactUser" cu
+          JOIN "Customer" c ON c.id = cu."customerId"
           WHERE cu.email = ${emailLower}
           LIMIT 1
         `
