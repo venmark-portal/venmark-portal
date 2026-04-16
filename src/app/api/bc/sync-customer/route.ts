@@ -33,8 +33,9 @@ export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
   // ── Autentificering ──────────────────────────────────────────────────────
-  const secret = req.headers.get('x-webhook-secret')
-  if (!secret || secret !== process.env.BC_WEBHOOK_SECRET) {
+  const secret = req.headers.get('x-webhook-secret') ?? req.headers.get('x-api-key')
+  const validSecret = process.env.BC_WEBHOOK_SECRET ?? process.env.BC_PORTAL_API_KEY
+  if (!secret || secret !== validSecret) {
     return NextResponse.json({ error: 'Uautoriseret' }, { status: 401 })
   }
 
