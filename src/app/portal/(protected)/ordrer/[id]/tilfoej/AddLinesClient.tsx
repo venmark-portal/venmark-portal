@@ -35,6 +35,7 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
   const [basket,   setBasket]   = useState<LineItem[]>([])
   const [saving,   setSaving]   = useState(false)
   const [done,     setDone]     = useState(false)
+  const [error,    setError]    = useState('')
 
   async function search(q: string) {
     setQuery(q)
@@ -43,7 +44,7 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
     try {
       const res  = await fetch(`/api/products?search=${encodeURIComponent(q)}&top=20`)
       const data = await res.json()
-      setResults(data.items ?? [])
+      setResults(data.value ?? [])
     } finally {
       setLoading(false)
     }
@@ -76,6 +77,7 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
   async function submit() {
     if (!basket.length) return
     setSaving(true)
+    setError('')
     try {
       const res = await fetch(`/api/portal/order/${orderId}/lines`, {
         method:  'POST',
@@ -85,7 +87,12 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
       if (res.ok) {
         setDone(true)
         setTimeout(() => router.push('/portal/ordrer'), 1500)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? `Fejl fra server (${res.status})`)
       }
+    } catch {
+      setError('Serverfejl — prøv igen')
     } finally {
       setSaving(false)
     }

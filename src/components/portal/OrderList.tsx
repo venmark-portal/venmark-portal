@@ -1290,6 +1290,19 @@ export default function OrderList({
           </>
         )}
 
+        {/* Søg og tilføj vare — over favoritter */}
+        {!isCatalogMode && (
+          <div className="border-b border-dashed border-gray-200">
+            <button
+              onClick={() => setShowSearch(true)}
+              className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition"
+            >
+              <Search size={15} />
+              Søg og tilføj vare
+            </button>
+          </div>
+        )}
+
         {/* Favoritter & Venmark-anbefalede — flettet og sorteret efter varenummer */}
         {!isCatalogMode && mergedFavVenmark.length > 0 && (
           <>
@@ -1420,16 +1433,6 @@ export default function OrderList({
           </div>
         )}
 
-        {/* Søg-knap */}
-        <div className="border-t border-dashed border-gray-200">
-          <button
-            onClick={() => setShowSearch(true)}
-            className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition"
-          >
-            <Search size={15} />
-            Søg og tilføj vare
-          </button>
-        </div>
       </div>
 
       {/* PO-nummer */}

@@ -7,13 +7,17 @@ import type { BCItem, BCItemCategory } from '@/lib/businesscentral'
 type EnrichedItem = BCItem & { unitPrice: number }
 
 interface Props {
-  onAddItems:   (items: { item: EnrichedItem; quantity: number }[]) => void
+  /** Multi-item mode med antal (bruges i bestillingslisten) */
+  onAddItems?:  (items: { item: EnrichedItem; quantity: number }[]) => void
+  /** Enkelt-valg mode — klik på vare → vælges straks (bruges i profil) */
+  onSelect?:    (item: EnrichedItem) => void
   onClose:      () => void
-  favNos:       Set<string>
-  onToggleFav:  (item: EnrichedItem) => void
+  favNos?:      Set<string>
+  onToggleFav?: (item: EnrichedItem) => void
 }
 
-export default function ItemSearchModal({ onAddItems, onClose, favNos, onToggleFav }: Props) {
+export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos, onToggleFav }: Props) {
+  const singleMode = !!onSelect
   const [query,      setQuery]      = useState('')
   const [results,    setResults]    = useState<EnrichedItem[]>([])
   const [loading,    setLoading]    = useState(false)
@@ -84,6 +88,7 @@ export default function ItemSearchModal({ onAddItems, onClose, favNos, onToggleF
   }
 
   function handleAdd() {
+    if (!onAddItems) return
     const toAdd = results
       .filter(r => (quantities.get(r.number) ?? 0) > 0)
       .map(r => ({ item: r, quantity: quantities.get(r.number)! }))
@@ -200,12 +205,15 @@ export default function ItemSearchModal({ onAddItems, onClose, favNos, onToggleF
               ? `/api/portal/item-image/${item.id}?pictureId=${item.picture.id}`
               : null
             const qty    = quantities.get(item.number) ?? 0
-            const isFav  = favNos.has(item.number)
+            const isFav  = favNos?.has(item.number) ?? false
 
             return (
               <div
                 key={item.id}
-                className={`px-3 py-2 border-b border-gray-50 last:border-0 transition-colors ${qty > 0 ? 'bg-blue-50/50' : ''}`}
+                className={`px-3 py-2 border-b border-gray-50 last:border-0 transition-colors ${
+                  singleMode ? 'cursor-pointer hover:bg-blue-50/60 active:bg-blue-100' : qty > 0 ? 'bg-blue-50/50' : ''
+                }`}
+                onClick={singleMode ? () => onSelect!(item as EnrichedItem) : undefined}
               >
                 {/* Øverste række: billede + navn + hjerte */}
                 <div className="flex items-center gap-2 mb-1.5">
@@ -227,54 +235,62 @@ export default function ItemSearchModal({ onAddItems, onClose, favNos, onToggleF
                       )}
                     </div>
                   </div>
-                  {/* Hjerte */}
-                  <button
-                    onClick={() => onToggleFav(item as EnrichedItem)}
-                    className={`shrink-0 p-1 rounded-full transition-colors ${
-                      isFav ? 'text-red-400 hover:text-red-300' : 'text-gray-200 hover:text-red-300'
-                    }`}
-                    title={isFav ? 'Fjern favorit' : 'Tilføj favorit'}
-                  >
-                    <Heart size={15} fill={isFav ? 'currentColor' : 'none'} />
-                  </button>
+                  {/* Hjerte — kun i multi-mode */}
+                  {!singleMode && onToggleFav && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onToggleFav(item as EnrichedItem) }}
+                      className={`shrink-0 p-1 rounded-full transition-colors ${
+                        isFav ? 'text-red-400 hover:text-red-300' : 'text-gray-200 hover:text-red-300'
+                      }`}
+                      title={isFav ? 'Fjern favorit' : 'Tilføj favorit'}
+                    >
+                      <Heart size={15} fill={isFav ? 'currentColor' : 'none'} />
+                    </button>
+                  )}
+                  {/* "Vælg"-indikator i single-mode */}
+                  {singleMode && (
+                    <Plus size={16} className="shrink-0 text-blue-400" />
+                  )}
                 </div>
 
-                {/* Nedre række: antal-knapper */}
-                <div className="flex items-center gap-1 justify-end">
-                  <button
-                    onClick={() => setQty(item.number, Math.max(0, qty - 1))}
-                    disabled={qty === 0}
-                    className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
-                  >
-                    <Minus size={12} />
-                  </button>
-                  <input
-                    type="number"
-                    min={0}
-                    value={qty || ''}
-                    placeholder="0"
-                    onChange={(e) => setQty(item.number, Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
-                  />
-                  <button
-                    onClick={() => setQty(item.number, qty + 1)}
-                    className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
-                  >
-                    <Plus size={12} />
-                  </button>
-                  <button
-                    onClick={() => setQty(item.number, qty + 10)}
-                    className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
-                  >
-                    +10
-                  </button>
-                  <button
-                    onClick={() => setQty(item.number, qty + 50)}
-                    className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
-                  >
-                    +50
-                  </button>
-                </div>
+                {/* Nedre række: antal-knapper — kun i multi-mode */}
+                {!singleMode && (
+                  <div className="flex items-center gap-1 justify-end">
+                    <button
+                      onClick={() => setQty(item.number, Math.max(0, qty - 1))}
+                      disabled={qty === 0}
+                      className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      value={qty || ''}
+                      placeholder="0"
+                      onChange={(e) => setQty(item.number, Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => setQty(item.number, qty + 1)}
+                      className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                    >
+                      <Plus size={12} />
+                    </button>
+                    <button
+                      onClick={() => setQty(item.number, qty + 10)}
+                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                    >
+                      +10
+                    </button>
+                    <button
+                      onClick={() => setQty(item.number, qty + 50)}
+                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                    >
+                      +50
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -282,24 +298,37 @@ export default function ItemSearchModal({ onAddItems, onClose, favNos, onToggleF
 
         {/* ── Bund ── */}
         <div className="border-t border-gray-100 px-4 py-3 shrink-0 flex items-center gap-3">
-          <span className="flex-1 text-xs text-gray-400">
-            {results.length > 0
-              ? itemsWithQty > 0
-                ? `${itemsWithQty} vare${itemsWithQty !== 1 ? 'r' : ''} klar til indsæt`
-                : `${results.length} varer — sæt antal`
-              : ''}
-          </span>
-          {itemsWithQty > 0 ? (
-            <button
-              onClick={handleAdd}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
-            >
-              Indsæt {itemsWithQty} {itemsWithQty === 1 ? 'vare' : 'varer'}
-            </button>
+          {singleMode ? (
+            <>
+              <span className="flex-1 text-xs text-gray-400">
+                {results.length > 0 ? `${results.length} varer — klik for at vælge` : ''}
+              </span>
+              <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
+                Luk
+              </button>
+            </>
           ) : (
-            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
-              Luk
-            </button>
+            <>
+              <span className="flex-1 text-xs text-gray-400">
+                {results.length > 0
+                  ? itemsWithQty > 0
+                    ? `${itemsWithQty} vare${itemsWithQty !== 1 ? 'r' : ''} klar til indsæt`
+                    : `${results.length} varer — sæt antal`
+                  : ''}
+              </span>
+              {itemsWithQty > 0 ? (
+                <button
+                  onClick={handleAdd}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
+                >
+                  Indsæt {itemsWithQty} {itemsWithQty === 1 ? 'vare' : 'varer'}
+                </button>
+              ) : (
+                <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
+                  Luk
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
