@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const customer = await prisma.customer.findUnique({ where: { email }, select: { id: true } })
   const admin    = await prisma.adminUser.findUnique({ where: { email }, select: { id: true } })
   const contacts = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id FROM "ContactUser" WHERE email = ${email} AND "isActive" = 1 LIMIT 1
+    SELECT id FROM "ContactUser" WHERE email = ${email} AND "isActive" = true LIMIT 1
   `
   const exists = !!customer || !!admin || contacts.length > 0
 
