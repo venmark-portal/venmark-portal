@@ -31,7 +31,7 @@ interface TicketEmailData {
 
 export async function sendTicketNotification(data: TicketEmailData) {
   const { ticket, customer } = data
-  const to   = process.env.NOTIFICATION_EMAIL ?? 'ordre@venmark.dk'
+  const to   = process.env.NOTIFICATION_EMAIL ?? 'fisk@venmark.dk'
   const from  = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'no-reply@venmark.dk'
   const baseUrl = process.env.NEXTAUTH_URL ?? 'https://venmark.dk'
   const adminLink = `${baseUrl}/admin/reklamationer/${ticket.id}`
@@ -67,7 +67,7 @@ export async function sendTicketNotification(data: TicketEmailData) {
       </div>
     </div>
     <div style="padding:16px 32px;background:#f8f8f8;font-size:11px;color:#999;text-align:center">
-      Venmark Fisk A/S · ordre@venmark.dk
+      Venmark Fisk A/S · fisk@venmark.dk
     </div>
   </div>
 </body>
@@ -121,7 +121,7 @@ export async function sendPasswordResetEmail(email: string, resetLink: string) {
       </p>
     </div>
     <div style="padding:16px 32px;background:#f8f8f8;font-size:11px;color:#999;text-align:center">
-      Venmark Fisk A/S · ordre@venmark.dk
+      Venmark Fisk A/S · fisk@venmark.dk
     </div>
   </div>
 </body>
@@ -151,7 +151,7 @@ interface OrderEmailData {
 
 export async function sendOrderNotification(data: OrderEmailData) {
   const { customer, order, lines } = data
-  const to   = process.env.NOTIFICATION_EMAIL ?? 'ordre@venmark.dk'
+  const to   = process.env.NOTIFICATION_EMAIL ?? 'fisk@venmark.dk'
   const from  = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'no-reply@venmark.dk'
 
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0)
@@ -236,7 +236,7 @@ export async function sendOrderNotification(data: OrderEmailData) {
     </div>
 
     <div style="padding:16px 32px;background:#f8f8f8;font-size:11px;color:#999;text-align:center">
-      Venmark Fisk A/S · ordre@venmark.dk
+      Venmark Fisk A/S · fisk@venmark.dk
     </div>
   </div>
 </body>

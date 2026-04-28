@@ -110,7 +110,7 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
             <div>
               <div className="logo">Venmark Fisk</div>
               <div className="logo-sub">Søndergade · 9850 Hirtshals · CVR: xxxxxxxxxx</div>
-              <div className="logo-sub">ordre@venmark.dk · venmark.dk</div>
+              <div className="logo-sub">fisk@venmark.dk · venmark.dk</div>
             </div>
             <div className="invoice-title">
               <h1>FAKTURA</h1>

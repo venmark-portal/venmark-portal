@@ -119,7 +119,7 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
 
       <p className="text-center text-xs text-gray-400">
         Spørgsmål til kreditnotaen?{' '}
-        <a href={`mailto:ordre@venmark.dk?subject=Kreditnota ${creditMemo.number}`} className="text-blue-600 hover:underline">
+        <a href={`mailto:fisk@venmark.dk?subject=Kreditnota ${creditMemo.number}`} className="text-blue-600 hover:underline">
           Kontakt os
         </a>
       </p>
