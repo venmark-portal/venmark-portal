@@ -158,7 +158,6 @@ export default async function BestilPage() {
   const allFavSet  = new Set(allFavNos)
   const venmarkItems = Array.from(venmarkNos)
     .filter(n => !promoRows.some(p => p.bcItemNumber === n)) // ikke promo
-    .filter(n => !allFavSet.has(n))                          // ikke allerede favorit
     .map(n => ({ item: itemMap.get(n), note: '' }))
     .filter(p => p.item != null) as { item: NonNullable<ReturnType<typeof itemMap.get>>; note: string }[]
 

@@ -88,6 +88,59 @@ export async function sendTicketNotification(data: TicketEmailData) {
   })
 }
 
+// ─── Send password reset email ───────────────────────────────────────────────
+
+export async function sendPasswordResetEmail(email: string, resetLink: string) {
+  const from = process.env.SMTP_USER ?? 'no-reply@venmark.dk'
+
+  const html = `
+<!DOCTYPE html>
+<html lang="da">
+<head><meta charset="UTF-8" /><title>Nulstil adgangskode</title></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:system-ui,sans-serif">
+  <div style="max-width:560px;margin:32px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+    <div style="background:#1d4ed8;padding:24px 32px;color:white">
+      <div style="font-size:20px;font-weight:700">Venmark<span style="opacity:0.7">.dk</span></div>
+      <div style="margin-top:4px;opacity:0.9;font-size:14px">Nulstilling af adgangskode</div>
+    </div>
+    <div style="padding:32px">
+      <p style="margin:0 0 16px;font-size:15px;color:#374151">
+        Vi har modtaget en anmodning om at nulstille adgangskoden til din konto på Venmark.dk.
+      </p>
+      <p style="margin:0 0 24px;font-size:15px;color:#374151">
+        Klik på knappen nedenfor for at vælge en ny adgangskode. Linket er gyldigt i <strong>1 time</strong>.
+      </p>
+      <div style="text-align:center;margin-bottom:24px">
+        <a href="${resetLink}"
+          style="display:inline-block;background:#1d4ed8;color:white;padding:14px 32px;border-radius:8px;font-weight:600;text-decoration:none;font-size:15px">
+          Nulstil adgangskode
+        </a>
+      </div>
+      <p style="margin:0;font-size:13px;color:#9ca3af">
+        Hvis du ikke har anmodet om dette, kan du blot ignorere denne email — din adgangskode forbliver uændret.
+      </p>
+    </div>
+    <div style="padding:16px 32px;background:#f8f8f8;font-size:11px;color:#999;text-align:center">
+      Venmark Fisk A/S · ordre@venmark.dk
+    </div>
+  </div>
+</body>
+</html>`
+
+  const transporter = createTransporter()
+  if (!transporter) {
+    console.log(`\n🔑 [RESET PASSWORD EMAIL → ${email}]`)
+    console.log(`Link: ${resetLink}\n`)
+    return
+  }
+  await transporter.sendMail({
+    from,
+    to: email,
+    subject: 'Nulstil din adgangskode — Venmark.dk',
+    html,
+  })
+}
+
 // ─── Send ordre-notifikation ──────────────────────────────────────────────────
 
 interface OrderEmailData {

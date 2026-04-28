@@ -1010,6 +1010,20 @@ export default function OrderList({
   const venmarkNos  = new Set(venmarkItems.map(v => v.item.number))
   const standingNos = new Set(standingOrders.map(s => s.item.number))
 
+  // Flettet liste: favoritter + Venmark-anbefalede, dedupliceret og sorteret efter varenummer
+  const mergedFavVenmark = (() => {
+    type MEntry = { item: EnrichedItem; isVenmark: boolean; vNote: string }
+    const mm = new Map<string, MEntry>()
+    for (const f of favorites.filter(f => !promoNos.has(f.number)))
+      mm.set(f.number, { item: f, isVenmark: false, vNote: '' })
+    for (const { item, note } of venmarkItems.filter(v => !promoNos.has(v.item.number))) {
+      const e = mm.get(item.number)
+      if (e) { e.isVenmark = true; e.vNote = note }
+      else mm.set(item.number, { item, isVenmark: true, vNote: note })
+    }
+    return Array.from(mm.values()).sort((a, b) => a.item.number.localeCompare(b.item.number))
+  })()
+
   // ── Katalog-navigation ───────────────────────────────────────────────────────
   const catTree        = useMemo(() => buildCatTree(allCategories), [allCategories])
   const activeCategory = catalogPath.length > 0 ? catalogPath[catalogPath.length - 1] : ''
@@ -1276,38 +1290,24 @@ export default function OrderList({
           </>
         )}
 
-        {/* Venmark anbefaler + kundens favoritter (flettet) */}
-        {!isCatalogMode && (venmarkItems.filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number)).length > 0 ||
-          favorites.filter(f => !promoNos.has(f.number)).length > 0) && (
+        {/* Favoritter & Venmark-anbefalede — flettet og sorteret efter varenummer */}
+        {!isCatalogMode && mergedFavVenmark.length > 0 && (
           <>
             <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
               <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
             </div>
             <div className="divide-y divide-gray-100/80">
-              {favorites.filter(f => !promoNos.has(f.number)).map(item => (
+              {mergedFavVenmark.map(({ item, isVenmark, vNote }) => (
                 <OrderRow
-                  key={`fav-${item.number}`}
+                  key={`favvenmark-${item.number}`}
                   item={item} quantity={getQty(item.number)}
                   onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isVenmark={isVenmark} venmarkNote={vNote}
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                   onOpenDetail={() => setDetailItem(item)}
                   unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
                 />
-              ))}
-              {venmarkItems
-                .filter(v => !promoNos.has(v.item.number) && !favNos.has(v.item.number))
-                .map(({ item, note }) => (
-                  <OrderRow
-                    key={`venmark-${item.number}`}
-                    item={item} quantity={getQty(item.number)}
-                    onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
-                    isVenmark venmarkNote={note}
-                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
-                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
-                    onOpenDetail={() => setDetailItem(item)}
-                    unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
-                  />
               ))}
             </div>
           </>

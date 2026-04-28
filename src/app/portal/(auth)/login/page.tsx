@@ -3,11 +3,13 @@
 import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 function LoginForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl  = searchParams.get('callbackUrl') ?? '/portal'
+  const passwordReset = searchParams.get('reset') === '1'
 
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -71,6 +73,12 @@ function LoginForm() {
         />
       </div>
 
+      {passwordReset && (
+        <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+          ✓ Adgangskoden er opdateret — log ind med din nye kode
+        </p>
+      )}
+
       {error && (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
@@ -104,10 +112,9 @@ export default function LoginPage() {
             <LoginForm />
           </Suspense>
           <p className="mt-6 text-center text-sm text-gray-500">
-            Glemt adgangskode?{' '}
-            <a href="mailto:ordre@venmark.dk" className="text-blue-600 hover:underline">
-              Kontakt os
-            </a>
+            <Link href="/portal/forgot-password" className="text-blue-600 hover:underline">
+              Glemt adgangskode?
+            </Link>
           </p>
         </div>
 
