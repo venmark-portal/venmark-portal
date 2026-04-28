@@ -31,7 +31,13 @@ export async function POST(req: Request) {
     const baseUrl   = process.env.NEXTAUTH_URL ?? 'https://portal.venmark.dk'
     const resetLink = `${baseUrl}/portal/reset-password?token=${token}`
 
-    await sendPasswordResetEmail(email, resetLink)
+    try {
+      await sendPasswordResetEmail(email, resetLink)
+    } catch (emailErr: any) {
+      // Log fejlen men returner stadig success — token er oprettet
+      console.error('[forgot-password] Email fejlede:', emailErr?.message ?? emailErr)
+      console.log(`[forgot-password] Reset-link til ${email}: ${resetLink}`)
+    }
   }
 
   // Returner altid success — afslør ikke om email eksisterer
