@@ -32,12 +32,17 @@ export default function ProfileClient({
   const [isPending, startTransition] = useTransition()
 
   // ── Favoritter ──────────────────────────────────────────────────────────────
-  function handleAddFav(item: BCItem & { unitPrice: number }) {
-    setFavSearch(false)
-    if (favorites.some((f) => f.bcItemNumber === item.number)) return
+  function handleAddFavorites(items: (BCItem & { unitPrice: number })[]) {
+    const newItems = items.filter(item => !favorites.some(f => f.bcItemNumber === item.number))
+    if (newItems.length === 0) return
     startTransition(async () => {
-      await addFavorite(item.number, item.displayName)
-      setFavorites((prev) => [...prev, { bcItemNumber: item.number, itemName: item.displayName, sortOrder: prev.length }])
+      for (const item of newItems) {
+        await addFavorite(item.number, item.displayName)
+      }
+      setFavorites(prev => [
+        ...prev,
+        ...newItems.map((item, i) => ({ bcItemNumber: item.number, itemName: item.displayName, sortOrder: prev.length + i })),
+      ])
     })
   }
 
@@ -272,8 +277,9 @@ export default function ProfileClient({
       {/* ── Søgemodalerne ── */}
       {favSearch && (
         <ItemSearchModal
-          onSelect={handleAddFav}
+          onAddFavorites={handleAddFavorites}
           onClose={() => setFavSearch(false)}
+          existingNos={new Set(favorites.map(f => f.bcItemNumber))}
         />
       )}
       {blkSearch && (

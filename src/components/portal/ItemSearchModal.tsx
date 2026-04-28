@@ -1,23 +1,34 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus } from 'lucide-react'
+import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import type { BCItem, BCItemCategory } from '@/lib/businesscentral'
 
 type EnrichedItem = BCItem & { unitPrice: number }
 
+const PAGE_SIZE = 100
+
 interface Props {
-  /** Multi-item mode med antal (bruges i bestillingslisten) */
-  onAddItems?:  (items: { item: EnrichedItem; quantity: number }[]) => void
-  /** Enkelt-valg mode — klik på vare → vælges straks (bruges i profil) */
-  onSelect?:    (item: EnrichedItem) => void
-  onClose:      () => void
-  favNos?:      Set<string>
-  onToggleFav?: (item: EnrichedItem) => void
+  /** Multi-item mode med antal — bruges i bestillingslisten */
+  onAddItems?:     (items: { item: EnrichedItem; quantity: number }[]) => void
+  /** Enkelt-valg mode — klik på vare → vælges straks */
+  onSelect?:       (item: EnrichedItem) => void
+  /** Favorit-vælger mode — checkboxes + paginering, tilføj mange på én gang */
+  onAddFavorites?: (items: EnrichedItem[]) => void
+  onClose:         () => void
+  favNos?:         Set<string>
+  onToggleFav?:    (item: EnrichedItem) => void
+  /** Allerede valgte varenumre (vises som allerede markeret i favPicker) */
+  existingNos?:    Set<string>
 }
 
-export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos, onToggleFav }: Props) {
-  const singleMode = !!onSelect
+export default function ItemSearchModal({
+  onAddItems, onSelect, onAddFavorites, onClose,
+  favNos, onToggleFav, existingNos = new Set(),
+}: Props) {
+  const singleMode  = !!onSelect
+  const favMode     = !!onAddFavorites
+
   const [query,      setQuery]      = useState('')
   const [results,    setResults]    = useState<EnrichedItem[]>([])
   const [loading,    setLoading]    = useState(false)
@@ -26,6 +37,9 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
   const [selCat,     setSelCat]     = useState<string | null>(null)
   const [showCats,   setShowCats]   = useState(false)
   const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
+  const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [page,       setPage]       = useState(0)
+  const [hasMore,    setHasMore]    = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -47,42 +61,70 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
       .catch(() => {})
   }, [])
 
+  // ── Hent-logik ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const hasQuery = query.trim().length >= 2
     const hasCat   = !!selCat
-    if (!hasQuery && !hasCat) { setResults([]); setError(''); return }
 
+    // favMode: vis altid (ingen søgning = vis alle); andre modes: kræv query/cat
+    if (!favMode && !hasQuery && !hasCat) {
+      setResults([])
+      setError('')
+      return
+    }
+
+    const delay = hasQuery ? 350 : 0
     const timer = setTimeout(async () => {
       setLoading(true)
       setError('')
       try {
-        const params = new URLSearchParams({ top: '30' })
-        if (query.trim().length >= 2) params.set('search', query.trim())
-        if (selCat) params.set('category', selCat)
+        const top = favMode ? PAGE_SIZE : 30
+        const params = new URLSearchParams({ top: String(top) })
+        if (favMode) params.set('skip', String(page * PAGE_SIZE))
+        if (hasQuery) params.set('search', query.trim())
+        if (selCat)   params.set('category', selCat)
         const res  = await fetch(`/api/products?${params}`)
         const data = await res.json()
         if (!res.ok || data.error) {
           setError(data.error ?? `Fejl fra server (${res.status})`)
           setResults([])
+          setHasMore(false)
         } else {
-          setResults(data.value ?? [])
+          const items = data.value ?? []
+          setResults(items)
+          setHasMore(favMode && items.length === PAGE_SIZE)
         }
       } catch {
         setError('Kunne ikke nå serveren — prøv igen')
         setResults([])
+        setHasMore(false)
       } finally {
         setLoading(false)
       }
-    }, query.trim().length >= 2 ? 350 : 0)
+    }, delay)
 
     return () => clearTimeout(timer)
-  }, [query, selCat])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, selCat, page, favMode])
 
+  // Nulstil side ved filter-ændring
+  useEffect(() => { setPage(0) }, [query, selCat])
+
+  // ── Hjælpefunktioner ──────────────────────────────────────────────────────────
   function setQty(itemNo: string, qty: number) {
     setQuantities(prev => {
       const next = new Map(prev)
       if (qty <= 0) next.delete(itemNo)
       else next.set(itemNo, qty)
+      return next
+    })
+  }
+
+  function toggleSelect(itemNo: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(itemNo)) next.delete(itemNo)
+      else next.add(itemNo)
       return next
     })
   }
@@ -97,16 +139,19 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
     onClose()
   }
 
-  const fmt = new Intl.NumberFormat('da-DK', {
-    style: 'currency', currency: 'DKK', minimumFractionDigits: 2,
-  })
+  function handleAddFavorites() {
+    if (!onAddFavorites) return
+    const toAdd = results.filter(r => selected.has(r.number))
+    if (toAdd.length === 0) return
+    onAddFavorites(toAdd)
+    onClose()
+  }
 
-  const selectedCatLabel = selCat
-    ? (categories.find(c => c.code === selCat)?.displayName ?? selCat)
-    : null
-
+  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const selectedCatLabel = selCat ? (categories.find(c => c.code === selCat)?.displayName ?? selCat) : null
   const itemsWithQty = results.filter(r => (quantities.get(r.number) ?? 0) > 0).length
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center">
       <div className="w-full max-w-lg rounded-t-2xl bg-white shadow-xl md:rounded-2xl flex flex-col max-h-[90vh]">
@@ -119,7 +164,7 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Søg på varenummer eller navn…"
+            placeholder={favMode ? 'Filtrer på navn eller varenummer…' : 'Søg på varenummer eller navn…'}
             className="flex-1 bg-transparent text-base outline-none placeholder:text-gray-400"
           />
           <button
@@ -140,7 +185,7 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Kategori</p>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
               <button
-                onClick={() => setSelCat(null)}
+                onClick={() => { setSelCat(null); setShowCats(false) }}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                   !selCat ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
@@ -150,7 +195,7 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
               {categories.map(cat => (
                 <button
                   key={cat.code}
-                  onClick={() => setSelCat(c => c === cat.code ? null : cat.code)}
+                  onClick={() => { setSelCat(c => c === cat.code ? null : cat.code); setShowCats(false) }}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                     selCat === cat.code ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
@@ -176,47 +221,94 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
           </div>
         )}
 
+        {/* Paginering øverst (kun favMode) */}
+        {favMode && !loading && results.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-100 bg-gray-50/60 shrink-0">
+            <button
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="flex items-center gap-0.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+            >
+              <ChevronLeft size={13} /> Forrige
+            </button>
+            <span className="text-xs text-gray-400">
+              Side {page + 1}{hasMore ? '+' : ''} · {results.length} varer
+              {selected.size > 0 && <span className="ml-2 font-semibold text-blue-600">{selected.size} valgt</span>}
+            </span>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={!hasMore}
+              className="flex items-center gap-0.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+            >
+              Næste <ChevronRight size={13} />
+            </button>
+          </div>
+        )}
+
         {/* ── Resultater ── */}
         <div className="overflow-y-auto flex-1">
           {loading && (
-            <div className="px-4 py-6 text-center text-sm text-gray-400">Søger…</div>
+            <div className="px-4 py-6 text-center text-sm text-gray-400">Henter…</div>
           )}
           {!loading && error && (
             <div className="px-4 py-6 text-center">
-              <p className="text-sm text-red-600 font-medium">Søgning fejlede</p>
+              <p className="text-sm text-red-600 font-medium">Fejl</p>
               <p className="text-xs text-gray-400 mt-1">{error}</p>
             </div>
           )}
-          {!loading && !error && !selCat && query.trim().length < 2 && (
+          {!loading && !error && !favMode && !selCat && query.trim().length < 2 && (
             <div className="px-4 py-6 text-center text-sm text-gray-400">
               Skriv mindst 2 tegn, eller vælg en kategori via <Filter size={13} className="inline" />
             </div>
           )}
-          {!loading && !error && results.length === 0 && (query.trim().length >= 2 || selCat) && (
+          {!loading && !error && results.length === 0 && (favMode || query.trim().length >= 2 || selCat) && (
             <div className="px-4 py-6 text-center text-sm text-gray-400">
               Ingen varer fundet
-              {query.trim().length >= 2 && <> for &quot;{query}&quot;</>}
+              {query.trim().length >= 2 && <> for &ldquo;{query}&rdquo;</>}
               {selCat && <> i {selectedCatLabel}</>}
             </div>
           )}
 
           {results.map((item) => {
-            const picUrl = item.picture?.id
+            const picUrl  = item.picture?.id
               ? `/api/portal/item-image/${item.id}?pictureId=${item.picture.id}`
               : null
-            const qty    = quantities.get(item.number) ?? 0
-            const isFav  = favNos?.has(item.number) ?? false
+            const qty      = quantities.get(item.number) ?? 0
+            const isFav    = favNos?.has(item.number) ?? false
+            const isExist  = existingNos.has(item.number)
+            const isSel    = selected.has(item.number)
 
             return (
               <div
                 key={item.id}
                 className={`px-3 py-2 border-b border-gray-50 last:border-0 transition-colors ${
-                  singleMode ? 'cursor-pointer hover:bg-blue-50/60 active:bg-blue-100' : qty > 0 ? 'bg-blue-50/50' : ''
+                  favMode
+                    ? (isExist ? 'opacity-40' : isSel ? 'bg-blue-50' : 'cursor-pointer hover:bg-gray-50/60')
+                    : singleMode
+                    ? 'cursor-pointer hover:bg-blue-50/60 active:bg-blue-100'
+                    : qty > 0 ? 'bg-blue-50/50' : ''
                 }`}
-                onClick={singleMode ? () => onSelect!(item as EnrichedItem) : undefined}
+                onClick={
+                  favMode && !isExist ? () => toggleSelect(item.number)
+                  : singleMode ? () => onSelect!(item as EnrichedItem)
+                  : undefined
+                }
               >
-                {/* Øverste række: billede + navn + hjerte */}
-                <div className="flex items-center gap-2 mb-1.5">
+                <div className="flex items-center gap-2">
+                  {/* Checkbox i favMode */}
+                  {favMode && (
+                    <div className={`shrink-0 h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      isExist
+                        ? 'border-gray-200 bg-gray-100'
+                        : isSel
+                        ? 'border-blue-600 bg-blue-600'
+                        : 'border-gray-300'
+                    }`}>
+                      {(isSel || isExist) && <Check size={12} className="text-white" strokeWidth={3} />}
+                    </div>
+                  )}
+
+                  {/* Billede */}
                   <div className="h-8 w-8 shrink-0 rounded-md overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
                     {picUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -225,6 +317,7 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
                       <ShoppingCart size={14} className="text-gray-300" />
                     )}
                   </div>
+
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-gray-900">{item.displayName}</div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
@@ -233,10 +326,12 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
                         <><span>·</span>
                         <span className="font-semibold text-gray-600">{fmt.format(item.unitPrice)}/{item.baseUnitOfMeasureCode}</span></>
                       )}
+                      {isExist && <span className="text-gray-400 italic">allerede favorit</span>}
                     </div>
                   </div>
+
                   {/* Hjerte — kun i multi-mode */}
-                  {!singleMode && onToggleFav && (
+                  {!singleMode && !favMode && onToggleFav && (
                     <button
                       onClick={e => { e.stopPropagation(); onToggleFav(item as EnrichedItem) }}
                       className={`shrink-0 p-1 rounded-full transition-colors ${
@@ -247,15 +342,14 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
                       <Heart size={15} fill={isFav ? 'currentColor' : 'none'} />
                     </button>
                   )}
-                  {/* "Vælg"-indikator i single-mode */}
-                  {singleMode && (
-                    <Plus size={16} className="shrink-0 text-blue-400" />
-                  )}
+
+                  {/* Plus-indikator i singleMode */}
+                  {singleMode && <Plus size={16} className="shrink-0 text-blue-400" />}
                 </div>
 
-                {/* Nedre række: antal-knapper — kun i multi-mode */}
-                {!singleMode && (
-                  <div className="flex items-center gap-1 justify-end">
+                {/* Antal-knapper — kun i multi-mode (order list) */}
+                {!singleMode && !favMode && (
+                  <div className="flex items-center gap-1 justify-end mt-1.5">
                     <button
                       onClick={() => setQty(item.number, Math.max(0, qty - 1))}
                       disabled={qty === 0}
@@ -298,7 +392,27 @@ export default function ItemSearchModal({ onAddItems, onSelect, onClose, favNos,
 
         {/* ── Bund ── */}
         <div className="border-t border-gray-100 px-4 py-3 shrink-0 flex items-center gap-3">
-          {singleMode ? (
+          {favMode ? (
+            <>
+              <span className="flex-1 text-xs text-gray-400">
+                {selected.size > 0
+                  ? `${selected.size} vare${selected.size !== 1 ? 'r' : ''} valgt`
+                  : 'Klik på varer for at markere dem'}
+              </span>
+              {selected.size > 0 ? (
+                <button
+                  onClick={handleAddFavorites}
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
+                >
+                  Tilføj {selected.size} favorit{selected.size !== 1 ? 'ter' : ''}
+                </button>
+              ) : (
+                <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
+                  Luk
+                </button>
+              )}
+            </>
+          ) : singleMode ? (
             <>
               <span className="flex-1 text-xs text-gray-400">
                 {results.length > 0 ? `${results.length} varer — klik for at vælge` : ''}
