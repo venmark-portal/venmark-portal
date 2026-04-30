@@ -696,6 +696,60 @@ export async function toggleBCPortalFavorite(
   }
 }
 
+// ─── Skriv kundefavoritter til BC (tabel 50157) ───────────────────────────────
+
+export async function addBCCustomerFavorite(
+  customerNo: string,
+  itemNo: string,
+  itemName: string,
+): Promise<void> {
+  const token   = await getAccessToken()
+  const tenant  = process.env.BC_TENANT_ID
+  const env     = process.env.BC_ENVIRONMENT_NAME
+  const company = process.env.BC_COMPANY_ID
+  const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+  await fetch(`${base}/customerFavorites`, {
+    method: 'POST',
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept:         'application/json',
+    },
+    body: JSON.stringify({ customerNo, itemNo, description: itemName }),
+    cache: 'no-store',
+  } as any)
+}
+
+export async function removeBCCustomerFavorite(
+  customerNo: string,
+  itemNo: string,
+): Promise<void> {
+  const token   = await getAccessToken()
+  const tenant  = process.env.BC_TENANT_ID
+  const env     = process.env.BC_ENVIRONMENT_NAME
+  const company = process.env.BC_COMPANY_ID
+  const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+
+  // Find SystemId for den konkrete favorit
+  const filter = encodeURIComponent(`customerNo eq '${customerNo}' and itemNo eq '${itemNo}'`)
+  const res = await fetch(`${base}/customerFavorites?$filter=${filter}&$select=id&$top=1`, {
+    headers, cache: 'no-store',
+  } as any)
+  if (!res.ok) return
+
+  const data = await res.json()
+  const id   = data.value?.[0]?.id
+  if (!id) return
+
+  await fetch(`${base}/customerFavorites(${id})`, {
+    method: 'DELETE',
+    headers: { ...headers, 'If-Match': '*' },
+    cache: 'no-store',
+  } as any)
+}
+
 // ─── Hent bogførte salgsfakturaer ─────────────────────────────────────────────
 
 export interface BCPostedInvoice {
