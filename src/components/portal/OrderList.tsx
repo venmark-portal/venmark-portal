@@ -1014,9 +1014,9 @@ export default function OrderList({
   const mergedFavVenmark = (() => {
     type MEntry = { item: EnrichedItem; isVenmark: boolean; vNote: string }
     const mm = new Map<string, MEntry>()
-    for (const f of favorites.filter(f => !promoNos.has(f.number)))
+    for (const f of favorites.filter(f => !promoNos.has(f.number) && !standingNos.has(f.number)))
       mm.set(f.number, { item: f, isVenmark: false, vNote: '' })
-    for (const { item, note } of venmarkItems.filter(v => !promoNos.has(v.item.number))) {
+    for (const { item, note } of venmarkItems.filter(v => !promoNos.has(v.item.number) && !standingNos.has(v.item.number))) {
       const e = mm.get(item.number)
       if (e) { e.isVenmark = true; e.vNote = note }
       else mm.set(item.number, { item, isVenmark: true, vNote: note })
