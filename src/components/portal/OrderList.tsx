@@ -724,17 +724,7 @@ export default function OrderList({
     ? (() => { const d = deliveryDays[Math.max(0, firstValid)]; return d.getDay() === 0 ? 7 : d.getDay() })()
     : 1
 
-  const [lines, setLines]             = useState<Map<string, OrderLine>>(() => {
-    // Foreslå mængder fra faste ordrelinjer for første gyldige leveringsdag
-    const m = new Map<string, OrderLine>()
-    for (const s of standingOrders) {
-      const qty = getStandingQty(s, deliveryWeekday)
-      if (qty > 0) {
-        m.set(s.item.number, { item: s.item, quantity: qty, uom: s.unitOfMeasure || s.item.baseUnitOfMeasureCode })
-      }
-    }
-    return m
-  })
+  const [lines, setLines]             = useState<Map<string, OrderLine>>(() => new Map())
   const [lineUoms, setLineUoms]       = useState<Map<string, string>>(() => {
     const m = new Map<string, string>()
     for (const s of standingOrders) {
@@ -902,33 +892,7 @@ export default function OrderList({
     } catch { /* stil */ }
   }
 
-  // ── Opdater faste ordrelinjer når leveringsdagen skifter ─────────────────────
-  // Sæt der tracker hvilke varenumre brugeren har manuelt redigeret
   const manuallyEdited = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (standingOrders.length === 0 || selectedWeekday === 0) return
-    setLines(prev => {
-      const next = new Map(prev)
-      for (const s of standingOrders) {
-        // Spring over varer brugeren selv har ændret
-        if (manuallyEdited.current.has(s.item.number)) continue
-        const newQty = getStandingQty(s, selectedWeekday)
-        if (newQty > 0) {
-          const existing = next.get(s.item.number)
-          next.set(s.item.number, {
-            item: s.item,
-            quantity: newQty,
-            uom: existing?.uom ?? (s.unitOfMeasure || s.item.baseUnitOfMeasureCode),
-          })
-        } else {
-          next.delete(s.item.number)
-        }
-      }
-      return next
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWeekday])
 
   // ── Favorit-toggle ──────────────────────────────────────────────────────────
   function toggleFavorite(item: EnrichedItem) {
@@ -1357,13 +1321,15 @@ export default function OrderList({
                 {standingOrders.map((s) => {
                   const weekdayQty = getStandingQty(s, selectedWeekday)
                   const currentQty = getQty(s.item.number)
-                  const isEdited   = manuallyEdited.current.has(s.item.number) && currentQty !== weekdayQty
                   return (
                     <div key={`standing-${s.item.number}`} className="relative">
-                      {isEdited && (
-                        <span className="absolute right-12 top-1/2 -translate-y-1/2 text-[10px] text-purple-400 italic z-10">
-                          ændret
-                        </span>
+                      {weekdayQty > 0 && currentQty === 0 && (
+                        <button
+                          onClick={() => setQty(s.item, weekdayQty)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 text-[10px] font-semibold text-purple-600 border border-purple-200 bg-white rounded px-1.5 py-0.5 hover:bg-purple-50 transition"
+                        >
+                          +{weekdayQty}
+                        </button>
                       )}
                       <OrderRow
                         item={s.item} quantity={currentQty}
