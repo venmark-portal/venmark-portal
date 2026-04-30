@@ -386,6 +386,7 @@ function OrderRow({
   item, quantity, onQty, priceTiers = [],
   isPromo = false, promoNote = '',
   isVenmark = false, venmarkNote = '',
+  isStandingOrder = false,
   isFavorite = false, onToggleFav,
   selectedUom, onUomChange,
   onOpenDetail,
@@ -399,6 +400,7 @@ function OrderRow({
   promoNote?:       string
   isVenmark?:       boolean
   venmarkNote?:     string
+  isStandingOrder?: boolean
   isFavorite?:      boolean
   onToggleFav?:     () => void
   selectedUom?:     string
@@ -453,6 +455,7 @@ function OrderRow({
             {isPromo && <Flame size={11} className="shrink-0 text-orange-500" />}
             {isVenmark && !isPromo && <span className="shrink-0 text-[12px]" title={venmarkNote || 'Venmark anbefaler'}>⭐</span>}
             <span className="truncate text-sm font-medium text-gray-900 leading-tight">{item.displayName}</span>
+            {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5 ml-1"><RefreshCw size={9} />Fast ordre</span>}
             {visibleAttrs.map((attr, i) => <AttrIcon key={i} attr={attr} />)}
           </div>
           {/* Linje 2: nr + aktiv pris + trappepriser */}
@@ -1319,36 +1322,19 @@ export default function OrderList({
               <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
             </div>
             <div className="divide-y divide-gray-100/80">
-              {mergedFavVenmark.map(({ item, isVenmark, vNote }) => {
-                if (standingNos.has(item.number)) {
-                  return (
-                    <div key={`favstanding-${item.number}`} className="px-3 py-2 flex items-center gap-2 hover:bg-gray-50/40">
-                      <button onClick={() => toggleFavorite(item)} className="shrink-0 p-0.5 text-red-400 hover:text-red-500 transition">
-                        <Heart size={14} fill={favSet.has(item.number) ? 'currentColor' : 'none'} />
-                      </button>
-                      <button onClick={() => setDetailItem(item)} className="flex-1 min-w-0 text-left">
-                        <span className="block text-sm font-medium text-gray-800 truncate">{item.description}</span>
-                        <span className="text-[11px] text-gray-400">{item.number}</span>
-                      </button>
-                      <span className="shrink-0 text-[11px] font-semibold text-blue-600 flex items-center gap-1">
-                        <RefreshCw size={10} /> Fast ordre
-                      </span>
-                    </div>
-                  )
-                }
-                return (
-                  <OrderRow
-                    key={`favvenmark-${item.number}`}
-                    item={item} quantity={getQty(item.number)}
-                    onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
-                    isVenmark={isVenmark} venmarkNote={vNote}
-                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
-                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
-                    onOpenDetail={() => setDetailItem(item)}
-                    unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
-                  />
-                )
-              })}
+              {mergedFavVenmark.map(({ item, isVenmark, vNote }) => (
+                <OrderRow
+                  key={`favvenmark-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isVenmark={isVenmark} venmarkNote={vNote}
+                  isStandingOrder={standingNos.has(item.number)}
+                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                  onOpenDetail={() => setDetailItem(item)}
+                  unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                />
+              ))}
             </div>
           </>
         )}
