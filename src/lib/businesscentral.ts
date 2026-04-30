@@ -709,7 +709,7 @@ export async function addBCCustomerFavorite(
   const company = process.env.BC_COMPANY_ID
   const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
-  await fetch(`${base}/customerFavorites`, {
+  const res = await fetch(`${base}/customerFavorites`, {
     method: 'POST',
     headers: {
       Authorization:  `Bearer ${token}`,
@@ -719,6 +719,10 @@ export async function addBCCustomerFavorite(
     body: JSON.stringify({ customerNo, itemNo, description: itemName }),
     cache: 'no-store',
   } as any)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[BC favorites] POST fejlede ${res.status}: ${body}`)
+  }
 }
 
 export async function removeBCCustomerFavorite(
@@ -737,17 +741,28 @@ export async function removeBCCustomerFavorite(
   const res = await fetch(`${base}/customerFavorites?$filter=${filter}&$select=id&$top=1`, {
     headers, cache: 'no-store',
   } as any)
-  if (!res.ok) return
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[BC favorites] GET fejlede ${res.status}: ${body}`)
+    return
+  }
 
   const data = await res.json()
   const id   = data.value?.[0]?.id
-  if (!id) return
+  if (!id) {
+    console.warn(`[BC favorites] Ingen post fundet for ${customerNo}/${itemNo}`)
+    return
+  }
 
-  await fetch(`${base}/customerFavorites(${id})`, {
+  const delRes = await fetch(`${base}/customerFavorites(${id})`, {
     method: 'DELETE',
     headers: { ...headers, 'If-Match': '*' },
     cache: 'no-store',
   } as any)
+  if (!delRes.ok) {
+    const body = await delRes.text().catch(() => '')
+    console.error(`[BC favorites] DELETE fejlede ${delRes.status}: ${body}`)
+  }
 }
 
 // ─── Hent bogførte salgsfakturaer ─────────────────────────────────────────────
