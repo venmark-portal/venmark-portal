@@ -525,7 +525,16 @@ function OrderRow({
             min={0}
             value={quantity || ''}
             placeholder="0"
+            data-qty-input="true"
             onChange={(e) => onQty(Math.max(0, parseInt(e.target.value) || 0))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-qty-input]'))
+                const idx = inputs.indexOf(e.currentTarget)
+                if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
+              }
+            }}
             className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
           />
           <button
@@ -1014,9 +1023,9 @@ export default function OrderList({
   const mergedFavVenmark = (() => {
     type MEntry = { item: EnrichedItem; isVenmark: boolean; vNote: string }
     const mm = new Map<string, MEntry>()
-    for (const f of favorites.filter(f => !promoNos.has(f.number) && !standingNos.has(f.number)))
+    for (const f of favorites.filter(f => !promoNos.has(f.number)))
       mm.set(f.number, { item: f, isVenmark: false, vNote: '' })
-    for (const { item, note } of venmarkItems.filter(v => !promoNos.has(v.item.number) && !standingNos.has(v.item.number))) {
+    for (const { item, note } of venmarkItems.filter(v => !promoNos.has(v.item.number))) {
       const e = mm.get(item.number)
       if (e) { e.isVenmark = true; e.vNote = note }
       else mm.set(item.number, { item, isVenmark: true, vNote: note })
@@ -1310,18 +1319,36 @@ export default function OrderList({
               <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
             </div>
             <div className="divide-y divide-gray-100/80">
-              {mergedFavVenmark.map(({ item, isVenmark, vNote }) => (
-                <OrderRow
-                  key={`favvenmark-${item.number}`}
-                  item={item} quantity={getQty(item.number)}
-                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
-                  isVenmark={isVenmark} venmarkNote={vNote}
-                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
-                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
-                  onOpenDetail={() => setDetailItem(item)}
-                  unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
-                />
-              ))}
+              {mergedFavVenmark.map(({ item, isVenmark, vNote }) => {
+                if (standingNos.has(item.number)) {
+                  return (
+                    <div key={`favstanding-${item.number}`} className="px-3 py-2 flex items-center gap-2 hover:bg-gray-50/40">
+                      <button onClick={() => toggleFavorite(item)} className="shrink-0 p-0.5 text-red-400 hover:text-red-500 transition">
+                        <Heart size={14} fill={favSet.has(item.number) ? 'currentColor' : 'none'} />
+                      </button>
+                      <button onClick={() => setDetailItem(item)} className="flex-1 min-w-0 text-left">
+                        <span className="block text-sm font-medium text-gray-800 truncate">{item.description}</span>
+                        <span className="text-[11px] text-gray-400">{item.number}</span>
+                      </button>
+                      <span className="shrink-0 text-[11px] font-semibold text-blue-600 flex items-center gap-1">
+                        <RefreshCw size={10} /> Fast ordre
+                      </span>
+                    </div>
+                  )
+                }
+                return (
+                  <OrderRow
+                    key={`favvenmark-${item.number}`}
+                    item={item} quantity={getQty(item.number)}
+                    onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                    isVenmark={isVenmark} venmarkNote={vNote}
+                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                    onOpenDetail={() => setDetailItem(item)}
+                    unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                  />
+                )
+              })}
             </div>
           </>
         )}
