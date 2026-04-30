@@ -1260,34 +1260,40 @@ export async function getItemsUoMs(
     const token = await getAccessToken()
     const base  = bcBaseUrl()
 
-    const results = await Promise.allSettled(
-      items.map(async ({ id, number }) => {
-        const res = await fetch(`${base}/items(${id})/itemUnitsOfMeasure`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-          next: { revalidate: 300 },  // 5 min — enheder ændres sjældent
-        })
-        if (!res.ok) return { number, uoms: [] as BCItemUoM[] }
-        const data = await res.json()
-        const uoms: BCItemUoM[] = (data.value ?? []).map((u: any) => ({
-          code:                u.code ?? '',
-          displayName:         u.displayName ?? u.code ?? '',
-          qtyPerUnitOfMeasure: typeof u.qtyPerUnitOfMeasure === 'number' ? u.qtyPerUnitOfMeasure : 1,
-          baseUnitOfMeasure:   u.baseUnitOfMeasure === true,
-        }))
-        // Sorter: base-enhed først, derefter stigende qtyPerUnitOfMeasure
-        uoms.sort((a, b) => {
-          if (a.baseUnitOfMeasure && !b.baseUnitOfMeasure) return -1
-          if (!a.baseUnitOfMeasure && b.baseUnitOfMeasure) return 1
-          return a.qtyPerUnitOfMeasure - b.qtyPerUnitOfMeasure
-        })
-        return { number, uoms }
-      }),
-    )
+    // Batch i grupper af 20 for at undgå BC rate-limit ved mange parallelle kald
+    const BATCH = 20
+    const allResults: Array<{ number: string; uoms: BCItemUoM[] }> = []
+    for (let i = 0; i < items.length; i += BATCH) {
+      const batch = items.slice(i, i + BATCH)
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ id, number }) => {
+          const res = await fetch(`${base}/items(${id})/itemUnitsOfMeasure`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+            next: { revalidate: 60 },  // 1 min — kort nok til at nye enheder fra BC vises hurtigt
+          })
+          if (!res.ok) return { number, uoms: [] as BCItemUoM[] }
+          const data = await res.json()
+          const uoms: BCItemUoM[] = (data.value ?? []).map((u: any) => ({
+            code:                u.code ?? '',
+            displayName:         u.displayName ?? u.code ?? '',
+            qtyPerUnitOfMeasure: typeof u.qtyPerUnitOfMeasure === 'number' ? u.qtyPerUnitOfMeasure : 1,
+            baseUnitOfMeasure:   u.baseUnitOfMeasure === true,
+          }))
+          uoms.sort((a, b) => {
+            if (a.baseUnitOfMeasure && !b.baseUnitOfMeasure) return -1
+            if (!a.baseUnitOfMeasure && b.baseUnitOfMeasure) return 1
+            return a.qtyPerUnitOfMeasure - b.qtyPerUnitOfMeasure
+          })
+          return { number, uoms }
+        }),
+      )
+      for (const r of batchResults) {
+        if (r.status === 'fulfilled') allResults.push(r.value)
+      }
+    }
 
     const map = new Map<string, BCItemUoM[]>()
-    for (const r of results) {
-      if (r.status === 'fulfilled') map.set(r.value.number, r.value.uoms)
-    }
+    for (const r of allResults) map.set(r.number, r.uoms)
     return map
   } catch {
     return new Map()
