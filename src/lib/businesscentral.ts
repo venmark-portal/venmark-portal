@@ -353,19 +353,13 @@ export async function getPortalPrices(
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
     }
     if (priceGroup) {
-      // Prøv alle kendte BC OData enum-repræsentationer + ren sourceNo-fallback
-      const f1 = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
-      const f2 = encodeURIComponent(`sourceType eq 'Customer_Price_Group' and sourceNo eq '${priceGroup}'`)
-      const f3 = encodeURIComponent(`sourceNo eq '${priceGroup}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f1}&$top=1000`))
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f2}&$top=1000`))
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f3}&$top=1000`))
+      // BC OData enum-værdier: mellemrum kodes som _x0020_ i filter-udtryk
+      const f = encodeURIComponent(`sourceType eq 'Customer_x0020_Price_x0020_Group' and sourceNo eq '${priceGroup}'`)
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
     }
-    // All Customers priser — prøv alle kendte varianter
-    const fAll1 = encodeURIComponent(`sourceType eq 'All Customers'`)
-    const fAll2 = encodeURIComponent(`sourceType eq 'All_Customers'`)
-    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll1}&$top=1000`))
-    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll2}&$top=1000`))
+    // All Customers priser — korrekt BC OData enum-navn
+    const fAll = encodeURIComponent(`sourceType eq 'All_x0020_Customers'`)
+    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=1000`))
 
     const pages = await Promise.all(fetchJobs)
     const allItems: any[] = pages.flat()
