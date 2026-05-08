@@ -36,14 +36,36 @@ export async function GET(req: Request) {
   const what = searchParams.get('what') ?? 'itemCutoffs'
 
   const customerNo = (session?.user as any)?.bcCustomerNumber as string ?? ''
+  const priceGroup = (session?.user as any)?.bcPriceGroup     as string ?? ''
   const token   = await getToken()
   const tenant  = process.env.BC_TENANT_ID
   const env     = process.env.BC_ENVIRONMENT_NAME
   const company = process.env.BC_COMPANY_ID
   const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
-  const baseOdata = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/ODataV4/Company('${company}')`
-  const baseV2 = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
+  const baseV2  = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies(${company})`
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+
+  if (what === 'portalPrices') {
+    // Vis hvad hver filtervariant returnerer — til diagnose af prisgruppe-problem
+    async function tryFetch(label: string, url: string) {
+      const r = await fetch(url, { headers, cache: 'no-store' } as any)
+      const t = await r.text()
+      let v: any
+      try { v = JSON.parse(t) } catch { v = t }
+      return { label, status: r.status, count: v?.value?.length ?? 0, sample: v?.value?.slice(0, 3) ?? v }
+    }
+    const results = await Promise.all([
+      tryFetch('customer', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceType eq 'Customer' and sourceNo eq '${customerNo}'`)}&$top=10`),
+      tryFetch('priceGroup_spaces', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)}&$top=10`),
+      tryFetch('priceGroup_underscores', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceType eq 'Customer_Price_Group' and sourceNo eq '${priceGroup}'`)}&$top=10`),
+      tryFetch('priceGroup_sourceNoOnly', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceNo eq '${priceGroup}'`)}&$top=10`),
+      tryFetch('allCustomers_spaces', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceType eq 'All Customers'`)}&$top=10`),
+      tryFetch('allCustomers_underscores', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceType eq 'All_Customers'`)}&$top=10`),
+      tryFetch('allCustomers_emptySourceNo', `${base}/portalPrices?$filter=${encodeURIComponent(`sourceNo eq ''`)}&$top=10`),
+      tryFetch('item23995_noFilter', `${base}/portalPrices?$filter=${encodeURIComponent(`itemNo eq '23995'`)}&$top=20`),
+    ])
+    return NextResponse.json({ session: { customerNo, priceGroup }, results })
+  }
 
   let url: string
   if (what === 'itemCutoffs') {
@@ -52,10 +74,8 @@ export async function GET(req: Request) {
     const f = encodeURIComponent(`customerNo eq '${customerNo}'`)
     url = `${base}/customerFavorites?$filter=${f}&$top=10`
   } else if (what === 'itemCategories') {
-    // BC standard API v2.0 — varekategorier
     url = `${baseV2}/itemCategories?$top=100`
   } else if (what === 'items-sample') {
-    // Hent 5 varer med kategori og attributter via standard API
     url = `${baseV2}/items?$top=5&$select=number,displayName,itemCategoryCode&$filter=blocked eq false`
   } else {
     return NextResponse.json({ error: 'unknown what param' }, { status: 400 })
