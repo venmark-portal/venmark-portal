@@ -353,14 +353,17 @@ export async function getPortalPrices(
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
     }
     if (priceGroup) {
+      // Prøv alle kendte BC OData enum-repræsentationer + ren sourceNo-fallback
       const f1 = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
-      const f2 = encodeURIComponent(`sourceType eq 'Customer_x0020_Price_x0020_Group' and sourceNo eq '${priceGroup}'`)
+      const f2 = encodeURIComponent(`sourceType eq 'Customer_Price_Group' and sourceNo eq '${priceGroup}'`)
+      const f3 = encodeURIComponent(`sourceNo eq '${priceGroup}'`)
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f1}&$top=1000`))
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f2}&$top=1000`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f3}&$top=1000`))
     }
-    // All Customers priser — prøv begge enum-varianter
+    // All Customers priser — prøv alle kendte varianter
     const fAll1 = encodeURIComponent(`sourceType eq 'All Customers'`)
-    const fAll2 = encodeURIComponent(`sourceType eq 'All_x0020_Customers'`)
+    const fAll2 = encodeURIComponent(`sourceType eq 'All_Customers'`)
     fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll1}&$top=1000`))
     fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll2}&$top=1000`))
 
@@ -626,6 +629,34 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
     }
     return result
   } catch { return new Map() }
+}
+
+// ─── Hent varenumre i en kategori via portal-API ─────────────────────────────
+
+export async function getItemNumbersByCategory(category: string): Promise<string[]> {
+  if (!category) return []
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    const filter  = encodeURIComponent(`itemCategoryCode eq '${category}'`)
+
+    const numbers: string[] = []
+    let url: string | null = `${base}/itemCutoffs?$filter=${filter}&$select=itemNo&$top=1000`
+    while (url) {
+      const res: Response = await fetch(url, { headers, next: { revalidate: 300 } } as any)
+      if (!res.ok) break
+      const data = await res.json()
+      for (const item of (data.value ?? [])) {
+        if (item.itemNo) numbers.push(item.itemNo)
+      }
+      url = data['@odata.nextLink'] ?? null
+    }
+    return [...new Set(numbers)]
+  } catch { return [] }
 }
 
 // ─── Opdater fast ordrelinje i BC (PATCH) ─────────────────────────────────────

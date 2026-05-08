@@ -8,18 +8,17 @@ import { addBusinessDays, nextBusinessDays } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
-/** Finder visningspris for qty=1 (laveste gyldig tier). */
+/** Finder visningspris for qty=1 — laveste pris på tværs af alle gældende priskilder. */
 function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): number | null {
-  const tiers = prices
-    .filter(
-      (p) =>
-        p.itemNo === itemNo &&
-        p.minimumQuantity <= 1 &&
-        (!p.startingDate || p.startingDate <= today) &&
-        (!p.endingDate   || p.endingDate   >= today),
-    )
-    .sort((a, b) => b.minimumQuantity - a.minimumQuantity)
-  return tiers[0]?.unitPrice ?? null
+  const applicable = prices.filter(
+    (p) =>
+      p.itemNo === itemNo &&
+      p.minimumQuantity <= 1 &&
+      (!p.startingDate || p.startingDate <= today) &&
+      (!p.endingDate   || p.endingDate   >= today),
+  )
+  if (!applicable.length) return null
+  return Math.min(...applicable.map(p => p.unitPrice))
 }
 
 

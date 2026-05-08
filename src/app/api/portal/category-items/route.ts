@@ -3,24 +3,23 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import {
   getPortalPrices,
+  getItemNumbersByCategory,
   getItemsByNumbers,
   getItemsAttributeValues,
   getItemsUoMs,
-  getItemCutoffs,
 } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import { prisma } from '@/lib/prisma'
 
 function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): number | null {
-  const tiers = prices
-    .filter(
-      p => p.itemNo === itemNo &&
-        p.minimumQuantity <= 1 &&
-        (!p.startingDate || p.startingDate <= today) &&
-        (!p.endingDate   || p.endingDate   >= today),
-    )
-    .sort((a, b) => b.minimumQuantity - a.minimumQuantity)
-  return tiers[0]?.unitPrice ?? null
+  const applicable = prices.filter(
+    p => p.itemNo === itemNo &&
+      p.minimumQuantity <= 1 &&
+      (!p.startingDate || p.startingDate <= today) &&
+      (!p.endingDate   || p.endingDate   >= today),
+  )
+  if (!applicable.length) return null
+  return Math.min(...applicable.map(p => p.unitPrice))
 }
 
 // GET /api/portal/category-items?category=FERSK
@@ -37,29 +36,23 @@ export async function GET(req: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Hent priser + cutoffs + blokerede parallelt
-  const [portalPrices, itemCutoffs, blockedRows] = await Promise.all([
+  // Hent priser + varenumre i kategori + blokerede parallelt
+  const [portalPrices, categoryNos, blockedRows] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
-    getItemCutoffs(),
+    getItemNumbersByCategory(category),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
   ])
 
-  const blockedSet = new Set(blockedRows.map(b => b.bcItemNumber))
+  const blockedSet  = new Set(blockedRows.map(b => b.bcItemNumber))
+  const filteredNos = categoryNos.filter(no => !blockedSet.has(no))
 
-  // Find varenumre i den valgte kategori med pris for denne kunde
-  const pricedNos = new Set(portalPrices.map(p => p.itemNo))
-  const categoryNos = Array.from(itemCutoffs.entries())
-    .filter(([itemNo, data]) =>
-      data.itemCategoryCode === category &&
-      pricedNos.has(itemNo) &&
-      !blockedSet.has(itemNo)
-    )
-    .map(([itemNo]) => itemNo)
+  if (filteredNos.length === 0) return NextResponse.json({ items: [], priceTiers: [] })
 
-  if (categoryNos.length === 0) return NextResponse.json({ items: [], priceTiers: [] })
+  const bcItems = await getItemsByNumbers(filteredNos)
 
-  // Hent varedetaljer + attributter + enheder
-  const bcItems = await getItemsByNumbers(categoryNos)
+  if (bcItems.length === 0) return NextResponse.json({ items: [], priceTiers: [] })
+
+  // Hent attributter + enheder
   const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
   const [attrMap, uomMap] = await Promise.all([
     getItemsAttributeValues(itemRefs),
@@ -98,8 +91,9 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  const itemNosSet = new Set(bcItems.map(i => i.number))
   const priceTiers = portalPrices
-    .filter(p => categoryNos.includes(p.itemNo))
+    .filter(p => itemNosSet.has(p.itemNo))
     .map(p => ({
       itemNo:          p.itemNo,
       minimumQuantity: p.minimumQuantity,
