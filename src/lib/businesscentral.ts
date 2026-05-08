@@ -336,7 +336,7 @@ export async function getPortalPrices(
       const items: any[] = []
       let url: string | null = startUrl
       while (url) {
-        const res: Response = await fetch(url, { headers, next: { revalidate: 300 } } as any)
+        const res: Response = await fetch(url, { headers, next: { revalidate: 60 } } as any)
         if (!res.ok) break
         const data = await res.json()
         items.push(...(data.value ?? []))
