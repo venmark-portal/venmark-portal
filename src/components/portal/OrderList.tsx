@@ -420,9 +420,10 @@ function OrderRow({
   const effectivePrice = resolvePrice(item.number, Math.max(quantity, 1), priceTiers, item.unitPrice, activeUomCode, qtyPerUom, baseUomCode)
 
   const today8601    = new Date().toISOString().split('T')[0]
-  // Vis altid pris pr. basisenhed (KG) — uanset valgt bestillingsenhed
+  // Vis altid pris pr. KG — men beregnet ud fra den faktiske kg-mængde (kasser × kg/kasse)
+  const effectiveKgQty = Math.max(quantity * qtyPerUom, 1)
   const displayTiers = buildDisplayTiers(priceTiers, item.number, baseUomCode, today8601, 1, baseUomCode)
-  const displayPrice = resolvePrice(item.number, Math.max(quantity, 1), priceTiers, item.unitPrice, baseUomCode, 1, baseUomCode)
+  const displayPrice = resolvePrice(item.number, effectiveKgQty, priceTiers, item.unitPrice, baseUomCode, 1, baseUomCode)
 
   const hasRealTiers = displayTiers.length > 1
   const priceChanged = hasRealTiers && quantity > 0 && displayPrice !== (displayTiers[0]?.unitPrice ?? item.unitPrice)
@@ -508,7 +509,9 @@ function OrderRow({
               title="Vælg bestillingsenhed"
             >
               {uoms.map(u => (
-                <option key={u.code} value={u.code}>{u.code}</option>
+                <option key={u.code} value={u.code}>
+                  {u.code}{u.qtyPerUnitOfMeasure > 1 ? ` ×${u.qtyPerUnitOfMeasure}` : ''}
+                </option>
               ))}
             </select>
           ) : (
