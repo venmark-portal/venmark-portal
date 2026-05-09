@@ -725,8 +725,18 @@ export default function OrderList({
     : 1
 
   const [lines, setLines]             = useState<Map<string, OrderLine>>(() => new Map())
+  const uomPrefKey = `venmark_uom_${customerId}`
   const [lineUoms, setLineUoms]       = useState<Map<string, string>>(() => {
     const m = new Map<string, string>()
+    // Læs gemte præferencer fra localStorage (kun client-side)
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(uomPrefKey) : null
+      if (saved) {
+        const obj = JSON.parse(saved) as Record<string, string>
+        for (const [k, v] of Object.entries(obj)) m.set(k, v)
+      }
+    } catch { /* ignore */ }
+    // Faste ordrelinjer overskriver (de er eksplicit sat i BC)
     for (const s of standingOrders) {
       if (s.unitOfMeasure) m.set(s.item.number, s.unitOfMeasure)
     }
@@ -796,13 +806,22 @@ export default function OrderList({
   }, [])
 
   const setLineUom = useCallback((item: EnrichedItem, uomCode: string) => {
-    setLineUoms(prev => new Map(prev).set(item.number, uomCode))
+    setLineUoms(prev => {
+      const next = new Map(prev).set(item.number, uomCode)
+      // Gem præference til næste besøg
+      try {
+        const obj: Record<string, string> = {}
+        next.forEach((v, k) => { obj[k] = v })
+        localStorage.setItem(uomPrefKey, JSON.stringify(obj))
+      } catch { /* ignore */ }
+      return next
+    })
     setLines(prev => {
       const existing = prev.get(item.number)
       if (!existing) return prev
       return new Map(prev).set(item.number, { ...existing, uom: uomCode })
     })
-  }, [])
+  }, [uomPrefKey])
 
   const getQty = (itemNumber: string) => lines.get(itemNumber)?.quantity ?? 0
 
