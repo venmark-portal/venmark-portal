@@ -420,10 +420,12 @@ function OrderRow({
   const effectivePrice = resolvePrice(item.number, Math.max(quantity, 1), priceTiers, item.unitPrice, activeUomCode, qtyPerUom, baseUomCode)
 
   const today8601    = new Date().toISOString().split('T')[0]
-  const displayTiers = buildDisplayTiers(priceTiers, item.number, activeUomCode, today8601, qtyPerUom, baseUomCode)
+  // Vis altid pris pr. basisenhed (KG) — uanset valgt bestillingsenhed
+  const displayTiers = buildDisplayTiers(priceTiers, item.number, baseUomCode, today8601, 1, baseUomCode)
+  const displayPrice = resolvePrice(item.number, Math.max(quantity, 1), priceTiers, item.unitPrice, baseUomCode, 1, baseUomCode)
 
   const hasRealTiers = displayTiers.length > 1
-  const priceChanged = hasRealTiers && quantity > 0 && effectivePrice !== (displayTiers[0]?.unitPrice ?? item.unitPrice)
+  const priceChanged = hasRealTiers && quantity > 0 && displayPrice !== (displayTiers[0]?.unitPrice ?? item.unitPrice)
 
   const visibleAttrs = attrs.filter(a => {
     const v = a.value?.toLowerCase()
@@ -462,9 +464,9 @@ function OrderRow({
           <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 flex-wrap leading-tight">
             <span className="font-mono">{item.number}</span>
 
-            {effectivePrice > 0 && (
+            {displayPrice > 0 && (
               <span className={`font-semibold ${priceChanged ? 'text-blue-600' : 'text-gray-600'}`}>
-                {fmt.format(effectivePrice)}/{activeUomCode}
+                {fmt.format(displayPrice)}/{baseUomCode}
               </span>
             )}
 
@@ -482,7 +484,7 @@ function OrderRow({
                           ? 'bg-blue-100 text-blue-700 font-semibold'
                           : 'bg-gray-100 text-gray-500'
                       }`}
-                      title={`Fra ${t.minimumQuantity} ${activeUomCode}: ${fmt.format(t.unitPrice)}`}
+                      title={`Fra ${t.minimumQuantity} ${baseUomCode}: ${fmt.format(t.unitPrice)}`}
                     >
                       {t.minimumQuantity === 0 ? '1' : t.minimumQuantity}+: {fmt.format(t.unitPrice)}
                     </span>
