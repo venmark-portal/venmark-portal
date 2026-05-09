@@ -1282,44 +1282,54 @@ export async function getItemsUoMs(
 ): Promise<Map<string, BCItemUoM[]>> {
   if (items.length === 0) return new Map()
   try {
-    const token = await getAccessToken()
-    const base  = bcBaseUrl()
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-    // Batch i grupper af 20 for at undgå BC rate-limit ved mange parallelle kald
-    const BATCH = 20
-    const allResults: Array<{ number: string; uoms: BCItemUoM[] }> = []
+    // Hent alle UoMs i batches af 15 varenumre via custom portal API (page 50358)
+    const BATCH = 15
+    const allRows: any[] = []
     for (let i = 0; i < items.length; i += BATCH) {
-      const batch = items.slice(i, i + BATCH)
-      const batchResults = await Promise.allSettled(
-        batch.map(async ({ id, number }) => {
-          const res = await fetch(`${base}/items(${id})/itemUnitsOfMeasure`, {
-            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-            next: { revalidate: 60 },  // 1 min — kort nok til at nye enheder fra BC vises hurtigt
-          })
-          if (!res.ok) return { number, uoms: [] as BCItemUoM[] }
-          const data = await res.json()
-          const uoms: BCItemUoM[] = (data.value ?? []).map((u: any) => ({
-            code:                u.code ?? '',
-            displayName:         u.displayName ?? u.code ?? '',
-            qtyPerUnitOfMeasure: typeof u.qtyPerUnitOfMeasure === 'number' ? u.qtyPerUnitOfMeasure : 1,
-            baseUnitOfMeasure:   u.baseUnitOfMeasure === true,
-          }))
-          uoms.sort((a, b) => {
-            if (a.baseUnitOfMeasure && !b.baseUnitOfMeasure) return -1
-            if (!a.baseUnitOfMeasure && b.baseUnitOfMeasure) return 1
-            return a.qtyPerUnitOfMeasure - b.qtyPerUnitOfMeasure
-          })
-          return { number, uoms }
-        }),
-      )
-      for (const r of batchResults) {
-        if (r.status === 'fulfilled') allResults.push(r.value)
+      const nos    = items.slice(i, i + BATCH).map(it => `itemNo eq '${it.number}'`).join(' or ')
+      const filter = encodeURIComponent(nos)
+      let url: string | null = `${base}/itemUnitsOfMeasure?$filter=${filter}&$top=1000`
+      while (url) {
+        const res = await fetch(url, { headers, next: { revalidate: 60 } } as any)
+        if (!res.ok) break
+        const data = await res.json()
+        allRows.push(...(data.value ?? []))
+        url = data['@odata.nextLink'] ?? null
       }
     }
 
-    const map = new Map<string, BCItemUoM[]>()
-    for (const r of allResults) map.set(r.number, r.uoms)
-    return map
+    // Grupper pr. varenummer — baseUnitOfMeasure bestemmes af items[].baseUnitOfMeasureCode
+    const baseUomByNo = new Map(items.map(it => {
+      // Hent baseUnitOfMeasureCode fra det allerede hentede item (ikke tilgængeligt her)
+      // — markeres i stedet i page.tsx/route.ts når uomByCode bygges
+      return [it.number, '']
+    }))
+
+    const grouped = new Map<string, BCItemUoM[]>()
+    for (const row of allRows) {
+      const no = row.itemNo as string
+      if (!grouped.has(no)) grouped.set(no, [])
+      grouped.get(no)!.push({
+        code:                row.code ?? '',
+        displayName:         row.code ?? '',
+        qtyPerUnitOfMeasure: typeof row.qtyPerUnitOfMeasure === 'number' ? row.qtyPerUnitOfMeasure : 1,
+        baseUnitOfMeasure:   false, // sættes korrekt i uomByCode-merge i page.tsx
+      })
+    }
+
+    // Sorter: lavest konverteringsfaktor først
+    for (const [, uoms] of grouped) {
+      uoms.sort((a, b) => a.qtyPerUnitOfMeasure - b.qtyPerUnitOfMeasure)
+    }
+
+    return grouped
   } catch {
     return new Map()
   }
