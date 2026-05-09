@@ -77,6 +77,16 @@ export async function GET(req: Request) {
     url = `${baseV2}/itemCategories?$top=100`
   } else if (what === 'items-sample') {
     url = `${baseV2}/items?$top=5&$select=number,displayName,itemCategoryCode&$filter=blocked eq false`
+  } else if (what === 'uoms') {
+    const itemNo = new URL(req.url).searchParams.get('itemNo') ?? '23994'
+    // Hent item ID først
+    const itemRes = await fetch(`${baseV2}/items?$filter=${encodeURIComponent(`number eq '${itemNo}'`)}&$select=id,number,baseUnitOfMeasureCode`, { headers })
+    const itemData = await itemRes.json()
+    const item = itemData.value?.[0]
+    if (!item) return NextResponse.json({ error: 'item not found', itemNo })
+    const uomRes = await fetch(`${baseV2}/items(${item.id})/itemUnitsOfMeasure`, { headers, cache: 'no-store' } as any)
+    const uomData = await uomRes.json()
+    return NextResponse.json({ itemNo, itemId: item.id, baseUom: item.baseUnitOfMeasureCode, uoms: uomData.value, status: uomRes.status })
   } else {
     return NextResponse.json({ error: 'unknown what param' }, { status: 400 })
   }
