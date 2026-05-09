@@ -79,14 +79,22 @@ export async function GET(req: Request) {
     url = `${baseV2}/items?$top=5&$select=number,displayName,itemCategoryCode&$filter=blocked eq false`
   } else if (what === 'uoms') {
     const itemNo = new URL(req.url).searchParams.get('itemNo') ?? '23994'
-    // Hent item ID først
-    const itemRes = await fetch(`${baseV2}/items?$filter=${encodeURIComponent(`number eq '${itemNo}'`)}&$select=id,number,baseUnitOfMeasureCode`, { headers })
-    const itemData = await itemRes.json()
-    const item = itemData.value?.[0]
-    if (!item) return NextResponse.json({ error: 'item not found', itemNo })
-    const uomRes = await fetch(`${baseV2}/items(${item.id})/itemUnitsOfMeasure`, { headers, cache: 'no-store' } as any)
-    const uomData = await uomRes.json()
-    return NextResponse.json({ itemNo, itemId: item.id, baseUom: item.baseUnitOfMeasureCode, uoms: uomData.value, status: uomRes.status })
+    // Test: navigation vs $expand
+    const filterEnc = encodeURIComponent(`number eq '${itemNo}'`)
+    const [navRes, expandRes] = await Promise.all([
+      fetch(`${baseV2}/items?$filter=${filterEnc}&$select=id,number,baseUnitOfMeasureCode`, { headers, cache: 'no-store' } as any).then(async r => {
+        const d = await r.json()
+        const item = d.value?.[0]
+        if (!item) return { method: 'navigation', error: 'item not found' }
+        const uomR = await fetch(`${baseV2}/items(${item.id})/itemUnitsOfMeasure`, { headers, cache: 'no-store' } as any)
+        return { method: 'navigation', itemId: item.id, status: uomR.status, uoms: uomR.ok ? (await uomR.json()).value : await uomR.text() }
+      }),
+      fetch(`${baseV2}/items?$filter=${filterEnc}&$select=id,number,baseUnitOfMeasureCode&$expand=itemUnitsOfMeasure`, { headers, cache: 'no-store' } as any).then(async r => {
+        const d = r.ok ? await r.json() : await r.text()
+        return { method: 'expand', status: r.status, item: d?.value?.[0] }
+      }),
+    ])
+    return NextResponse.json({ itemNo, navRes, expandRes })
   } else {
     return NextResponse.json({ error: 'unknown what param' }, { status: 400 })
   }
