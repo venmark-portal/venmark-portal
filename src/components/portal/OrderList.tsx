@@ -504,13 +504,11 @@ function OrderRow({
             <select
               value={activeUomCode}
               onChange={e => onUomChange?.(e.target.value)}
-              className="w-16 rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer"
+              className="rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer"
               title="Vælg bestillingsenhed"
             >
               {uoms.map(u => (
-                <option key={u.code} value={u.code}>
-                  {u.code}{u.qtyPerUnitOfMeasure !== 1 ? ` (×${u.qtyPerUnitOfMeasure})` : ''}
-                </option>
+                <option key={u.code} value={u.code}>{u.code}</option>
               ))}
             </select>
           ) : (
