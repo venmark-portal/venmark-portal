@@ -475,8 +475,8 @@ function OrderRow({
               <span className="flex items-center gap-0.5 flex-wrap">
                 <TrendingDown size={9} className="text-emerald-500 shrink-0" />
                 {displayTiers.map((t, i) => {
-                  const isActive = quantity > 0 && t.minimumQuantity <= quantity &&
-                    (i === displayTiers.length - 1 || displayTiers[i + 1].minimumQuantity > quantity)
+                  const isActive = quantity > 0 && t.minimumQuantity <= effectiveKgQty &&
+                    (i === displayTiers.length - 1 || displayTiers[i + 1].minimumQuantity > effectiveKgQty)
                   return (
                     <span
                       key={i}
