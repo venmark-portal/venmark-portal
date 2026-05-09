@@ -79,22 +79,17 @@ export async function GET(req: Request) {
     url = `${baseV2}/items?$top=5&$select=number,displayName,itemCategoryCode&$filter=blocked eq false`
   } else if (what === 'uoms') {
     const itemNo = new URL(req.url).searchParams.get('itemNo') ?? '23994'
-    // Test: navigation vs $expand
-    const filterEnc = encodeURIComponent(`number eq '${itemNo}'`)
-    const [navRes, expandRes] = await Promise.all([
-      fetch(`${baseV2}/items?$filter=${filterEnc}&$select=id,number,baseUnitOfMeasureCode`, { headers, cache: 'no-store' } as any).then(async r => {
-        const d = await r.json()
-        const item = d.value?.[0]
-        if (!item) return { method: 'navigation', error: 'item not found' }
-        const uomR = await fetch(`${baseV2}/items(${item.id})/itemUnitsOfMeasure`, { headers, cache: 'no-store' } as any)
-        return { method: 'navigation', itemId: item.id, status: uomR.status, uoms: uomR.ok ? (await uomR.json()).value : await uomR.text() }
-      }),
-      fetch(`${baseV2}/items?$filter=${filterEnc}&$select=id,number,baseUnitOfMeasureCode&$expand=itemUnitsOfMeasure`, { headers, cache: 'no-store' } as any).then(async r => {
-        const d = r.ok ? await r.json() : await r.text()
-        return { method: 'expand', status: r.status, item: d?.value?.[0] }
-      }),
+    // Hent item ID
+    const itemData = await fetch(`${baseV2}/items?$filter=${encodeURIComponent(`number eq '${itemNo}'`)}&$select=id,number`, { headers, cache: 'no-store' } as any).then(r => r.json())
+    const item = itemData.value?.[0]
+    if (!item) return NextResponse.json({ error: 'item not found', itemNo })
+    // Test: standalone itemUnitsOfMeasure med itemId-filter og itemNumber-filter
+    const [byId, byNo, topLevel] = await Promise.all([
+      fetch(`${baseV2}/itemUnitsOfMeasure?$filter=${encodeURIComponent(`itemId eq ${item.id}`)}&$top=10`, { headers, cache: 'no-store' } as any).then(async r => ({ status: r.status, body: r.ok ? (await r.json()).value : await r.text() })),
+      fetch(`${baseV2}/itemUnitsOfMeasure?$filter=${encodeURIComponent(`itemNumber eq '${itemNo}'`)}&$top=10`, { headers, cache: 'no-store' } as any).then(async r => ({ status: r.status, body: r.ok ? (await r.json()).value : await r.text() })),
+      fetch(`${baseV2}/itemUnitsOfMeasure?$top=3`, { headers, cache: 'no-store' } as any).then(async r => ({ status: r.status, body: r.ok ? (await r.json()).value?.slice(0, 2) : await r.text() })),
     ])
-    return NextResponse.json({ itemNo, navRes, expandRes })
+    return NextResponse.json({ itemNo, itemId: item.id, byId, byNo, topLevel })
   } else {
     return NextResponse.json({ error: 'unknown what param' }, { status: 400 })
   }
