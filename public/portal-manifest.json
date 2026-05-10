@@ -1,0 +1,25 @@
+{
+  "name": "Venmark Portal",
+  "short_name": "Venmark",
+  "description": "Venmark Fisk — bestil varer, se fakturaer og leveringsstatus",
+  "start_url": "/portal",
+  "scope": "/portal/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eff6ff",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

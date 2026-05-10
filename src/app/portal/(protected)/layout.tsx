@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
@@ -5,6 +6,17 @@ import { prisma } from '@/lib/prisma'
 import PortalNav from '@/components/portal/PortalNav'
 import SessionProvider from '@/components/portal/SessionProvider'
 import TicketNotifier from '@/components/portal/TicketNotifier'
+import PushSubscribeButton from '@/components/portal/PushSubscribeButton'
+
+export const metadata: Metadata = {
+  title: 'Venmark Portal',
+  manifest: '/portal-manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Venmark',
+  },
+}
 
 export default async function PortalLayout({
   children,
@@ -114,6 +126,7 @@ export default async function PortalLayout({
         </main>
 
         <TicketNotifier />
+        <PushSubscribeButton />
         {/* Mobil-bundnavigation */}
         <PortalNav />
       </div>

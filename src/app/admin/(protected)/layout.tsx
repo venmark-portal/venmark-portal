@@ -34,6 +34,7 @@ export default async function AdminLayout({
                 <a href="/admin/anbefalinger"  className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Anbefalinger</a>
                 <a href="/admin/reklamationer" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Reklamationer</a>
                 <a href="/admin/udseende"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Udseende</a>
+                <a href="/admin/notifikationer" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Notifikationer</a>
                 <span className="mx-1 text-gray-300">|</span>
                 <a href="/admin/leveringer"       className="rounded px-2 py-1 bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100">Leveringer</a>
                 <a href="/admin/leveringshistorik" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Historik</a>

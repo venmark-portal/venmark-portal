@@ -33,6 +33,7 @@ model Customer {
   tickets        Ticket[]
   deliveryProfile DeliveryProfile?
   specialVareReservations SpecialVareReservation[]
+  pushSubscriptions   PushSubscription[]
   requirePoNumber     Boolean  @default(false)
   bcDebitorBookingGroup String? // e.g. "Salling", "COOP" — triggers mandatory PO
   contacts            ContactUser[]
@@ -463,6 +464,20 @@ model BoxPallet {
   bcCustomerNo   String?
   createdAt      DateTime @default(now())
   boxEntries     String   @default("[]") // JSON-array af bcBoxEntryNo
+}
+
+// ─── Push-notifikationsabonnementer ──────────────────────────────────────────
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
 }
 
 // ─── Password reset tokens ────────────────────────────────────────────────────
