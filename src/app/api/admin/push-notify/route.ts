@@ -12,8 +12,7 @@ webpush.setVapidDetails(
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
-  const isAdmin = !!(session?.user as any)?.isAdmin
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if ((session?.user as any)?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { title, body, url, customerIds } = await req.json()
   if (!title || !body) return NextResponse.json({ error: 'title and body required' }, { status: 400 })
