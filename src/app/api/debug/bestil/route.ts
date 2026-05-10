@@ -64,7 +64,16 @@ export async function GET(req: Request) {
   const cutoffSample50 = await rawFetch(cutoffSample50Url)
   const saelgForHInFirst50 = cutoffSample50.sample?.filter((i: any) => i.portalSaelgForH === true)?.length ?? 0
 
+  // Test webshopVisible direkte
+  const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
+  const webshopVisible = await getWebshopVisibleItemNos().catch(() => null)
+
   return NextResponse.json({
+    webshopVisible: {
+      isNull: webshopVisible === null,
+      size: webshopVisible?.size ?? 'N/A',
+      sample: webshopVisible ? Array.from(webshopVisible).slice(0, 10) : [],
+    },
     params: { customerNo, priceGroup },
     customerFavorites: { url: favUrl, ...favResult },
     portalPrices_customer: {
