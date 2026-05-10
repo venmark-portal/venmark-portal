@@ -637,14 +637,14 @@ export async function getWebshopVisibleItemNos(): Promise<Set<string> | null> {
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     const visible = new Set<string>()
-    // Hent alle varer med rangeringPrisliste — filtrer client-side (undgår OData-filtrerbarhedsproblem)
+    // Hent alle varer med rangeringPrisliste — skjul dem der eksplicit er sat til 1
     let url: string | null = `${base}/itemCutoffs?$select=itemNo,rangeringPrisliste&$top=1000`
     while (url) {
-      const res: Response = await fetch(url, { headers, next: { revalidate: 3600 } } as any)
+      const res: Response = await fetch(url, { headers, cache: 'no-store' } as any)
       if (!res.ok) return null   // BC-fejl → null = fail open
       const data = await res.json()
       for (const item of (data.value ?? []))
-        if (item.itemNo && item.rangeringPrisliste > 0 && !item.itemNo.toUpperCase().startsWith('X'))
+        if (item.itemNo && item.rangeringPrisliste !== 1 && !item.itemNo.toUpperCase().startsWith('X'))
           visible.add(item.itemNo)
       url = data['@odata.nextLink'] ?? null
     }
