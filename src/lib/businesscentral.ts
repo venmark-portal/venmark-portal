@@ -648,9 +648,8 @@ export async function getWebshopVisibleItemNos(): Promise<Set<string> | null> {
           visible.add(item.itemNo)
       url = data['@odata.nextLink'] ?? null
     }
-    // Tomt set = alle RangeringPrisliste er 0 (sandsynlig fejl/nulstilling) → fail open
-    return visible.size > 0 ? visible : null
-  } catch { return null }  // fejl → null = fail open
+    return visible
+  } catch { return null }  // BC-fejl → null = fail open (vis alt)
 }
 
 // ─── Hent varenumre i en kategori via portal-API ─────────────────────────────
