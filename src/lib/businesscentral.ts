@@ -648,7 +648,8 @@ export async function getWebshopVisibleItemNos(): Promise<Set<string> | null> {
           visible.add(item.itemNo)
       url = data['@odata.nextLink'] ?? null
     }
-    return visible
+    // Tomt set = alle RangeringPrisliste er 0 (sandsynlig fejl/nulstilling) → fail open
+    return visible.size > 0 ? visible : null
   } catch { return null }  // fejl → null = fail open
 }
 
