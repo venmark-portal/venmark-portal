@@ -7,7 +7,28 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if ((session?.user as any)?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const rows = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::int AS count FROM "PushSubscription"`
-  const count = Number(rows[0]?.count ?? 0)
-  return NextResponse.json({ count })
+  const rows = await prisma.$queryRaw<{
+    customerId: string
+    customerName: string
+    email: string
+    bcCustomerNumber: string
+    subCount: bigint
+  }[]>`
+    SELECT ps."customerId", c.name AS "customerName", c.email, c."bcCustomerNumber",
+           COUNT(*) AS "subCount"
+    FROM "PushSubscription" ps
+    JOIN "Customer" c ON c.id = ps."customerId"
+    GROUP BY ps."customerId", c.name, c.email, c."bcCustomerNumber"
+    ORDER BY c.name
+  `
+
+  const subscribers = rows.map(r => ({
+    customerId:       r.customerId,
+    customerName:     r.customerName,
+    email:            r.email,
+    bcCustomerNumber: r.bcCustomerNumber,
+    devices:          Number(r.subCount),
+  }))
+
+  return NextResponse.json({ count: subscribers.length, subscribers })
 }
