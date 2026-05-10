@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning } from 'lucide-react'
+import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning, MessageSquare } from 'lucide-react'
 
 export default async function PortalDashboard() {
   const session  = await getServerSession(authOptions)
@@ -15,6 +15,18 @@ export default async function PortalDashboard() {
     take:    5,
     include: { lines: true },
   })
+
+  // Nyeste beskeder fra Venmark
+  const newestMessages = await prisma.$queryRaw<{
+    id: string; sender: string; senderName: string | null; body: string; readByCustomer: boolean; createdAt: Date
+  }[]>`
+    SELECT id, sender, "senderName", body, "readByCustomer", "createdAt"
+    FROM "Message"
+    WHERE "customerId" = ${userId} AND "expiresAt" > NOW()
+    ORDER BY "createdAt" DESC LIMIT 3
+  `.catch(() => [] as any[])
+
+  const unreadMessages = newestMessages.filter((m: any) => !m.readByCustomer && m.sender === 'admin').length
 
   // Ulæste ticket-beskeder
   const unreadRows = await prisma.$queryRaw<[{ cnt: bigint }]>`
@@ -118,6 +130,43 @@ export default async function PortalDashboard() {
           <ChevronRight size={18} className="ml-auto text-gray-400" />
         </Link>
       </div>
+
+      {/* Beskeder fra Venmark */}
+      {newestMessages.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              <MessageSquare size={17} className="text-blue-600" />
+              Beskeder fra Venmark
+              {unreadMessages > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{unreadMessages}</span>
+              )}
+            </h2>
+            <Link href="/portal/beskeder" className="text-xs text-blue-600 hover:underline">Se alle</Link>
+          </div>
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
+            {(newestMessages as any[]).map((m: any) => (
+              <Link key={m.id} href="/portal/beskeder" className={`flex items-start gap-3 px-4 py-3 hover:bg-gray-50 ${!m.readByCustomer && m.sender === 'admin' ? 'bg-blue-50' : ''}`}>
+                <div className="mt-0.5 shrink-0">
+                  {m.sender === 'admin'
+                    ? <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">V</div>
+                    : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">Du</div>}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm truncate ${!m.readByCustomer && m.sender === 'admin' ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{m.body}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {new Date(m.createdAt).toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {' · '}{new Date(m.createdAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+                {!m.readByCustomer && m.sender === 'admin' && (
+                  <span className="shrink-0 h-2 w-2 mt-2 rounded-full bg-blue-600" />
+                )}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Ticket-notifikation */}
       {(openTickets > 0 || unreadTicketMessages > 0) && (

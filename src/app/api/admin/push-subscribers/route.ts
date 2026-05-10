@@ -15,18 +15,19 @@ export async function GET() {
     subCount: bigint
   }[]>`
     SELECT ps."customerId", c.name AS "customerName", c.email, c."bcCustomerNumber",
-           COUNT(*) AS "subCount"
+           c."deliveryCode", COUNT(*) AS "subCount"
     FROM "PushSubscription" ps
     JOIN "Customer" c ON c.id = ps."customerId"
-    GROUP BY ps."customerId", c.name, c.email, c."bcCustomerNumber"
+    GROUP BY ps."customerId", c.name, c.email, c."bcCustomerNumber", c."deliveryCode"
     ORDER BY c.name
   `
 
-  const subscribers = rows.map(r => ({
+  const subscribers = rows.map((r: any) => ({
     customerId:       r.customerId,
     customerName:     r.customerName,
     email:            r.email,
     bcCustomerNumber: r.bcCustomerNumber,
+    deliveryCode:     r.deliveryCode ?? null,
     devices:          Number(r.subCount),
   }))
 

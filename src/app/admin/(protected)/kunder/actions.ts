@@ -37,10 +37,11 @@ export async function createCustomer(data: {
 export async function updateCustomer(id: string, data: {
   name:                string
   email:               string
-  password:            string   // tom = behold eksisterende
+  password:            string
   bcCustomerNumber:    string
   bcPriceGroup:        string
   bcStandardSalesCode: string
+  deliveryCode?:       string
 }) {
   const patch: Record<string, unknown> = {
     name:                data.name.trim(),
@@ -48,6 +49,7 @@ export async function updateCustomer(id: string, data: {
     bcCustomerNumber:    data.bcCustomerNumber.trim(),
     bcPriceGroup:        data.bcPriceGroup.trim() || null,
     bcStandardSalesCode: data.bcStandardSalesCode.trim() || null,
+    deliveryCode:        data.deliveryCode?.trim() || null,
   }
   if (data.password) {
     patch.passwordHash = await hash(data.password, 12)

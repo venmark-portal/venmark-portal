@@ -34,6 +34,8 @@ model Customer {
   deliveryProfile DeliveryProfile?
   specialVareReservations SpecialVareReservation[]
   pushSubscriptions   PushSubscription[]
+  messages            Message[]
+  deliveryCode        String?  // leveringskode — bruges til gruppevis push-notifikationer
   requirePoNumber     Boolean  @default(false)
   bcDebitorBookingGroup String? // e.g. "Salling", "COOP" — triggers mandatory PO
   contacts            ContactUser[]
@@ -464,6 +466,24 @@ model BoxPallet {
   bcCustomerNo   String?
   createdAt      DateTime @default(now())
   boxEntries     String   @default("[]") // JSON-array af bcBoxEntryNo
+}
+
+// ─── Beskeder (admin ↔ kunde) ─────────────────────────────────────────────────
+
+model Message {
+  id             String   @id @default(cuid())
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId     String
+  sender         String   // 'admin' | 'customer'
+  senderName     String?
+  body           String
+  readByAdmin    Boolean  @default(false)
+  readByCustomer Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime // createdAt + 30 dage
+
+  @@index([customerId, createdAt])
+  @@index([expiresAt])
 }
 
 // ─── Push-notifikationsabonnementer ──────────────────────────────────────────

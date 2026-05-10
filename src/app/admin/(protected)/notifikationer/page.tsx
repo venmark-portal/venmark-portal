@@ -8,6 +8,7 @@ interface Subscriber {
   customerName: string
   email: string
   bcCustomerNumber: string
+  deliveryCode: string | null
   devices: number
 }
 
@@ -25,10 +26,11 @@ export default function NotifikationerPage() {
   const [sending,     setSending]     = useState(false)
   const [result,      setResult]      = useState<{ sent: number; failed: number; total: number } | null>(null)
   const [error,       setError]       = useState('')
-  const [subscribers, setSubscribers] = useState<Subscriber[]>([])
-  const [loadingSubs, setLoadingSubs] = useState(true)
-  const [selected,    setSelected]    = useState<Set<string>>(new Set())
-  const [showSubs,    setShowSubs]    = useState(false)
+  const [subscribers,    setSubscribers]    = useState<Subscriber[]>([])
+  const [loadingSubs,    setLoadingSubs]    = useState(true)
+  const [selected,       setSelected]       = useState<Set<string>>(new Set())
+  const [showSubs,       setShowSubs]       = useState(false)
+  const [deliveryFilter, setDeliveryFilter] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/push-subscribers')
@@ -38,12 +40,18 @@ export default function NotifikationerPage() {
       .finally(() => setLoadingSubs(false))
   }, [])
 
-  const allSelected = selected.size === subscribers.length && subscribers.length > 0
+  const visibleSubs = deliveryFilter
+    ? subscribers.filter(s => s.deliveryCode === deliveryFilter)
+    : subscribers
+
+  const deliveryCodes = [...new Set(subscribers.map(s => s.deliveryCode).filter(Boolean))] as string[]
+
+  const allSelected = selected.size === visibleSubs.length && visibleSubs.length > 0
   const noneSelected = selected.size === 0
 
   function toggleAll() {
     if (allSelected) setSelected(new Set())
-    else setSelected(new Set(subscribers.map(s => s.customerId)))
+    else setSelected(new Set(visibleSubs.map(s => s.customerId)))
   }
 
   function toggleOne(id: string) {
@@ -75,7 +83,7 @@ export default function NotifikationerPage() {
   }
 
   const targetLabel = noneSelected
-    ? `Alle ${subscribers.length} abonnenter`
+    ? `Alle ${visibleSubs.length} abonnenter${deliveryFilter ? ` (${deliveryFilter})` : ''}`
     : `${selected.size} udvalgt${selected.size === 1 ? '' : 'e'}`
 
   return (
@@ -105,10 +113,10 @@ export default function NotifikationerPage() {
           onClick={() => setShowSubs(v => !v)}
           className="flex w-full items-center justify-between px-6 py-4 text-left"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Smartphone size={16} className="text-gray-400" />
             <span className="font-semibold text-gray-800 text-sm">
-              {loadingSubs ? 'Henter abonnenter…' : `${subscribers.length} abonnenter`}
+              {loadingSubs ? 'Henter abonnenter…' : `${visibleSubs.length}${deliveryFilter ? `/${subscribers.length}` : ''} abonnenter`}
             </span>
             {!noneSelected && (
               <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
@@ -121,26 +129,37 @@ export default function NotifikationerPage() {
 
         {showSubs && (
           <div className="border-t border-gray-100">
-            {subscribers.length === 0 ? (
-              <p className="px-6 py-4 text-sm text-gray-400">Ingen abonnenter endnu.</p>
+            {/* Leveringskode-filter */}
+            {deliveryCodes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-6 py-3 border-b border-gray-100 bg-gray-50">
+                <button
+                  onClick={() => { setDeliveryFilter(null); setSelected(new Set()) }}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${!deliveryFilter ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'}`}
+                >
+                  Alle
+                </button>
+                {deliveryCodes.map(code => (
+                  <button key={code} onClick={() => { setDeliveryFilter(code); setSelected(new Set()) }}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${deliveryFilter === code ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'}`}
+                  >
+                    {code}
+                  </button>
+                ))}
+              </div>
+            )}
+            {visibleSubs.length === 0 ? (
+              <p className="px-6 py-4 text-sm text-gray-400">Ingen abonnenter{deliveryFilter ? ` med leveringskode "${deliveryFilter}"` : ''} endnu.</p>
             ) : (
               <>
-                {/* Vælg alle */}
                 <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-3 bg-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                   <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     {allSelected ? 'Fravælg alle' : 'Vælg alle'}
                   </span>
                 </div>
-
-                {/* Kundeliste */}
                 <ul className="max-h-64 overflow-y-auto divide-y divide-gray-100">
-                  {subscribers.map(sub => (
+                  {visibleSubs.map(sub => (
                     <li key={sub.customerId}>
                       <label className="flex cursor-pointer items-center gap-3 px-6 py-3 hover:bg-gray-50">
                         <input

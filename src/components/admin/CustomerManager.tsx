@@ -17,7 +17,7 @@ type Customer = {
 }
 
 const EMPTY_FORM = {
-  name: '', email: '', password: '', bcCustomerNumber: '', bcPriceGroup: '', bcStandardSalesCode: '',
+  name: '', email: '', password: '', bcCustomerNumber: '', bcPriceGroup: '', bcStandardSalesCode: '', deliveryCode: '',
 }
 
 export default function CustomerManager({ initialCustomers }: { initialCustomers: Customer[] }) {
@@ -44,6 +44,7 @@ export default function CustomerManager({ initialCustomers }: { initialCustomers
       bcCustomerNumber:    c.bcCustomerNumber,
       bcPriceGroup:        c.bcPriceGroup ?? '',
       bcStandardSalesCode: c.bcStandardSalesCode ?? '',
+      deliveryCode:        (c as any).deliveryCode ?? '',
     })
     setError(null)
     setModalOpen(true)
@@ -176,6 +177,7 @@ export default function CustomerManager({ initialCustomers }: { initialCustomers
                 { label: 'BC-kundenummer',                                              key: 'bcCustomerNumber',    type: 'text',     ph: '98945965'        },
                 { label: 'Prisgruppe (valgfri)',                                        key: 'bcPriceGroup',        type: 'text',     ph: 'FISK-GROSS'      },
                 { label: 'Standard Sales Code (favoritliste)',                          key: 'bcStandardSalesCode', type: 'text',     ph: '9999FHSJÆ'       },
+                { label: 'Leveringskode (til push-grupper)',                           key: 'deliveryCode',        type: 'text',     ph: 'KBH / VEST / ...' },
               ].map(({ label, key, type, ph }) => (
                 <div key={key}>
                   <label className="mb-1 block text-xs font-medium text-gray-700">{label}</label>

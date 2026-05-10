@@ -25,7 +25,28 @@
       "WebFetch(domain:support.claude.com)",
       "Bash(git -C c:/Users/claus/Venmark.dk status --short)",
       "Bash(git -C c:/Users/claus/Venmark.dk add src/app/api/portal/debug-bc/route.ts)",
-      "Bash(git -C:*)"
+      "Bash(git -C:*)",
+      "WebFetch(domain:instantdomainsearch.com)",
+      "WebFetch(domain:domainr.com)",
+      "Bash(npx create-next-app@latest short-game --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm)",
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx next:*)",
+      "Bash(ssh root@204.168.191.215 \"echo 'connected'\")",
+      "Bash(ssh root@204.168.191.215 \"id golf 2>/dev/null || adduser --disabled-password --gecos 'Short Game App' golf && echo 'User golf ready'\")",
+      "Bash(ssh root@204.168.191.215 \"sudo -u postgres psql -c \\\\\"CREATE USER shortgame WITH PASSWORD 'shortgame_pwd_2026';\\\\\" 2>&1; sudo -u postgres psql -c \\\\\"CREATE DATABASE shortgame OWNER shortgame;\\\\\" 2>&1\")",
+      "Bash(ssh root@204.168.191.215 \"sudo -u golf ssh-keygen -t ed25519 -f /home/golf/.ssh/deploy_key -N '' -C 'golf@short-game' 2>&1 && cat /home/golf/.ssh/deploy_key.pub\")",
+      "Bash(ssh root@204.168.191.215 \"mkdir -p /var/www/short-game && chown golf:golf /var/www/short-game\")",
+      "Bash(rsync -avz --exclude 'node_modules' --exclude '.next' --exclude '.env' \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/\" root@204.168.191.215:/var/www/short-game/)",
+      "Bash(scp -r \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/prisma\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/src\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/package.json\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/package-lock.json\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/tsconfig.json\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/next.config.ts\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/prisma.config.ts\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/postcss.config.mjs\" root@204.168.191.215:/var/www/short-game/)",
+      "Bash(ssh root@204.168.191.215 \"ls /var/www/short-game/\")",
+      "Bash(openssl rand:*)",
+      "Bash(ssh root@204.168.191.215:*)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' https://short-game.golf/)",
+      "Bash(scp \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/src/lib/auth.ts\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/package.json\" \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/package-lock.json\" root@204.168.191.215:/var/www/short-game/src/lib/auth.ts_tmp)",
+      "Bash(scp \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/src/lib/auth.ts\" root@204.168.191.215:/var/www/short-game/src/lib/auth.ts)",
+      "Bash(scp \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/package.json\" root@204.168.191.215:/var/www/short-game/package.json)",
+      "Bash(scp \"/c/Users/claus/OneDrive - Venmark Fisk A S/short-game/package-lock.json\" root@204.168.191.215:/var/www/short-game/package-lock.json)"
     ]
   }
 }

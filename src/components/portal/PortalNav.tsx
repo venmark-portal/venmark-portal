@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, ShoppingCart, Package, FileText, MessageSquareWarning } from 'lucide-react'
+import { Home, ShoppingCart, Package, MessageSquare, FileText } from 'lucide-react'
 
 const items = [
-  { href: '/portal',             label: 'Hjem',        icon: Home                 },
-  { href: '/portal/bestil',      label: 'Bestil',       icon: ShoppingCart         },
-  { href: '/portal/ordrer',      label: 'Ordrer',       icon: Package              },
-  { href: '/portal/fakturaer',   label: 'Fakturaer',    icon: FileText             },
-  { href: '/portal/reklamationer', label: 'Reklamation',  icon: MessageSquareWarning },
+  { href: '/portal',           label: 'Hjem',      icon: Home          },
+  { href: '/portal/bestil',    label: 'Bestil',     icon: ShoppingCart  },
+  { href: '/portal/ordrer',    label: 'Ordrer',     icon: Package       },
+  { href: '/portal/beskeder',  label: 'Beskeder',   icon: MessageSquare },
+  { href: '/portal/fakturaer', label: 'Fakturaer',  icon: FileText      },
 ]
 
 export default function PortalNav() {
