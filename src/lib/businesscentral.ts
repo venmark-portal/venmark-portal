@@ -628,7 +628,7 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
 
 // ─── Hent varenumre der må vises på portalen (RangeringPrisliste > 0) ─────────
 
-export async function getWebshopVisibleItemNos(): Promise<Set<string>> {
+export async function getWebshopVisibleItemNos(): Promise<Set<string> | null> {
   try {
     const token   = await getAccessToken()
     const tenant  = process.env.BC_TENANT_ID
@@ -636,19 +636,20 @@ export async function getWebshopVisibleItemNos(): Promise<Set<string>> {
     const company = process.env.BC_COMPANY_ID
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-    const filter  = encodeURIComponent('rangeringPrisliste gt 0')
     const visible = new Set<string>()
-    let url: string | null = `${base}/itemCutoffs?$filter=${filter}&$select=itemNo&$top=1000`
+    // Hent alle varer med rangeringPrisliste — filtrer client-side (undgår OData-filtrerbarhedsproblem)
+    let url: string | null = `${base}/itemCutoffs?$select=itemNo,rangeringPrisliste&$top=1000`
     while (url) {
       const res: Response = await fetch(url, { headers, next: { revalidate: 3600 } } as any)
-      if (!res.ok) break
+      if (!res.ok) return null   // BC-fejl → null = fail open
       const data = await res.json()
       for (const item of (data.value ?? []))
-        if (item.itemNo && !item.itemNo.toUpperCase().startsWith('X')) visible.add(item.itemNo)
+        if (item.itemNo && item.rangeringPrisliste > 0 && !item.itemNo.toUpperCase().startsWith('X'))
+          visible.add(item.itemNo)
       url = data['@odata.nextLink'] ?? null
     }
     return visible
-  } catch { return new Set() }
+  } catch { return null }  // fejl → null = fail open
 }
 
 // ─── Hent varenumre i en kategori via portal-API ─────────────────────────────

@@ -58,13 +58,13 @@ export default async function BestilPage() {
     // BC Item portal data — cutoffs + SaelgForH (felt 50008 på tabel 27)
     getItemCutoffs().catch(() => new Map()),
     getItemCategories().catch(() => []),
-    // Varer med RangeringPrisliste > 0 — må vises på portalen
-    getWebshopVisibleItemNos().catch(() => new Set<string>()),
+    // Varer med RangeringPrisliste > 0 — må vises på portalen (null = BC-fejl, vis alt)
+    getWebshopVisibleItemNos().catch(() => null),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
-  // Kun varer med RangeringPrisliste > 0 må vises — hvis settet er tomt (BC ikke deployet endnu) vises alle
-  const visFilter = (n: string) => webshopVisible.size === 0 || webshopVisible.has(n)
+  // null = BC-fejl → vis alt. Set = filter aktiv (kun varer med RangeringPrisliste > 0)
+  const visFilter = (n: string) => webshopVisible === null || webshopVisible.has(n)
 
   // Venmark-anbefalede varer — direkte fra BC felt 50008 "SaelgforH" på tabel 27
   const venmarkNos = new Set(

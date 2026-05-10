@@ -53,6 +53,12 @@ export async function GET(req: Request) {
   const cutoffFilteredUrl = `${base}/itemCutoffs?$filter=${encodeURIComponent('portalSaelgForH eq true')}&$select=itemNo,portalSaelgForH&$top=50`
   const cutoffFiltered = await rawFetch(cutoffFilteredUrl)
 
+  // Test 7: rangeringPrisliste — findes feltet og kan det filtreres?
+  const rangNoFilterUrl = `${base}/itemCutoffs?$select=itemNo,rangeringPrisliste&$top=5`
+  const rangNoFilter = await rawFetch(rangNoFilterUrl)
+  const rangFilterUrl = `${base}/itemCutoffs?$filter=${encodeURIComponent('rangeringPrisliste gt 0')}&$select=itemNo,rangeringPrisliste&$top=5`
+  const rangFilter = await rawFetch(rangFilterUrl)
+
   // Test 6: itemCutoffs uden filter men kun de første 50 — tæl saelgForH
   const cutoffSample50Url = `${base}/itemCutoffs?$select=itemNo,portalSaelgForH&$top=50&$skip=0`
   const cutoffSample50 = await rawFetch(cutoffSample50Url)
@@ -75,6 +81,8 @@ export async function GET(req: Request) {
       url: cutoffFilteredUrl, ...cutoffFiltered,
       filterWorks: cutoffFiltered.status === 200,
     },
+    rangeringPrisliste_noFilter: { url: rangNoFilterUrl, ...rangNoFilter },
+    rangeringPrisliste_withFilter: { url: rangFilterUrl, ...rangFilter, filterWorks: rangFilter.status === 200 },
     itemCutoffs_first50: {
       saelgForHCount: saelgForHInFirst50,
       sample: cutoffSample50.sample?.filter((i: any) => i.portalSaelgForH === true),
