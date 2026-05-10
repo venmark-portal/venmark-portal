@@ -67,7 +67,7 @@ export default async function BestilPage() {
     Array.from(itemCutoffs.entries())
       .filter(([, v]) => v.saelgForH)
       .map(([itemNo]) => itemNo)
-      .filter(n => !blockedSet.has(n))
+      .filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X'))
   )
 
   // ── Merged favoritter: BC Standard Sales Lines + BC portalFavorite + portal DB ──
@@ -79,15 +79,15 @@ export default async function BestilPage() {
     ...Array.from(bcStandardNos),
     ...Array.from(bcFavNos),
     ...Array.from(dbFavNos),
-  ])).filter(n => !blockedSet.has(n))
+  ])).filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X'))
 
   const promoNumbers = promoRows
     .map((p) => p.bcItemNumber)
     .filter((n) => !blockedSet.has(n))
 
-  // Faste ordrelinjer — varenumre der ikke er blokerede
+  // Faste ordrelinjer — varenumre der ikke er blokerede og ikke starter med X
   const standingNos = standingLines
-    .filter(l => !blockedSet.has(l.itemNo))
+    .filter(l => !blockedSet.has(l.itemNo) && !l.itemNo.toUpperCase().startsWith('X'))
     .map(l => l.itemNo)
 
   const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos]))

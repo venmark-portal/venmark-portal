@@ -147,11 +147,11 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
     const numData  = resNum.ok  ? await resNum.json()  : { value: [] }
     const nameData = resName.ok ? await resName.json() : { value: [] }
 
-    // Merge og dedupliker — varenummer-matches vises først
+    // Merge og dedupliker — varenummer-matches vises først; X-varer filtreres fra
     const seen   = new Set<string>()
     const merged: BCItem[] = []
     for (const item of [...(numData.value ?? []), ...(nameData.value ?? [])]) {
-      if (!seen.has(item.id)) {
+      if (!seen.has(item.id) && !item.number?.toUpperCase().startsWith('X')) {
         seen.add(item.id)
         merged.push(item)
         if (merged.length >= top) break
@@ -165,7 +165,7 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
   }
 
   // Ingen søgning: enkelt kald med evt. kategorifilter
-  const filters: string[] = []
+  const filters: string[] = [`not startswith(number,'X') and not startswith(number,'x')`]
   if (category) filters.push(`itemCategoryCode eq '${category}'`)
 
   const params = new URLSearchParams({ ...selectExpand, $top: String(top), $skip: String(skip) })
@@ -614,6 +614,7 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
     const result = new Map<string, BCItemPortalData>()
     for (const item of allItems) {
       if (!item.itemNo) continue
+      if (item.itemNo.toUpperCase().startsWith('X')) continue
       result.set(item.itemNo, {
         cutoffWeekday:    item.portalCutoffWeekday ?? 0,
         cutoffHour:       item.portalCutoffHour    ?? 14,
@@ -645,7 +646,7 @@ export async function getItemNumbersByCategory(category: string): Promise<string
       if (!res.ok) break
       const data = await res.json()
       for (const item of (data.value ?? [])) {
-        if (item.itemNo) numbers.push(item.itemNo)
+        if (item.itemNo && !item.itemNo.toUpperCase().startsWith('X')) numbers.push(item.itemNo)
       }
       url = data['@odata.nextLink'] ?? null
     }
