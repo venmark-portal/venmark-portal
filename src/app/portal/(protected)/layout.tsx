@@ -79,6 +79,7 @@ export default async function PortalLayout({
               <a href="/portal/bestil"         className="hover:text-gray-900 transition-colors">Bestil</a>
               <a href="/portal/ordrer"         className="hover:text-gray-900 transition-colors">Ordrer</a>
               <a href="/portal/fakturaer"      className="hover:text-gray-900 transition-colors">Fakturaer</a>
+              <a href="/portal/beskeder"       className="hover:text-gray-900 transition-colors">Beskeder</a>
               <a href="/portal/reklamationer"  className="hover:text-gray-900 transition-colors">Reklamationer</a>
               <a href="/portal/profil"         className="hover:text-gray-900 transition-colors">Profil</a>
             </nav>
