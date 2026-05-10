@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Bell, Send, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Bell, Send, CheckCircle2, Users } from 'lucide-react'
 
 const QUICK_MESSAGES = [
   { title: 'Priser opdateret', body: 'Vi har netop opdateret vores priser. Se de nyeste priser i portalen.' },
@@ -11,12 +11,20 @@ const QUICK_MESSAGES = [
 ]
 
 export default function NotifikationerPage() {
-  const [title,   setTitle]   = useState('')
-  const [body,    setBody]    = useState('')
-  const [url,     setUrl]     = useState('/portal')
-  const [sending, setSending] = useState(false)
-  const [result,  setResult]  = useState<{ sent: number; failed: number; total: number } | null>(null)
-  const [error,   setError]   = useState('')
+  const [title,       setTitle]       = useState('')
+  const [body,        setBody]        = useState('')
+  const [url,         setUrl]         = useState('/portal')
+  const [sending,     setSending]     = useState(false)
+  const [result,      setResult]      = useState<{ sent: number; failed: number; total: number } | null>(null)
+  const [error,       setError]       = useState('')
+  const [subCount,    setSubCount]    = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/push-subscribers')
+      .then(r => r.json())
+      .then(d => setSubCount(d.count ?? 0))
+      .catch(() => {})
+  }, [])
 
   async function send() {
     if (!title.trim() || !body.trim()) { setError('Udfyld titel og besked'); return }
@@ -44,11 +52,20 @@ export default function NotifikationerPage() {
   return (
     <div className="max-w-2xl space-y-6">
 
-      <div className="flex items-center gap-3">
-        <Bell size={22} className="text-blue-600" />
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Push-notifikationer</h1>
-          <p className="text-sm text-gray-500">Send besked til alle kunder der har aktiveret notifikationer</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Bell size={22} className="text-blue-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Push-notifikationer</h1>
+            <p className="text-sm text-gray-500">Send besked til alle kunder der har aktiveret notifikationer</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 ring-1 ring-gray-200">
+          <Users size={16} className="text-gray-400" />
+          <span className="text-sm font-semibold text-gray-800">
+            {subCount === null ? '…' : subCount}
+          </span>
+          <span className="text-xs text-gray-400">abonnenter</span>
         </div>
       </div>
 
