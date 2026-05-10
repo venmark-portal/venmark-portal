@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays } from '@/lib/dateUtils'
@@ -38,7 +38,7 @@ export default async function BestilPage() {
   const today8601 = today.toISOString().split('T')[0]
 
   // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC-favoritter + faste ordrelinjer + varefrist parallelt ──
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories] = await Promise.all([
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -58,16 +58,20 @@ export default async function BestilPage() {
     // BC Item portal data — cutoffs + SaelgForH (felt 50008 på tabel 27)
     getItemCutoffs().catch(() => new Map()),
     getItemCategories().catch(() => []),
+    // Varer med RangeringPrisliste > 0 — må vises på portalen
+    getWebshopVisibleItemNos().catch(() => new Set<string>()),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
+  // Kun varer med RangeringPrisliste > 0 må vises — hvis settet er tomt (BC ikke deployet endnu) vises alle
+  const visFilter = (n: string) => webshopVisible.size === 0 || webshopVisible.has(n)
 
   // Venmark-anbefalede varer — direkte fra BC felt 50008 "SaelgforH" på tabel 27
   const venmarkNos = new Set(
     Array.from(itemCutoffs.entries())
       .filter(([, v]) => v.saelgForH)
       .map(([itemNo]) => itemNo)
-      .filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X'))
+      .filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n))
   )
 
   // ── Merged favoritter: BC Standard Sales Lines + BC portalFavorite + portal DB ──
@@ -79,15 +83,15 @@ export default async function BestilPage() {
     ...Array.from(bcStandardNos),
     ...Array.from(bcFavNos),
     ...Array.from(dbFavNos),
-  ])).filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X'))
+  ])).filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n))
 
   const promoNumbers = promoRows
     .map((p) => p.bcItemNumber)
     .filter((n) => !blockedSet.has(n))
 
-  // Faste ordrelinjer — varenumre der ikke er blokerede og ikke starter med X
+  // Faste ordrelinjer — varenumre der ikke er blokerede, ikke starter med X, og har RangeringPrisliste > 0
   const standingNos = standingLines
-    .filter(l => !blockedSet.has(l.itemNo) && !l.itemNo.toUpperCase().startsWith('X'))
+    .filter(l => !blockedSet.has(l.itemNo) && !l.itemNo.toUpperCase().startsWith('X') && visFilter(l.itemNo))
     .map(l => l.itemNo)
 
   const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos]))
