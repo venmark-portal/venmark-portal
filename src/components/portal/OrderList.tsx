@@ -1436,6 +1436,19 @@ export default function OrderList({
 
       </div>
 
+      {/* Besked til Venmark */}
+      <div className="rounded-xl bg-white p-4 ring-2 ring-blue-400">
+        <label className="mb-0.5 block text-sm font-semibold text-blue-700">
+          Besked til Venmark <span className="font-normal text-blue-400">(valgfri)</span>
+        </label>
+        <p className="mb-2 text-xs text-blue-500">Vi læser straks i åbningstiden</p>
+        <textarea
+          rows={3} value={notes} onChange={e => setNotes(e.target.value)}
+          placeholder="Særlige ønsker, leveringstidspunkt, spørgsmål m.m."
+          className="w-full resize-none rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
       {/* PO-nummer */}
       <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -1459,18 +1472,8 @@ export default function OrderList({
         )}
       </div>
 
-      {/* Note + chauffør-besked */}
-      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
-        <div>
-          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Besked til Venmark (valgfri)
-          </label>
-          <textarea
-            rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="Særlige ønsker, leveringstidspunkt, spørgsmål m.m."
-            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
-          />
-        </div>
+      {/* Chauffør-besked */}
+      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
             Ekstra besked til chauffør (valgfri)
