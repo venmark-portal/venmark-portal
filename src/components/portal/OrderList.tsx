@@ -1463,11 +1463,11 @@ export default function OrderList({
       <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
         <div>
           <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Bemærkning (valgfri)
+            Besked til Venmark (valgfri)
           </label>
           <textarea
             rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-            placeholder="Særlige ønsker, leveringstidspunkt m.m."
+            placeholder="Særlige ønsker, leveringstidspunkt, spørgsmål m.m."
             className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
           />
         </div>

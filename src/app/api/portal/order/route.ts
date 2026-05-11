@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDeadlineForDelivery } from '@/lib/dateUtils'
 import { sendOrderNotification } from '@/lib/email'
-import { createBCSalesOrder } from '@/lib/businesscentral'
+import { createBCSalesOrder, flagBeskedUlaest } from '@/lib/businesscentral'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -79,6 +79,21 @@ export async function POST(req: NextRequest) {
         where: { id: { in: body.reservationIds }, customerId: userId, status: 'PENDING' },
         data: { orderId: order.id, status: 'CONFIRMED' },
       })
+    }
+
+    // Opret portal-besked hvis kunden har skrevet en besked med ordren
+    if (notes?.trim()) {
+      const msgExpires = new Date(); msgExpires.setDate(msgExpires.getDate() + 30)
+      const deliveryLabel = deliveryDate.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
+      const msgBody = `Besked ved ordre (levering ${deliveryLabel}):\n${notes.trim()}`
+      await prisma.$executeRaw`
+        INSERT INTO "Message" (id, "customerId", sender, "senderName", body, "readByAdmin", "readByCustomer", "createdAt", "expiresAt")
+        VALUES (gen_random_uuid()::text, ${userId}, 'customer', ${customer.name}, ${msgBody}, false, true, NOW(), ${msgExpires})
+      `
+      // Notificer BC om ulæst besked
+      if (customer.bcCustomerNumber) {
+        flagBeskedUlaest(customer.bcCustomerNumber).catch(() => {})
+      }
     }
 
     // Send direkte til BC — linjer oprettes med shipQuantity=0 (afventer godkendelse)
