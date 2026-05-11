@@ -61,8 +61,9 @@ export async function POST(req: Request, { params }: { params: { customerNo: str
   if (!checkApiKey(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { customerNo } = params
-  const { body } = await req.json()
+  const { body, senderName } = await req.json()
   if (!body?.trim()) return NextResponse.json({ error: 'Tom besked' }, { status: 400 })
+  const name = typeof senderName === 'string' && senderName.trim() ? senderName.trim() : 'Venmark'
 
   const customer = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Customer" WHERE "bcCustomerNumber" = ${customerNo} LIMIT 1
@@ -74,7 +75,7 @@ export async function POST(req: Request, { params }: { params: { customerNo: str
 
   await prisma.$executeRaw`
     INSERT INTO "Message" (id, "customerId", sender, "senderName", body, "readByAdmin", "readByCustomer", "createdAt", "expiresAt")
-    VALUES (gen_random_uuid()::text, ${customerId}, 'admin', 'Venmark', ${body.trim()}, true, false, NOW(), ${expires})
+    VALUES (gen_random_uuid()::text, ${customerId}, 'admin', ${name}, ${body.trim()}, true, false, NOW(), ${expires})
   `
 
   // Push-notifikation til kunden
