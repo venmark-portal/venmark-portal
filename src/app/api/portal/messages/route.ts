@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { flagBeskedUlaest } from '@/lib/businesscentral'
 
 // GET — kundens tråd (seneste 30 dage)
 export async function GET() {
@@ -43,6 +44,14 @@ export async function POST(req: Request) {
     INSERT INTO "Message" (id, "customerId", sender, "senderName", body, "readByAdmin", "readByCustomer", "createdAt", "expiresAt")
     VALUES (gen_random_uuid()::text, ${customerId}, 'customer', ${customerName}, ${body.trim()}, false, true, NOW(), ${expires})
   `
+
+  // Notificer BC om ulæst besked (non-blocking — fejl er ikke fatale)
+  const rows = await prisma.$queryRaw<{ bcCustomerNumber: string }[]>`
+    SELECT "bcCustomerNumber" FROM "Customer" WHERE id = ${customerId} LIMIT 1
+  `
+  if (rows[0]?.bcCustomerNumber) {
+    flagBeskedUlaest(rows[0].bcCustomerNumber).catch(() => {})
+  }
 
   return NextResponse.json({ ok: true })
 }

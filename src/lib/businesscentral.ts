@@ -97,6 +97,31 @@ export function bcBaseUrl(): string {
   )
 }
 
+// ─── Portal webhook → BC: flag ulæst besked på kunde ─────────────────────────
+
+export async function flagBeskedUlaest(bcCustomerNumber: string): Promise<void> {
+  const tenantId  = process.env.BC_TENANT_ID
+  const envName   = process.env.BC_ENVIRONMENT_NAME ?? 'production'
+  const companyId = process.env.BC_COMPANY_ID
+  if (!tenantId || !companyId || !bcCustomerNumber) return
+
+  const token = await getAccessToken()
+  const url =
+    `https://api.businesscentral.dynamics.com/v2.0` +
+    `/${tenantId}/${envName}/api/venmark/portal/v1.0` +
+    `/companies(${companyId})/portalBeskedNotify('${encodeURIComponent(bcCustomerNumber)}')`
+
+  await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'If-Match':     '*',
+    },
+    body: JSON.stringify({ portalUlaestBeskedTid: new Date().toISOString() }),
+  })
+}
+
 // ─── Hent varer ──────────────────────────────────────────────────────────────
 
 export interface GetItemsOptions {
