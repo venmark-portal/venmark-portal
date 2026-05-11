@@ -14,10 +14,12 @@ function checkApiKey(req: Request) {
 }
 
 // GET /api/bc/messages/[customerNo] — BC henter tråd for en kunde (via BC-kundenr.)
+// ?markRead=true markerer beskeder som læst — kun kaldt af MarkerFaerdig, IKKE ved visning
 export async function GET(req: Request, { params }: { params: { customerNo: string } }) {
   if (!checkApiKey(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { customerNo } = params
+  const markRead = new URL(req.url).searchParams.get('markRead') === 'true'
 
   const customer = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Customer" WHERE "bcCustomerNumber" = ${customerNo} LIMIT 1
@@ -36,12 +38,16 @@ export async function GET(req: Request, { params }: { params: { customerNo: stri
     ORDER BY "createdAt" ASC
   `
 
-  // Markér kunde-beskeder som læst af admin ved hentning
-  await prisma.$executeRaw`
-    UPDATE "Message" SET "readByAdmin" = true
-    WHERE "customerId" = ${customerId} AND sender = 'customer' AND "readByAdmin" = false
-  `
+  // Markér kun som læst når BC eksplicit beder om det (markRead=true) — dvs. ved MarkerFaerdig.
+  // Visning alene (LoadMessages i FactBox) må ikke fjerne ulæst-status.
+  if (markRead) {
+    await prisma.$executeRaw`
+      UPDATE "Message" SET "readByAdmin" = true
+      WHERE "customerId" = ${customerId} AND sender = 'customer' AND "readByAdmin" = false
+    `
+  }
 
+  const tz = 'Europe/Copenhagen'
   return NextResponse.json({
     messages: messages.map(m => ({
       id:             m.id,
@@ -51,7 +57,9 @@ export async function GET(req: Request, { params }: { params: { customerNo: stri
       readByAdmin:    m.readByAdmin,
       readByCustomer: m.readByCustomer,
       createdAt:      m.createdAt.toISOString(),
-      createdAtDK:    m.createdAt.toLocaleString('da-DK', { timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      createdAtDK:    m.createdAt.toLocaleTimeString('da-DK', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
+                      + ' ' +
+                      m.createdAt.toLocaleDateString('da-DK', { timeZone: tz, day: '2-digit', month: '2-digit' }),
     }))
   })
 }
