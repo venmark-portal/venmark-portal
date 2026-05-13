@@ -504,7 +504,6 @@ function OrderRow({
   disponibeltColor?: 'red' | 'orange' | null
   infoNote?:         string
 }) {
-  const [showInfoNote, setShowInfoNote] = useState(false)
   const fmt    = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const attrs  = item.attributes ?? []
   const uoms   = item.uoms ?? []
@@ -550,11 +549,6 @@ function OrderRow({
           {unavailableLabel}
         </div>
       )}
-      {showInfoNote && infoNote && (
-        <div className="mb-1 text-[11px] text-blue-700 bg-blue-50 rounded px-2 py-1 border border-blue-200">
-          {infoNote}
-        </div>
-      )}
       <div className="flex items-center gap-1 sm:gap-2">
 
         {/* ── Thumbnail (kun desktop) ───────────────── */}
@@ -564,6 +558,10 @@ function OrderRow({
 
         {/* ── Varenavn + info ─────────────────────── */}
         <div className="min-w-0 flex-1">
+          {/* Dansk tekst over varenavn */}
+          {infoNote && (
+            <p className="text-[10px] font-bold text-gray-500 leading-tight mb-0.5 uppercase tracking-wide">{infoNote}</p>
+          )}
           {/* Linje 1: navn + attributter */}
           <div className="flex items-start gap-1 min-w-0 flex-wrap">
             <span className="shrink-0 mt-[3px]"><StockDot inventory={item.inventory ?? 0} /></span>
@@ -696,17 +694,6 @@ function OrderRow({
             +50
           </button>
         </div>
-
-        {/* ── Info-knap (danskTekstPrisliste) ──────── */}
-        {infoNote && (
-          <button
-            onClick={() => setShowInfoNote(v => !v)}
-            className={`shrink-0 p-1 rounded-full transition-colors ${showInfoNote ? 'text-blue-500 bg-blue-50' : 'text-gray-300 hover:text-blue-400'}`}
-            title={showInfoNote ? 'Skjul info' : 'Vis info'}
-          >
-            <span className="text-[13px] font-bold leading-none">ℹ</span>
-          </button>
-        )}
 
         {/* ── Favorit-hjerte yderst til højre ─────── */}
         {onToggleFav && (
