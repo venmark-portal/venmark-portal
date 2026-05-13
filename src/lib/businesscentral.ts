@@ -597,10 +597,11 @@ export async function getStandingOrderLines(customerNo: string): Promise<BCStand
  * Bruges til at beregne tidligste leveringsdato per vare.
  */
 export interface BCItemPortalData {
-  cutoffWeekday:    number
-  cutoffHour:       number
-  saelgForH:        boolean
-  itemCategoryCode: string
+  cutoffWeekday:       number
+  cutoffHour:          number
+  saelgForH:           boolean
+  itemCategoryCode:    string
+  danskTekstPrisliste: string
 }
 
 export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
@@ -613,7 +614,7 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
 
     // To separate kald — BC OData understøtter ikke OR på tværs af custom felter
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-    const sel     = `$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode&$top=1000`
+    const sel     = `$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode,danskTekstPrisliste&$top=1000`
     const f1      = encodeURIComponent(`portalSaelgForH eq true`)
     const f2      = encodeURIComponent(`portalCutoffWeekday gt 0`)
 
@@ -630,21 +631,24 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
       return items
     }
 
-    const [saelgItems, cutoffItems] = await Promise.all([
+    const f3      = encodeURIComponent(`danskTekstPrisliste ne ''`)
+    const [saelgItems, cutoffItems, tekstItems] = await Promise.all([
       fetchCutoffPages(`${base}/itemCutoffs?$filter=${f1}&${sel}`),
       fetchCutoffPages(`${base}/itemCutoffs?$filter=${f2}&${sel}`),
+      fetchCutoffPages(`${base}/itemCutoffs?$filter=${f3}&${sel}`),
     ])
-    const allItems = [...saelgItems, ...cutoffItems]
+    const allItems = [...saelgItems, ...cutoffItems, ...tekstItems]
 
     const result = new Map<string, BCItemPortalData>()
     for (const item of allItems) {
       if (!item.itemNo) continue
       if (item.itemNo.toUpperCase().startsWith('X')) continue
       result.set(item.itemNo, {
-        cutoffWeekday:    item.portalCutoffWeekday ?? 0,
-        cutoffHour:       item.portalCutoffHour    ?? 14,
-        saelgForH:        item.portalSaelgForH     === true,
-        itemCategoryCode: item.itemCategoryCode     ?? '',
+        cutoffWeekday:       item.portalCutoffWeekday    ?? 0,
+        cutoffHour:          item.portalCutoffHour       ?? 14,
+        saelgForH:           item.portalSaelgForH        === true,
+        itemCategoryCode:    item.itemCategoryCode        ?? '',
+        danskTekstPrisliste: item.danskTekstPrisliste     ?? '',
       })
     }
     return result

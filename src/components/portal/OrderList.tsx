@@ -924,8 +924,7 @@ export default function OrderList({
   }
 
   function rowInfoNote(itemNo: string): string {
-    const avail = itemAvailabilities[itemNo]
-    return avail?.danskTekstPrisliste || ''
+    return itemCutoffs.get(itemNo)?.danskTekstPrisliste || ''
   }
 
   const deliveryDate    = deliveryDays[selectedDay]
