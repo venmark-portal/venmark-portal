@@ -565,12 +565,12 @@ function OrderRow({
         {/* ── Varenavn + info ─────────────────────── */}
         <div className="min-w-0 flex-1">
           {/* Linje 1: navn + attributter */}
-          <div className="flex items-center gap-1 min-w-0">
-            <StockDot inventory={item.inventory ?? 0} />
-            {isPromo && <Flame size={11} className="shrink-0 text-orange-500" />}
+          <div className="flex items-start gap-1 min-w-0 flex-wrap">
+            <span className="shrink-0 mt-[3px]"><StockDot inventory={item.inventory ?? 0} /></span>
+            {isPromo && <Flame size={11} className="shrink-0 mt-[2px] text-orange-500" />}
             {isVenmark && !isPromo && <span className="shrink-0 text-[12px]" title={venmarkNote || 'Venmark anbefaler'}>⭐</span>}
-            <span className="truncate text-sm font-medium text-gray-900 leading-tight">{item.displayName}</span>
-            {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5 ml-1"><RefreshCw size={9} />Fast ordre</span>}
+            <span className="text-sm font-medium text-gray-900 leading-snug">{item.displayName}</span>
+            {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5"><RefreshCw size={9} />Fast ordre</span>}
             {visibleAttrs.map((attr, i) => <AttrIcon key={i} attr={attr} />)}
           </div>
           {/* Linje 2: nr (klikbar på mobil) + aktiv pris + trappepriser */}
