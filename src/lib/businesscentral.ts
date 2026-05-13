@@ -1602,6 +1602,59 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
   } catch { return [] }
 }
 
+// ─── Hent varetilgængelighed fra BC (Portal Item Avail API, page 50373) ──────
+
+export interface BCItemAvailability {
+  disponibelt:       number
+  strengtLager:      boolean
+  auktionsKategori:  boolean
+  tilgaengeligFra:   string | null   // 'YYYY-MM-DD' eller null
+  aabnTil:           string | null   // BC Time OData: 'PT10H30M00S' eller null (0T = ingen begrænsning)
+  lukAfgang:         boolean
+  statusNote:        string
+  danskTekstPrisliste: string
+  priserOpdateret:   string | null   // ISO datetime eller null
+}
+
+/**
+ * Returnerer Map fra itemNo → tilgængeligheds-data for alle varer.
+ * Bruges af bestillingssiden til at blokere/advare afhængigt af varetype.
+ */
+export async function getItemAvailabilities(): Promise<Map<string, BCItemAvailability>> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+
+    const result = new Map<string, BCItemAvailability>()
+    let url: string | null = `${base}/itemAvailabilities?$top=1000`
+    while (url) {
+      const res: Response = await fetch(url, { headers, cache: 'no-store' } as any)
+      if (!res.ok) break
+      const data = await res.json()
+      for (const item of (data.value ?? [])) {
+        if (!item.itemNo) continue
+        result.set(item.itemNo, {
+          disponibelt:         item.disponibelt         ?? 0,
+          strengtLager:        item.strengtLager         === true,
+          auktionsKategori:    item.auktionsKategori     === true,
+          tilgaengeligFra:     item.tilgaengeligFra      || null,
+          aabnTil:             item.aabnTil              || null,
+          lukAfgang:           item.lukAfgang            === true,
+          statusNote:          item.statusNote           ?? '',
+          danskTekstPrisliste: item.danskTekstPrisliste  ?? '',
+          priserOpdateret:     item.priserOpdateret      || null,
+        })
+      }
+      url = data['@odata.nextLink'] ?? null
+    }
+    return result
+  } catch { return new Map() }
+}
+
 // ─── Hent forsendelsesmetoder fra BC (Shipment Method) ───────────────────────
 
 export async function getShipmentMethods(): Promise<{ code: string; description: string }[]> {

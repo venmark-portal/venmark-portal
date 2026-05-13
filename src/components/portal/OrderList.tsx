@@ -6,7 +6,7 @@ import {
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
-import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory } from '@/lib/businesscentral'
+import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
@@ -57,6 +57,7 @@ interface Props {
   requirePoNumber?:  boolean
   itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; itemCategoryCode?: string }>
   allCategories?:    BCItemCategory[]
+  itemAvailabilities?: Record<string, BCItemAvailability>
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -117,6 +118,93 @@ function getStandingQty(s: StandingOrderData, weekday: number): number {
     case 5: return s.qtyFriday
     default: return 0
   }
+}
+
+// ─── Varetilgængelighed ───────────────────────────────────────────────────────
+
+const DA_WEEKDAYS = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
+
+function formatTilgaengeligFra(dateStr: string): string {
+  const target = new Date(dateStr + 'T00:00:00')
+  const nowDay = new Date(new Date().toDateString())
+  const diffDays = Math.round((new Date(target.toDateString()).getTime() - nowDay.getTime()) / 86400000)
+  if (diffDays <= 6) return `Tilgængelig ${DA_WEEKDAYS[target.getDay()]}`
+  const d = String(target.getDate()).padStart(2, '0')
+  const m = String(target.getMonth() + 1).padStart(2, '0')
+  return `Tilgængelig ${d}/${m}`
+}
+
+interface ItemAvailStatus {
+  blocked: boolean
+  blockLabel: string
+  disponibeltLabel: string | null
+  disponibeltColor: 'red' | 'orange' | null
+}
+
+function getItemAvailStatus(
+  avail: BCItemAvailability | undefined,
+  deliveryDate: Date | undefined,
+): ItemAvailStatus {
+  const none: ItemAvailStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null }
+  if (!avail || !deliveryDate) return none
+
+  const now = new Date()
+  const deliveryStr = deliveryDate.toISOString().split('T')[0]
+  const todayStr = now.toISOString().split('T')[0]
+  const isToday = deliveryStr === todayStr
+
+  if (avail.tilgaengeligFra && deliveryStr < avail.tilgaengeligFra) {
+    return { blocked: true, blockLabel: formatTilgaengeligFra(avail.tilgaengeligFra), disponibeltLabel: null, disponibeltColor: null }
+  }
+
+  // Strengt lager — total pipeline (alle datoer)
+  if (avail.strengtLager) {
+    const disp = avail.disponibelt
+    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
+    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange' }
+    return { blocked: false, blockLabel: '', disponibeltLabel: '>50', disponibeltColor: null }
+  }
+
+  if (isToday) {
+    if (avail.lukAfgang)
+      return { blocked: true, blockLabel: 'Lukket for dags afgang', disponibeltLabel: null, disponibeltColor: null }
+
+    if (avail.aabnTil) {
+      const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+      // BC OData Time format: "PT10H30M00S" (ISO 8601 duration) eller "10:30:00"
+      let hh = 0, mm2 = 0
+      const isoMatch = avail.aabnTil.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
+      if (isoMatch) {
+        hh = parseInt(isoMatch[1] ?? '0'); mm2 = parseInt(isoMatch[2] ?? '0')
+      } else {
+        const parts = avail.aabnTil.split(':').map(Number)
+        hh = parts[0] ?? 0; mm2 = parts[1] ?? 0
+      }
+      const limitSec = hh * 3600 + mm2 * 60
+      if (limitSec > 0 && nowSec > limitSec) {
+        return { blocked: true, blockLabel: `Frist kl. ${String(hh).padStart(2,'0')}:${String(mm2).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null }
+      }
+    }
+
+    // Auktionsvare — blokér kun hvis priser er opdateret i dag
+    if (avail.auktionsKategori) {
+      const priserDato = avail.priserOpdateret?.slice(0, 10)
+      if (priserDato === todayStr) {
+        const disp = avail.disponibelt
+        if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
+        if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange' }
+      }
+      return none
+    }
+
+    // Handelsvare (default) — kun blokér for dags afgang
+    const disp = avail.disponibelt
+    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
+    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange' }
+    return none
+  }
+
+  return none
 }
 
 // ─── Trappepris-hjælpere ─────────────────────────────────────────────────────
@@ -391,6 +479,10 @@ function OrderRow({
   selectedUom, onUomChange,
   onOpenDetail,
   unavailableLabel = '',
+  blockedLabel = '',
+  disponibeltLabel = null,
+  disponibeltColor = null,
+  infoNote = '',
 }: {
   item:             EnrichedItem
   quantity:         number
@@ -407,7 +499,12 @@ function OrderRow({
   onUomChange?:     (code: string) => void
   onOpenDetail?:    () => void
   unavailableLabel?: string
+  blockedLabel?:     string
+  disponibeltLabel?: string | null
+  disponibeltColor?: 'red' | 'orange' | null
+  infoNote?:         string
 }) {
+  const [showInfoNote, setShowInfoNote] = useState(false)
   const fmt    = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const attrs  = item.attributes ?? []
   const uoms   = item.uoms ?? []
@@ -437,18 +534,33 @@ function OrderRow({
 
   const hasMultipleUoms = uoms.length > 1
 
+  const isBlocked = !!blockedLabel
+
   return (
-    <div className={`px-3 py-2 transition-colors ${unavailableLabel ? 'opacity-60' : ''} ${quantity > 0 ? 'bg-blue-50/50' : 'hover:bg-gray-50/40'}`}>
-      {unavailableLabel && (
+    <div className={`px-2 sm:px-3 py-1.5 sm:py-2 transition-colors ${(unavailableLabel || isBlocked) ? 'opacity-70' : ''} ${quantity > 0 ? 'bg-blue-50/50' : 'hover:bg-gray-50/40'}`}>
+      {blockedLabel && (
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit font-semibold">
+          <X size={9} />
+          {blockedLabel}
+        </div>
+      )}
+      {!blockedLabel && unavailableLabel && (
         <div className="mb-1 flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 w-fit">
           <Calendar size={9} />
           {unavailableLabel}
         </div>
       )}
-      <div className="flex items-center gap-2">
+      {showInfoNote && infoNote && (
+        <div className="mb-1 text-[11px] text-blue-700 bg-blue-50 rounded px-2 py-1 border border-blue-200">
+          {infoNote}
+        </div>
+      )}
+      <div className="flex items-center gap-1 sm:gap-2">
 
-        {/* ── Thumbnail ────────────────────────────────── */}
-        <ItemThumbnail item={item} onClick={onOpenDetail} />
+        {/* ── Thumbnail (kun desktop) ───────────────── */}
+        <span className="hidden sm:block shrink-0">
+          <ItemThumbnail item={item} onClick={onOpenDetail} />
+        </span>
 
         {/* ── Varenavn + info ─────────────────────── */}
         <div className="min-w-0 flex-1">
@@ -461,9 +573,15 @@ function OrderRow({
             {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5 ml-1"><RefreshCw size={9} />Fast ordre</span>}
             {visibleAttrs.map((attr, i) => <AttrIcon key={i} attr={attr} />)}
           </div>
-          {/* Linje 2: nr + aktiv pris + trappepriser */}
+          {/* Linje 2: nr (klikbar på mobil) + aktiv pris + trappepriser */}
           <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 flex-wrap leading-tight">
-            <span className="font-mono">{item.number}</span>
+            <button
+              onClick={onOpenDetail}
+              className="font-mono hover:text-blue-500 transition-colors text-left sm:pointer-events-none"
+              type="button"
+            >
+              {item.number}
+            </button>
 
             {displayPrice > 0 && (
               <span className={`font-semibold ${priceChanged ? 'text-blue-600' : 'text-gray-600'}`}>
@@ -495,17 +613,29 @@ function OrderRow({
             )}
 
             {promoNote && <span className="italic text-orange-500">"{promoNote}"</span>}
+            {disponibeltLabel && (
+              <span className={`rounded px-1 py-0 leading-tight text-[10px] font-semibold ${
+                disponibeltColor === 'red'
+                  ? 'bg-red-100 text-red-600'
+                  : disponibeltColor === 'orange'
+                    ? 'bg-orange-100 text-orange-600'
+                    : 'bg-gray-100 text-gray-500'
+              }`}>
+                {disponibeltLabel} {item.baseUnitOfMeasureCode}
+              </span>
+            )}
           </div>
         </div>
 
         {/* ── Enhed + Antal ────────────────────────── */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           {/* Enhed FORAN antal */}
           {hasMultipleUoms ? (
             <select
               value={activeUomCode}
               onChange={e => onUomChange?.(e.target.value)}
-              className="rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer"
+              disabled={isBlocked}
+              className="rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer disabled:opacity-40"
               title="Vælg bestillingsenhed"
             >
               {uoms.map(u => (
@@ -521,7 +651,7 @@ function OrderRow({
           {/* Minus / antal-felt / Plus / +10 / +50 */}
           <button
             onClick={() => onQty(Math.max(0, quantity - 1))}
-            disabled={quantity === 0}
+            disabled={quantity === 0 || isBlocked}
             className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
             <Minus size={12} />
@@ -532,6 +662,7 @@ function OrderRow({
             value={quantity || ''}
             placeholder="0"
             data-qty-input="true"
+            disabled={isBlocked}
             onChange={(e) => onQty(Math.max(0, parseInt(e.target.value) || 0))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -541,27 +672,41 @@ function OrderRow({
                 if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
               }
             }}
-            className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
+            className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40 disabled:bg-gray-50"
           />
           <button
             onClick={() => onQty(quantity + 1)}
-            className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+            disabled={isBlocked}
+            className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
             <Plus size={12} />
           </button>
           <button
             onClick={() => onQty(quantity + 10)}
-            className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+            disabled={isBlocked}
+            className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
             +10
           </button>
           <button
             onClick={() => onQty(quantity + 50)}
-            className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+            disabled={isBlocked}
+            className="hidden sm:flex h-7 px-1.5 items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
             +50
           </button>
         </div>
+
+        {/* ── Info-knap (danskTekstPrisliste) ──────── */}
+        {infoNote && (
+          <button
+            onClick={() => setShowInfoNote(v => !v)}
+            className={`shrink-0 p-1 rounded-full transition-colors ${showInfoNote ? 'text-blue-500 bg-blue-50' : 'text-gray-300 hover:text-blue-400'}`}
+            title={showInfoNote ? 'Skjul info' : 'Vis info'}
+          >
+            <span className="text-[13px] font-bold leading-none">ℹ</span>
+          </button>
+        )}
 
         {/* ── Favorit-hjerte yderst til højre ─────── */}
         {onToggleFav && (
@@ -708,7 +853,7 @@ function DeliveryPicker({
 
 export default function OrderList({
   promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays, customerId, priceTiers = [], initialFavNos = [],
-  requirePoNumber = false, itemCutoffs = new Map(), allCategories = [],
+  requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities = {},
 }: Props) {
   // Tjek om en vare kan leveres på den valgte dato
   function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
@@ -784,6 +929,16 @@ export default function OrderList({
     const cutoff = itemCutoffs.get(itemNo)
     if (!cutoff || cutoff.cutoffWeekday === 0) return ''
     return `Bestillingsfrist: ${weekdayNames[cutoff.cutoffWeekday]} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00`
+  }
+
+  function rowAvailStatus(itemNo: string): ItemAvailStatus {
+    const avail = itemAvailabilities[itemNo]
+    return getItemAvailStatus(avail, deliveryDate)
+  }
+
+  function rowInfoNote(itemNo: string): string {
+    const avail = itemAvailabilities[itemNo]
+    return avail?.danskTekstPrisliste || ''
   }
 
   const deliveryDate    = deliveryDays[selectedDay]
@@ -1281,6 +1436,10 @@ export default function OrderList({
                     isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                     selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                     onOpenDetail={() => setDetailItem(item)}
+                    blockedLabel={rowAvailStatus(item.number).blockLabel}
+                    disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                    disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                    infoNote={rowInfoNote(item.number)}
                   />
                 ))}
               </div>
@@ -1319,6 +1478,10 @@ export default function OrderList({
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                   onOpenDetail={() => setDetailItem(item)}
                   unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                  blockedLabel={rowAvailStatus(item.number).blockLabel}
+                  disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                  disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  infoNote={rowInfoNote(item.number)}
                 />
               ))}
             </div>
@@ -1359,6 +1522,10 @@ export default function OrderList({
                         isFavorite={favSet.has(s.item.number)} onToggleFav={() => toggleFavorite(s.item)}
                         selectedUom={lineUoms.get(s.item.number) ?? s.unitOfMeasure} onUomChange={code => setLineUom(s.item, code)}
                         onOpenDetail={() => setDetailItem(s.item)}
+                        blockedLabel={rowAvailStatus(s.item.number).blockLabel}
+                        disponibeltLabel={rowAvailStatus(s.item.number).disponibeltLabel}
+                        disponibeltColor={rowAvailStatus(s.item.number).disponibeltColor}
+                        infoNote={rowInfoNote(s.item.number)}
                       />
                     </div>
                   )
@@ -1400,6 +1567,10 @@ export default function OrderList({
                     selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                     onOpenDetail={() => setDetailItem(item)}
                     unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                    blockedLabel={rowAvailStatus(item.number).blockLabel}
+                    disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                    disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                    infoNote={rowInfoNote(item.number)}
                   />
                 ))}
               </div>
@@ -1422,6 +1593,10 @@ export default function OrderList({
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                   onOpenDetail={() => setDetailItem(item)}
+                  blockedLabel={rowAvailStatus(item.number).blockLabel}
+                  disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                  disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  infoNote={rowInfoNote(item.number)}
                 />
               ))}
             </div>
