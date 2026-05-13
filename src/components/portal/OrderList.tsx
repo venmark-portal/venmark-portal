@@ -1412,7 +1412,7 @@ export default function OrderList({
               {showPromos ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             {showPromos && (
-              <div className="divide-y divide-gray-100/80">
+              <div className="divide-y divide-blue-200">
                 {promotions.map(({ item, note }) => (
                   <OrderRow
                     key={`promo-${item.number}`}
@@ -1452,7 +1452,7 @@ export default function OrderList({
             <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
               <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
             </div>
-            <div className="divide-y divide-gray-100/80">
+            <div className="divide-y divide-blue-200">
               {mergedFavVenmark.map(({ item, isVenmark, vNote }) => (
                 <OrderRow
                   key={`favvenmark-${item.number}`}
@@ -1488,7 +1488,7 @@ export default function OrderList({
               {showStanding ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             {showStanding && (
-              <div className="divide-y divide-gray-100/80">
+              <div className="divide-y divide-blue-200">
                 {standingOrders.map((s) => {
                   const weekdayQty = getStandingQty(s, selectedWeekday)
                   const currentQty = getQty(s.item.number)
@@ -1542,7 +1542,7 @@ export default function OrderList({
               <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen priser på varer i denne kategori</div>
             )}
             {!categoryLoading && categoryItems.length > 0 && (
-              <div className="divide-y divide-gray-100/80">
+              <div className="divide-y divide-blue-200">
                 {categoryItems.map(item => (
                   <OrderRow
                     key={`cat-${item.number}`}
@@ -1570,7 +1570,7 @@ export default function OrderList({
             <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
               <Search size={10} /> Tilføjede varer
             </div>
-            <div className="divide-y divide-gray-100/80">
+            <div className="divide-y divide-blue-200">
               {searchedLines.map(({ item, quantity }) => (
                 <OrderRow
                   key={`search-${item.number}`}
