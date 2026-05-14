@@ -23,15 +23,23 @@ export async function GET() {
   let portalPricesError: any = null
   try {
     const res = await getPortalPrices('98945965', '9999FHSJÆ')
-    // Vis ALLE prisrækker for vare 10400 — så vi kan se om trappepriser er der
+    // Vis ALLE prisrækker for vare 10400 og 23995 — så vi kan se om trappepriser er der
     const item10400 = res.filter(p => p.itemNo === '10400')
+    const item23995 = res.filter(p => p.itemNo === '23995')
+    const item70011 = res.filter(p => p.itemNo === '70011')
+    // sourceType-fordeling
+    const sourceTypeCounts: Record<string, number> = {}
+    for (const p of res) {
+      sourceTypeCounts[p.sourceType] = (sourceTypeCounts[p.sourceType] ?? 0) + 1
+    }
     portalPrices = {
       total_count: res.length,
-      item_10400_all_rows: item10400,
-      item_10400_count: item10400.length,
-      has_tiers_10400: item10400.length > 1,
+      source_type_distribution: sourceTypeCounts,
+      item_10400: { count: item10400.length, rows: item10400 },
+      item_23995: { count: item23995.length, rows: item23995 },
+      item_70011: { count: item70011.length, rows: item70011 },
       favorites_sample: res.filter(p => p.portalFavorite).slice(0, 5).map(p => ({
-        item: p.itemNo, price: p.unitPrice, minQty: p.minimumQuantity, uom: p.unitOfMeasure,
+        item: p.itemNo, price: p.unitPrice, minQty: p.minimumQuantity, uom: p.unitOfMeasure, src: p.sourceType,
       })),
     }
   } catch (e: any) {
