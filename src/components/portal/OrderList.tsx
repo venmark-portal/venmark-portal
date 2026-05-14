@@ -327,6 +327,17 @@ function buildDisplayTiers(
     if (baseTiers.length) return buildFromValid(baseTiers, qtyPerUom, qtyPerUom)
   }
 
+  // ── Fallback: alle tiers for varen uanset UoM (håndterer enhedsmismatch) ───
+  // Bruges når varens base-UoM ikke matcher UoM i prislisten (f.eks. pakker vs KG)
+  if (isBaseUnit) {
+    const anyTiers = tiers.filter(tier =>
+      tier.itemNo === itemNo &&
+      (!tier.startingDate || tier.startingDate <= t) &&
+      (!tier.endingDate   || tier.endingDate   >= t),
+    )
+    if (anyTiers.length) return buildFromValid(anyTiers)
+  }
+
   return []
 }
 
