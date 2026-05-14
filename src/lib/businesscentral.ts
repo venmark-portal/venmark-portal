@@ -214,7 +214,9 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
 export interface BCItemCategory {
   code: string
   displayName: string
-  parentCategory: string  // '' for top-level
+  parentCategory:     string   // '' for top-level
+  presentationOrder:  number   // auto-beregnet af BC, lavere = vises først
+  visibleInWebshop:   boolean  // Evexo-felt — false = skjul i portal
 }
 
 /**
@@ -229,18 +231,19 @@ function prettifyCode(code: string): string {
 }
 
 export async function getItemCategories(): Promise<BCItemCategory[]> {
-  const token = await getAccessToken()
-  const base  = bcBaseUrl()
+  const token   = await getAccessToken()
+  const base    = bcBaseUrl()
+  const tenant  = process.env.BC_TENANT_ID
+  const env     = process.env.BC_ENVIRONMENT_NAME
+  const company = process.env.BC_COMPANY_ID
+  const customBase = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+  const cacheOpt = { next: { revalidate: 3600 } } as const
 
   const [itemsRes, catRes] = await Promise.all([
-    fetch(`${base}/items?$select=itemCategoryCode&$top=1000`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 3600 },
-    }),
-    fetch(`${base}/itemCategories?$select=code,displayName,parentCategory`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 3600 },
-    }),
+    fetch(`${base}/items?$select=itemCategoryCode&$top=1000`, { headers, ...cacheOpt }),
+    fetch(`${customBase}/portalItemCategories?$select=code,displayName,parentCategory,presentationOrder,visibleInWebshop&$top=500`, { headers, ...cacheOpt }),
   ])
 
   if (!itemsRes.ok) return []
@@ -253,33 +256,42 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
     if (item.itemCategoryCode) usedCodes.add(item.itemCategoryCode)
   }
 
-  // Byg opslag: kode → displayName og parentCategory
-  const nameMap   = new Map<string, string>()
-  const parentMap = new Map<string, string>()
+  // Byg opslag: kode → feltdata
+  type CatMeta = { displayName: string; parentCategory: string; presentationOrder: number; visibleInWebshop: boolean }
+  const metaMap = new Map<string, CatMeta>()
   if (catRes.ok) {
     const catData = await catRes.json()
     for (const cat of (catData.value ?? [])) {
       if (!cat.code) continue
-      if (cat.displayName) nameMap.set(cat.code, cat.displayName)
-      parentMap.set(cat.code, cat.parentCategory ?? '')
+      metaMap.set(cat.code, {
+        displayName:       cat.displayName || prettifyCode(cat.code),
+        parentCategory:    cat.parentCategory ?? '',
+        presentationOrder: cat.presentationOrder ?? 0,
+        visibleInWebshop:  cat.visibleInWebshop ?? true,
+      })
     }
   }
 
   // Inkludér forældrekategorier i resultatet så hierarkiet kan bygges
   const includedCodes = new Set<string>(usedCodes)
   Array.from(usedCodes).forEach(code => {
-    let parent = parentMap.get(code)
+    let parent = metaMap.get(code)?.parentCategory
     while (parent) {
       includedCodes.add(parent)
-      parent = parentMap.get(parent)
+      parent = metaMap.get(parent)?.parentCategory
     }
   })
 
-  return Array.from(includedCodes).map(code => ({
-    code,
-    displayName:    nameMap.get(code) ?? prettifyCode(code),
-    parentCategory: parentMap.get(code) ?? '',
-  })).sort((a, b) => a.displayName.localeCompare(b.displayName, 'da'))
+  return Array.from(includedCodes).map(code => {
+    const meta = metaMap.get(code)
+    return {
+      code,
+      displayName:       meta?.displayName       ?? prettifyCode(code),
+      parentCategory:    meta?.parentCategory     ?? '',
+      presentationOrder: meta?.presentationOrder  ?? 0,
+      visibleInWebshop:  meta?.visibleInWebshop   ?? true,
+    }
+  })
 }
 
 // ─── Hent kundespecifikke priser (via prisgruppe) ────────────────────────────

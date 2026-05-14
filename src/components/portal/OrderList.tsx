@@ -81,13 +81,17 @@ interface SpecialReservation {
 
 // ─── Katalog-kategori-træ ─────────────────────────────────────────────────────
 
-type CatNode = { code: string; displayName: string; children: CatNode[] }
+type CatNode = { code: string; displayName: string; presentationOrder: number; children: CatNode[] }
 
 function buildCatTree(cats: BCItemCategory[]): CatNode[] {
-  const byCode = new Map<string, CatNode>()
-  for (const c of cats) byCode.set(c.code, { code: c.code, displayName: c.displayName, children: [] })
+  // Filtrer kategorier der er skjult i webshop (Evexo-felt)
+  const visible = cats.filter(c => c.visibleInWebshop !== false)
+  const byCode  = new Map<string, CatNode>()
+  for (const c of visible) {
+    byCode.set(c.code, { code: c.code, displayName: c.displayName, presentationOrder: c.presentationOrder ?? 0, children: [] })
+  }
   const roots: CatNode[] = []
-  for (const c of cats) {
+  for (const c of visible) {
     const node = byCode.get(c.code)
     if (!node) continue
     if (c.parentCategory && byCode.has(c.parentCategory)) {
@@ -97,7 +101,13 @@ function buildCatTree(cats: BCItemCategory[]): CatNode[] {
     }
   }
   function sortNodes(nodes: CatNode[]) {
-    nodes.sort((a, b) => a.displayName.localeCompare(b.displayName, 'da'))
+    nodes.sort((a, b) => {
+      // 0 = ingen rækkefølge sat → placeres sidst
+      const oa = a.presentationOrder || Number.MAX_SAFE_INTEGER
+      const ob = b.presentationOrder || Number.MAX_SAFE_INTEGER
+      if (oa !== ob) return oa - ob
+      return a.displayName.localeCompare(b.displayName, 'da')
+    })
     nodes.forEach(n => sortNodes(n.children))
   }
   sortNodes(roots)
