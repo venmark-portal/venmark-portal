@@ -891,6 +891,8 @@ export default function OrderList({
   const [notes,      setNotes]        = useState('')
   const [driverNote, setDriverNote]   = useState('')
   const [poNumber,   setPoNumber]     = useState('')
+  const [showReview, setShowReview]   = useState(false)
+  const reviewRef = useRef<HTMLDivElement>(null)
   const [detailItem, setDetailItem]           = useState<EnrichedItem | null>(null)
   const [, startTransition]                   = useTransition()
   const [specialVarer, setSpecialVarer]       = useState<SpecialVareItem[]>([])
@@ -1597,98 +1599,142 @@ export default function OrderList({
 
       </div>
 
-      {/* Besked til Venmark */}
-      <div className="rounded-xl bg-white p-4 ring-2 ring-blue-400">
-        <label className="mb-0.5 block text-sm font-semibold text-blue-700">
-          Besked til Venmark <span className="font-normal text-blue-400">(valgfri)</span>
-        </label>
-        <p className="mb-2 text-xs text-blue-500">Vi læser straks i åbningstiden</p>
-        <textarea
-          rows={3} value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="Særlige ønsker, leveringstidspunkt, spørgsmål m.m."
-          className="w-full resize-none rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
-      </div>
-
-      {/* PO-nummer */}
-      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          PO-nummer / Indkøbsordre{requirePoNumber ? ' *' : ' (valgfri)'}
-        </label>
-        <input
-          type="text"
-          value={poNumber}
-          onChange={e => setPoNumber(e.target.value)}
-          placeholder={requirePoNumber ? 'Påkrævet — angiv PO-nummer' : 'f.eks. PO-2024-1234'}
-          className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${
-            requirePoNumber && !poNumber.trim()
-              ? 'border-orange-400 bg-orange-50 focus:border-orange-500'
-              : 'border-gray-300 focus:border-blue-400'
-          }`}
-        />
-        {requirePoNumber && !poNumber.trim() && (
-          <p className="mt-1.5 text-xs text-orange-600">
-            ⚠️ Din konto kræver et PO-nummer. Du kan indsende ordren uden, men husk at tilføje det bagefter.
-          </p>
-        )}
-      </div>
-
-      {/* Chauffør-besked */}
-      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Ekstra besked til chauffør (valgfri)
-          </label>
-          <p className="text-[11px] text-gray-400 mb-1.5">Engangs-instruks pr. levering — chaufføren bekræfter denne ved ankomst</p>
-          <textarea
-            rows={2} value={driverNote} onChange={e => setDriverNote(e.target.value)}
-            placeholder="f.eks. Aflever til Jens i dag, ikke i køleskuret"
-            className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
-          />
-          {driverNote.trim() && (
-            <p className="mt-1 text-[11px] text-blue-500 flex items-center gap-1">
-              🔔 Chaufføren vil blive bedt om at bekræfte denne besked ved levering
-            </p>
+      {/* Gennemse-knap */}
+      {!showReview && (
+        <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+          {totalLines === 0 && <p className="mb-3 text-sm text-gray-400">Ingen varer valgt endnu</p>}
+          {totalAmount > 0 && (
+            <div className="mb-3 flex justify-between text-sm text-gray-600">
+              <span>Ca. beløb</span>
+              <span className="font-semibold">{fmt.format(totalAmount)}</span>
+            </div>
           )}
+          <button
+            onClick={() => { setShowReview(true); setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
+            disabled={totalLines === 0 || pastDeadline}
+            className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
+          >
+            {pastDeadline ? 'Deadline passeret for denne dag'
+              : totalLines === 0 ? 'Tilføj varer for at bestille'
+              : `Gennemse og send (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Sammenfatning + indsend */}
-      <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
-        {totalLines > 0 ? (
-          <div className="mb-3 space-y-1 text-sm text-gray-700">
-            <div className="flex justify-between">
-              <span>Antal linjer</span>
-              <span className="font-semibold">{totalLines}</span>
+      {/* Review-panel */}
+      {showReview && (
+        <div ref={reviewRef} className="rounded-xl bg-white ring-2 ring-blue-500 overflow-hidden">
+          {/* Header */}
+          <div className="bg-blue-600 px-4 py-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-white">Gennemse bestilling</h2>
+              <p className="text-xs text-blue-200">{formatLongDate(deliveryDate)}</p>
             </div>
-            {totalAmount > 0 && (
-              <div className="flex justify-between">
-                <span>Ca. beløb</span>
-                <span className="font-semibold">{fmt.format(totalAmount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-gray-500">
-              <span>Levering</span>
-              <span>{formatLongDate(deliveryDate)}</span>
-            </div>
+            <button
+              onClick={() => { setShowReview(false); setError('') }}
+              className="rounded-lg border border-blue-400 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
+            >
+              ← Tilbage og ret
+            </button>
           </div>
-        ) : (
-          <p className="mb-3 text-sm text-gray-400">Ingen varer valgt endnu</p>
-        )}
 
-        {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {/* Ordrelinjer */}
+          <div className="divide-y divide-blue-100">
+            {Array.from(lines.values()).map(l => {
+              const uomCode    = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+              const uomObj     = l.item.uoms?.find(u => u.code === uomCode)
+              const qtyPerUom  = uomObj?.qtyPerUnitOfMeasure ?? 1
+              const baseUom    = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
+              const price      = resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUom)
+              const total      = price * l.quantity
+              return (
+                <div key={l.item.number} className="flex items-center justify-between px-4 py-2 gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 leading-snug">{l.item.displayName}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">{l.item.number}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold text-gray-800">{l.quantity} {uomCode}</p>
+                    {total > 0 && <p className="text-[11px] text-gray-500">{fmt.format(total)}</p>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
 
-        <button
-          onClick={handleSubmit}
-          disabled={totalLines === 0 || submitting || pastDeadline}
-          className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
-        >
-          {submitting ? 'Sender…'
-            : pastDeadline ? 'Deadline passeret for denne dag'
-            : totalLines === 0 ? 'Tilføj varer for at bestille'
-            : `Indsend bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
-        </button>
-      </div>
+          {/* Total */}
+          {totalAmount > 0 && (
+            <div className="flex justify-between px-4 py-2 bg-blue-50 border-t border-blue-200 text-sm font-semibold text-blue-800">
+              <span>Ca. total</span>
+              <span>{fmt.format(totalAmount)}</span>
+            </div>
+          )}
+
+          {/* Besked, PO, Chauffør */}
+          <div className="p-4 space-y-4 border-t border-blue-100">
+
+            {/* Besked til Venmark */}
+            <div>
+              <label className="mb-0.5 block text-sm font-semibold text-blue-700">
+                Besked til Venmark <span className="font-normal text-blue-400">(valgfri)</span>
+              </label>
+              <p className="mb-1.5 text-xs text-blue-400">Vi læser straks i åbningstiden</p>
+              <textarea
+                rows={3} value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="Særlige ønsker, leveringstidspunkt, spørgsmål m.m."
+                className="w-full resize-none rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* PO-nummer */}
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                PO-nummer / Indkøbsordre{requirePoNumber ? ' *' : ' (valgfri)'}
+              </label>
+              <input
+                type="text"
+                value={poNumber}
+                onChange={e => setPoNumber(e.target.value)}
+                placeholder={requirePoNumber ? 'Påkrævet — angiv PO-nummer' : 'f.eks. PO-2024-1234'}
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${
+                  requirePoNumber && !poNumber.trim()
+                    ? 'border-orange-400 bg-orange-50 focus:border-orange-500'
+                    : 'border-gray-300 focus:border-blue-400'
+                }`}
+              />
+              {requirePoNumber && !poNumber.trim() && (
+                <p className="mt-1 text-xs text-orange-600">⚠️ Din konto kræver et PO-nummer.</p>
+              )}
+            </div>
+
+            {/* Chauffør-besked */}
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Besked til chauffør <span className="font-normal normal-case text-gray-400">(valgfri)</span>
+              </label>
+              <textarea
+                rows={2} value={driverNote} onChange={e => setDriverNote(e.target.value)}
+                placeholder="f.eks. Aflever til Jens i dag, ikke i køleskuret"
+                className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+              />
+              {driverNote.trim() && (
+                <p className="mt-1 text-[11px] text-blue-500">🔔 Chaufføren bekræfter denne besked ved levering</p>
+              )}
+            </div>
+
+            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+
+            {/* Send-knap */}
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || pastDeadline}
+              className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
+            >
+              {submitting ? 'Sender…' : pastDeadline ? 'Deadline passeret' : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Søgning/katalog modal */}
       {showSearch && (
