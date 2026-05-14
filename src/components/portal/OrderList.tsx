@@ -81,16 +81,16 @@ interface SpecialReservation {
 
 // ─── Katalog-kategori-træ ─────────────────────────────────────────────────────
 
-type CatNode = { code: string; displayName: string; presentationOrder: number; children: CatNode[] }
+type CatNode = { code: string; displayName: string; sortNo: number; presentationOrder: number; children: CatNode[] }
 
 function buildCatTree(cats: BCItemCategory[]): CatNode[] {
-  // Filtrer på visibleInWebshop — men kun hvis feltet faktisk er sat på mindst én kategori.
-  // Hvis ingen er markeret visible (Evexo default = false), vis alle.
+  // Filtrer på visibleInWebshop — kun hvis mindst én kategori er markeret synlig.
+  // Hvis ingen er sat (Evexo default = false), vises alle.
   const anyVisible = cats.some(c => c.visibleInWebshop === true)
   const visible = anyVisible ? cats.filter(c => c.visibleInWebshop === true) : cats
   const byCode  = new Map<string, CatNode>()
   for (const c of visible) {
-    byCode.set(c.code, { code: c.code, displayName: c.displayName, presentationOrder: c.presentationOrder ?? 0, children: [] })
+    byCode.set(c.code, { code: c.code, displayName: c.displayName, sortNo: c.sortNo ?? 0, presentationOrder: c.presentationOrder ?? 0, children: [] })
   }
   const roots: CatNode[] = []
   for (const c of visible) {
@@ -104,10 +104,18 @@ function buildCatTree(cats: BCItemCategory[]): CatNode[] {
   }
   function sortNodes(nodes: CatNode[]) {
     nodes.sort((a, b) => {
-      // 0 = ingen rækkefølge sat → placeres sidst
-      const oa = a.presentationOrder || Number.MAX_SAFE_INTEGER
-      const ob = b.presentationOrder || Number.MAX_SAFE_INTEGER
-      if (oa !== ob) return oa - ob
+      // Sort No. (manuelt sat) har prioritet — 0 = ikke sat → placeres sidst
+      const anySortNo = nodes.some(n => n.sortNo > 0)
+      if (anySortNo) {
+        const sa = a.sortNo || Number.MAX_SAFE_INTEGER
+        const sb = b.sortNo || Number.MAX_SAFE_INTEGER
+        if (sa !== sb) return sa - sb
+      } else {
+        // Fallback: Præsentationsrækkefølge (BC auto-felt)
+        const pa = a.presentationOrder || Number.MAX_SAFE_INTEGER
+        const pb = b.presentationOrder || Number.MAX_SAFE_INTEGER
+        if (pa !== pb) return pa - pb
+      }
       return a.displayName.localeCompare(b.displayName, 'da')
     })
     nodes.forEach(n => sortNodes(n.children))

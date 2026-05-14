@@ -214,9 +214,10 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
 export interface BCItemCategory {
   code: string
   displayName: string
-  parentCategory:     string   // '' for top-level
-  presentationOrder:  number   // auto-beregnet af BC, lavere = vises først
-  visibleInWebshop:   boolean  // Evexo-felt — false = skjul i portal
+  parentCategory:    string   // '' for top-level
+  presentationOrder: number   // auto-beregnet af BC
+  sortNo:            number   // Evexo-felt — sættes manuelt på kategorikort, 0 = ikke sat
+  visibleInWebshop:  boolean  // Evexo-felt — false = skjul i portal
 }
 
 /**
@@ -267,6 +268,7 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
         displayName:       cat.displayName || prettifyCode(cat.code),
         parentCategory:    cat.parentCategory ?? '',
         presentationOrder: cat.presentationOrder ?? 0,
+        sortNo:            cat.sortNo ?? 0,
         visibleInWebshop:  cat.visibleInWebshop ?? true,
       })
     }
@@ -289,6 +291,7 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
       displayName:       meta?.displayName       ?? prettifyCode(code),
       parentCategory:    meta?.parentCategory     ?? '',
       presentationOrder: meta?.presentationOrder  ?? 0,
+      sortNo:            meta?.sortNo             ?? 0,
       visibleInWebshop:  meta?.visibleInWebshop   ?? true,
     }
   })
