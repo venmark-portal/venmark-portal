@@ -2,21 +2,24 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Image as ImageIcon, X, CheckCircle2, Loader2 } from 'lucide-react'
+import { Camera, Image as ImageIcon, X, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react'
 
 interface ImageData { data: string; mimeType: string; fileName: string }
 
 export default function ReklamationForm() {
   const router = useRouter()
-  const cameraRef  = useRef<HTMLInputElement>(null)
-  const galleryRef = useRef<HTMLInputElement>(null)
-  const [subject,  setSubject]  = useState('')
-  const [body,     setBody]     = useState('')
-  const [orderRef, setOrderRef] = useState('')
-  const [images,   setImages]   = useState<ImageData[]>([])
-  const [saving,   setSaving]   = useState(false)
-  const [done,     setDone]     = useState(false)
-  const [error,    setError]    = useState('')
+  const cameraRef    = useRef<HTMLInputElement>(null)
+  const galleryRef   = useRef<HTMLInputElement>(null)
+  const imageSection = useRef<HTMLDivElement>(null)
+  const [subject,         setSubject]         = useState('')
+  const [body,            setBody]            = useState('')
+  const [orderRef,        setOrderRef]        = useState('')
+  const [images,          setImages]          = useState<ImageData[]>([])
+  const [saving,          setSaving]          = useState(false)
+  const [done,            setDone]            = useState(false)
+  const [error,           setError]           = useState('')
+  const [showNoBillede,   setShowNoBillede]   = useState(false)
+  const [bekraeftNoBill,  setBekraeftNoBill]  = useState(false)
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -33,9 +36,7 @@ export default function ReklamationForm() {
     e.target.value = ''
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!subject.trim() || !body.trim()) return
+  async function doSubmit() {
     setSaving(true)
     setError('')
     try {
@@ -50,7 +51,19 @@ export default function ReklamationForm() {
       setError(e.message ?? 'Fejl — prøv igen')
     } finally {
       setSaving(false)
+      setShowNoBillede(false)
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!subject.trim() || !body.trim()) return
+    if (images.length === 0) {
+      setBekraeftNoBill(false)
+      setShowNoBillede(true)
+      return
+    }
+    await doSubmit()
   }
 
   if (done) {
@@ -119,7 +132,7 @@ export default function ReklamationForm() {
         </div>
 
         {/* Billeder */}
-        <div>
+        <div ref={imageSection}>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
             Billeder (maks. 5)
           </label>
@@ -177,6 +190,55 @@ export default function ReklamationForm() {
       >
         {saving ? <><Loader2 size={18} className="animate-spin" /> Sender...</> : 'Send reklamation'}
       </button>
+
+      {/* Dialog: ingen billede vedhæftet */}
+      {showNoBillede && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowNoBillede(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-amber-50 px-5 pt-5 pb-4 flex gap-3">
+              <AlertTriangle size={22} className="shrink-0 text-amber-500 mt-0.5" />
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Har du husket dokumentation?</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Et billede af problemet er ofte afgørende for at behandle din reklamation hurtigt — og sparer en opringning.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <button
+                onClick={() => {
+                  setShowNoBillede(false)
+                  setTimeout(() => {
+                    imageSection.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    cameraRef.current?.click()
+                  }, 100)
+                }}
+                className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white hover:bg-blue-700 transition flex items-center justify-center gap-2"
+              >
+                <Camera size={16} /> Tilføj billede nu
+              </button>
+              <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-gray-200 px-4 py-3 hover:bg-gray-50 transition">
+                <input
+                  type="checkbox"
+                  checked={bekraeftNoBill}
+                  onChange={e => setBekraeftNoBill(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded accent-blue-600"
+                />
+                <span className="text-sm text-gray-700">Jeg har ikke et billede — send reklamationen uden</span>
+              </label>
+              {bekraeftNoBill && (
+                <button
+                  onClick={doSubmit}
+                  disabled={saving}
+                  className="w-full rounded-xl bg-gray-700 py-3 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-40 transition flex items-center justify-center gap-2"
+                >
+                  {saving ? <><Loader2 size={16} className="animate-spin" /> Sender...</> : 'Send uden billede'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   )
 }
