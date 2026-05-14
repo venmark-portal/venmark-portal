@@ -393,12 +393,12 @@ export async function getPortalPrices(
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
     }
     if (priceGroup) {
-      // BC OData enum-værdier: mellemrum kodes som _x0020_ i filter-udtryk
-      const f = encodeURIComponent(`sourceType eq 'Customer_x0020_Price_x0020_Group' and sourceNo eq '${priceGroup}'`)
+      // BC Price List Line bruger Enum-type — filtrer med literal mellemrum (ikke _x0020_)
+      const f = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
     }
-    // All Customers priser — korrekt BC OData enum-navn
-    const fAll = encodeURIComponent(`sourceType eq 'All_x0020_Customers'`)
+    // All Customers priser
+    const fAll = encodeURIComponent(`sourceType eq 'All Customers'`)
     fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=1000`))
 
     const pages = await Promise.all(fetchJobs)
