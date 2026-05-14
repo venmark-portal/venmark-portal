@@ -84,8 +84,10 @@ interface SpecialReservation {
 type CatNode = { code: string; displayName: string; presentationOrder: number; children: CatNode[] }
 
 function buildCatTree(cats: BCItemCategory[]): CatNode[] {
-  // Filtrer kategorier der er skjult i webshop (Evexo-felt)
-  const visible = cats.filter(c => c.visibleInWebshop !== false)
+  // Filtrer på visibleInWebshop — men kun hvis feltet faktisk er sat på mindst én kategori.
+  // Hvis ingen er markeret visible (Evexo default = false), vis alle.
+  const anyVisible = cats.some(c => c.visibleInWebshop === true)
+  const visible = anyVisible ? cats.filter(c => c.visibleInWebshop === true) : cats
   const byCode  = new Map<string, CatNode>()
   for (const c of visible) {
     byCode.set(c.code, { code: c.code, displayName: c.displayName, presentationOrder: c.presentationOrder ?? 0, children: [] })
