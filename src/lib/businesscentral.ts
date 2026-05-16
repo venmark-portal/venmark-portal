@@ -390,16 +390,16 @@ export async function getPortalPrices(
 
     if (customerNo) {
       const f = encodeURIComponent(`sourceType eq 'Customer' and sourceNo eq '${customerNo}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=5000`))
     }
     if (priceGroup) {
       // BC Price List Line bruger Enum-type — filtrer med literal mellemrum (ikke _x0020_)
       const f = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=1000`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=5000`))
     }
     // All Customers priser
     const fAll = encodeURIComponent(`sourceType eq 'All Customers'`)
-    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=1000`))
+    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=5000`))
 
     const pages = await Promise.all(fetchJobs)
     const allItems: any[] = pages.flat()
