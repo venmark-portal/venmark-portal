@@ -76,14 +76,13 @@ export default async function BestilPage() {
       .filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n))
   )
 
-  // ── Merged favoritter: BC Standard Sales Lines + BC portalFavorite + portal DB ──
-  // BC Standard Sales Lines er primær kilde (native BC feature)
+  // ── Merged favoritter: BC tabel 50157 (per kunde) + portal DB ──
+  // Master: BC Portal Customer Favorite (tabel 50157) — sættes af kunde via ❤️ eller af Venmark direkte i BC
+  // portalFavorite på prislistelinje (tabel 7001) bruges IKKE til kundefavoritter — den er per-prisgruppe
   const bcStandardNos = new Set(bcStandardLines.map(l => l.itemNo))
-  const bcFavNos      = new Set(portalPrices.filter(p => p.portalFavorite).map(p => p.itemNo))
   const dbFavNos      = new Set(dbFavRows.map(f => f.bcItemNumber))
   const allFavNos     = Array.from(new Set([
     ...Array.from(bcStandardNos),
-    ...Array.from(bcFavNos),
     ...Array.from(dbFavNos),
   ])).filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n))
 
