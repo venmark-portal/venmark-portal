@@ -31,10 +31,10 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
     prisma.favorite.findMany({ where: { customerId } }),
   ])
 
-  // Master: BC tabel 50157 — samme logik som bestil-siden
+  // BC tabel 50157 er eneste master — fallback til portal DB hvis BC er utilgængeligt
   const bcFavNos  = new Set(bcFavRows.map(f => f.itemNo))
   const dbFavNos  = new Set(dbFavRows.map(f => f.bcItemNumber))
-  const allFavNos = [...new Set([...bcFavNos, ...dbFavNos])]
+  const allFavNos = [...(bcFavNos.size > 0 ? bcFavNos : dbFavNos)]
 
   // Hent varedetaljer fra BC for favoritter
   const favItems = allFavNos.length > 0 ? await getItemsByNumbers(allFavNos) : []
