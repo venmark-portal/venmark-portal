@@ -772,39 +772,6 @@ export async function updateStandingOrderLine(id: string, patch: StandingOrderPa
   } catch { return false }
 }
 
-// ─── Toggle portalFavorite på BC prislistelinje ───────────────────────────────
-
-/**
- * Sætter portalFavorite = isFavorite på en BC prislistelinje.
- * Kræver PATCH-support i Sales-warehouse-facade extensionen.
- * Returnerer true hvis BC-opdatering lykkedes.
- */
-export async function toggleBCPortalFavorite(
-  priceLineId: string,
-  isFavorite: boolean,
-): Promise<boolean> {
-  try {
-    const token   = await getAccessToken()
-    const tenant  = process.env.BC_TENANT_ID
-    const env     = process.env.BC_ENVIRONMENT_NAME
-    const company = process.env.BC_COMPANY_ID
-    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
-
-    const res = await fetch(`${base}/portalPrices(${priceLineId})`, {
-      method: 'PATCH',
-      headers: {
-        Authorization:  `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'If-Match':     '*',
-        Accept:         'application/json',
-      },
-      body: JSON.stringify({ portalFavorite: isFavorite }),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
 
 // ─── Skriv kundefavoritter til BC (tabel 50157) ───────────────────────────────
 

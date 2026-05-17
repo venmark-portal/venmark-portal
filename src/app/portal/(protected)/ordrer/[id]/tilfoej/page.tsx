@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
-import { getPortalPrices, getItemsByNumbers } from '@/lib/businesscentral'
+import { getPortalPrices, getItemsByNumbers, getCustomerFavorites } from '@/lib/businesscentral'
 import AddLinesClient from './AddLinesClient'
 
 export const dynamic = 'force-dynamic'
@@ -24,14 +24,15 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
   if (new Date() > new Date(order.deadline))   redirect('/portal/ordrer')
   if (order.status === 'REJECTED')             redirect('/portal/ordrer')
 
-  // Hent portalpriser og DB-favoritter parallelt
-  const [portalPrices, dbFavRows] = await Promise.all([
+  // Hent portalpriser, BC-favoritter (tabel 50157) og DB-favoritter parallelt
+  const [portalPrices, bcFavRows, dbFavRows] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
+    getCustomerFavorites(customerNo).catch(() => []),
     prisma.favorite.findMany({ where: { customerId } }),
   ])
 
-  // Merge BC og DB favoritter
-  const bcFavNos  = new Set(portalPrices.filter(p => p.portalFavorite).map(p => p.itemNo))
+  // Master: BC tabel 50157 — samme logik som bestil-siden
+  const bcFavNos  = new Set(bcFavRows.map(f => f.itemNo))
   const dbFavNos  = new Set(dbFavRows.map(f => f.bcItemNumber))
   const allFavNos = [...new Set([...bcFavNos, ...dbFavNos])]
 
