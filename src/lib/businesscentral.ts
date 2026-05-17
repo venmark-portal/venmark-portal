@@ -390,21 +390,21 @@ export async function getPortalPrices(
 
     if (customerNo) {
       const f = encodeURIComponent(`sourceType eq 'Customer' and sourceNo eq '${customerNo}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=5000`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=20000`))
     }
     if (priceGroup) {
       // BC Price List Line bruger Enum-type — filtrer med literal mellemrum (ikke _x0020_)
       const f = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=5000`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=20000`))
     }
     // All Customers priser
     const fAll = encodeURIComponent(`sourceType eq 'All Customers'`)
-    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=5000`))
+    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=20000`))
 
     const pages = await Promise.all(fetchJobs)
 
     // Advar hvis en enkelt kilde rammer tæt på $top-grænsen (tegn på truncation)
-    const TOP_LIMIT = 5000
+    const TOP_LIMIT = 20000
     for (const page of pages) {
       if (page.length >= TOP_LIMIT * 0.9) {
         console.warn(`[portalPrices] ADVARSEL: ${page.length} rækker returneret — nærmer sig $top=${TOP_LIMIT}. Overvej at øge grænsen.`)
@@ -1478,7 +1478,7 @@ export async function getSalesOrdersForDelivery(
   // Vi henter alle ordrer uden filter og filtrerer på dato + status i JS nedenfor.
   // BC capper sidestr. til ~100-500 uanset $top — nextLinks kan udløbe, så vi stopper ved 404.
   const allRaw: any[] = []
-  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=5000`
+  let nextUrl: string | null = `${customBase}/deliveryOrders?$top=20000`
   while (nextUrl) {
     const res = await fetch(nextUrl, { headers, cache: 'no-store' })
     if (!res.ok) {
