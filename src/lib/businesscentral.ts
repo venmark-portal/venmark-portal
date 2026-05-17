@@ -402,6 +402,15 @@ export async function getPortalPrices(
     fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=5000`))
 
     const pages = await Promise.all(fetchJobs)
+
+    // Advar hvis en enkelt kilde rammer tæt på $top-grænsen (tegn på truncation)
+    const TOP_LIMIT = 5000
+    for (const page of pages) {
+      if (page.length >= TOP_LIMIT * 0.9) {
+        console.warn(`[portalPrices] ADVARSEL: ${page.length} rækker returneret — nærmer sig $top=${TOP_LIMIT}. Overvej at øge grænsen.`)
+      }
+    }
+
     const allItems: any[] = pages.flat()
 
     // Dedupliker på id
