@@ -371,16 +371,28 @@ export async function getPortalPrices(
 
     const headers  = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-    // Hjælpefunktion: paginér ét OData-endpoint til ende
+    // Hjælpefunktion: paginér ét OData-endpoint til ende.
+    // BC's custom API pages returnerer ikke @odata.nextLink — vi bruger $skip-fallback.
     async function fetchAllPages(startUrl: string): Promise<any[]> {
       const items: any[] = []
+      const topMatch = startUrl.match(/[&?]\$top=(\d+)/)
+      const pageSize = topMatch ? parseInt(topMatch[1]) : 0
       let url: string | null = startUrl
       while (url) {
         const res: Response = await fetch(url, { headers, next: { revalidate: 60 } } as any)
         if (!res.ok) break
         const data = await res.json()
-        items.push(...(data.value ?? []))
-        url = data['@odata.nextLink'] ?? null
+        const page: any[] = data.value ?? []
+        items.push(...page)
+        if (data['@odata.nextLink']) {
+          url = data['@odata.nextLink']
+        } else if (pageSize > 0 && page.length === pageSize) {
+          // Ingen nextLink men fuld side — BC truncerer sandsynligvis, forsøg $skip
+          const baseUrl = startUrl.replace(/&\$skip=\d+/, '')
+          url = `${baseUrl}&$skip=${items.length}`
+        } else {
+          url = null
+        }
       }
       return items
     }
@@ -388,28 +400,21 @@ export async function getPortalPrices(
     // BC OData understøtter ikke OR på tværs af felter — kald parallelt, paginer hvert
     const fetchJobs: Promise<any[]>[] = []
 
-    const TOP_LIMIT = 5000
+    const PAGE_SIZE = 1000
     if (customerNo) {
       const f = encodeURIComponent(`sourceType eq 'Customer' and sourceNo eq '${customerNo}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=${TOP_LIMIT}`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=${PAGE_SIZE}`))
     }
     if (priceGroup) {
       // BC Price List Line bruger Enum-type — filtrer med literal mellemrum (ikke _x0020_)
       const f = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
-      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=${TOP_LIMIT}`))
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=${PAGE_SIZE}`))
     }
     // All Customers priser
     const fAll = encodeURIComponent(`sourceType eq 'All Customers'`)
-    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=${TOP_LIMIT}`))
+    fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=${PAGE_SIZE}`))
 
     const pages = await Promise.all(fetchJobs)
-
-    // Advar hvis en enkelt kilde rammer tæt på $top-grænsen (tegn på truncation)
-    for (const page of pages) {
-      if (page.length >= TOP_LIMIT * 0.9) {
-        console.warn(`[portalPrices] ADVARSEL: ${page.length} rækker returneret — nærmer sig $top=${TOP_LIMIT}. Priser kan mangle!`)
-      }
-    }
 
     const allItems: any[] = pages.flat()
 

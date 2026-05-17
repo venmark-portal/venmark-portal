@@ -3,8 +3,8 @@ import { getPortalPrices } from '@/lib/businesscentral'
 
 export const dynamic = 'force-dynamic'
 
-const TOP_LIMIT   = 5000
-const WARN_AT     = Math.floor(TOP_LIMIT * 0.9)   // 4500
+const TOP_LIMIT   = 15000
+const WARN_AT     = 8000
 const PRICE_GROUP = process.env.HEALTH_CHECK_PRICE_GROUP ?? '9999FHSJÆ'
 const CUSTOMER_NO = process.env.HEALTH_CHECK_CUSTOMER_NO ?? ''
 
