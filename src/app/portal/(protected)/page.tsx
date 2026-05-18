@@ -3,10 +3,13 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning, MessageSquare } from 'lucide-react'
+import { getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods } from '@/lib/businesscentral'
+import { parseCutoffTime } from '@/lib/dateUtils'
 
 export default async function PortalDashboard() {
-  const session  = await getServerSession(authOptions)
-  const userId   = (session?.user as any)?.id as string
+  const session    = await getServerSession(authOptions)
+  const userId     = (session?.user as any)?.id as string
+  const customerNo = (session?.user as any)?.bcCustomerNumber as string ?? ''
 
   // Hent seneste ordrer
   const recentOrders = await prisma.order.findMany({
@@ -44,18 +47,30 @@ export default async function PortalDashboard() {
   `
   const openTickets = Number(openRows[0]?.cnt ?? 0)
 
-  // Næste leveringsdato (næste hverdag)
+  // Hent kundens leveringsmetode for korrekt cutoff-tid
+  const [portalShipmentMethods, customerShipMethodCode, customerAllowedCodes] = await Promise.all([
+    getPortalShipmentMethods().catch(() => []),
+    getCustomerShipmentMethodCode(customerNo).catch(() => ''),
+    getCustomerPortalShipmentMethods(customerNo).catch(() => []),
+  ])
+  const allowedMethods = customerAllowedCodes.length > 0
+    ? portalShipmentMethods.filter(m => customerAllowedCodes.includes(m.code))
+    : portalShipmentMethods.filter(m => m.code === customerShipMethodCode)
+  const customerMethod = allowedMethods[0] ?? portalShipmentMethods.find(m => m.code === customerShipMethodCode)
+
+  // Næste leveringsdato og deadline
   const today    = new Date()
   const weekday  = today.getDay()
   const daysAdd  = weekday === 5 ? 3 : weekday === 6 ? 2 : 1
   const nextDelivery = new Date(today)
   nextDelivery.setDate(today.getDate() + daysAdd)
 
-  // Deadline for i dag
-  const isFriday   = weekday === 5
-  const deadlineHr = isFriday ? 12 : 14
+  // Brug metodens cutoff-tid hvis tilgængeligt, ellers fredag=12, alle andre=14
+  const { hour: deadlineHr, minute: deadlineMin } = customerMethod
+    ? parseCutoffTime(customerMethod.cutoffTime)
+    : { hour: weekday === 5 ? 12 : 14, minute: 0 }
   const deadline   = new Date(today)
-  deadline.setHours(deadlineHr, 0, 0, 0)
+  deadline.setHours(deadlineHr, deadlineMin, 0, 0)
   const pastDeadline = today > deadline
 
   const statusLabel: Record<string, { label: string; color: string }> = {
@@ -77,7 +92,7 @@ export default async function PortalDashboard() {
         <p className="mt-1 text-sm text-gray-500">
           {pastDeadline
             ? `Deadline passeret — næste levering ${nextDelivery.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })}`
-            : `Bestil inden kl. ${deadlineHr}:00 for levering i morgen`}
+            : `Bestil inden kl. ${String(deadlineHr).padStart(2,'0')}:${String(deadlineMin).padStart(2,'0')} for levering i morgen`}
         </p>
       </div>
 
@@ -86,7 +101,7 @@ export default async function PortalDashboard() {
         <div className="flex items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <Clock size={18} className="shrink-0" />
           <span>
-            <strong>Deadline i dag kl. {deadlineHr}:00</strong> — Næste levering:{' '}
+            <strong>Deadline i dag kl. {String(deadlineHr).padStart(2,'0')}:{String(deadlineMin).padStart(2,'0')}</strong> — Næste levering:{' '}
             {nextDelivery.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })}
           </span>
         </div>

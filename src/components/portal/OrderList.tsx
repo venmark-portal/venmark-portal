@@ -902,6 +902,13 @@ export default function OrderList({
   const firstValid = deliveryDays.findIndex(d => new Date() <= deadlineFn(d))
   const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
 
+  // Nulstil selectedDay til første gyldige dag når leveringsdaglisten ændres (metode-skift)
+  useEffect(() => {
+    const now = new Date()
+    const fv = deliveryDays.findIndex(d => now <= (selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod) : getDeadlineForDelivery(d)))
+    setSelectedDay(Math.max(0, fv))
+  }, [deliveryDays]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Beregn ugedag for valgt leveringsdato (1=man ... 5=fre)
   const deliveryWeekday = deliveryDays[Math.max(0, firstValid)]
     ? (() => { const d = deliveryDays[Math.max(0, firstValid)]; return d.getDay() === 0 ? 7 : d.getDay() })()
