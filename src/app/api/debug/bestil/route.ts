@@ -128,8 +128,11 @@ export async function GET(req: Request) {
   const [v2Companies, v2Items] = await Promise.all([rawFetch(v2CompaniesUrl), rawFetch(v2ItemsUrl)])
 
   // ── Direkte test: kundens shipmentMethodCode fra v2.0 customers ─────────────
-  const custUrl = `${baseV2}/companies(${company})/customers?$filter=${encodeURIComponent(`number eq '${customerNo}'`)}&$select=number,shipmentMethodCode&$top=1`
-  const custRaw = await rawFetch(custUrl)
+  const custUrl    = `${baseV2}/companies(${company})/customers?$filter=${encodeURIComponent(`number eq '${customerNo}'`)}&$select=number,shipmentMethodCode&$top=1`
+  const custRaw    = await rawFetch(custUrl)
+  // Hent kunden UDEN $select for at se alle tilgængelige felter
+  const custAllUrl = `${baseV2}/companies(${company})/customers?$filter=${encodeURIComponent(`number eq '${customerNo}'`)}&$top=1`
+  const custAll    = await rawFetch(custAllUrl)
 
   // ── Direkte test: portalShipmentMethods ──────────────────────────────────────
   const shipMethodsUrl = `${base}/portalShipmentMethods`
@@ -188,6 +191,7 @@ export async function GET(req: Request) {
       items:     { url: v2ItemsUrl,     ...v2Items },
     },
     customer_shipmentMethodCode: { url: custUrl, ...custRaw },
+    customer_allFields: { url: custAllUrl, sample: custAll.sample },
     portalShipmentMethods_direct: { url: shipMethodsUrl, ...shipMethodsRaw },
     shipmentMethods: {
       allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
