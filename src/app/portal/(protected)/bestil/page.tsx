@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
@@ -38,7 +38,7 @@ export default async function BestilPage() {
   const today8601 = today.toISOString().split('T')[0]
 
   // ── Hent alt parallelt ────────────────────────────────────────────────────────
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode] = await Promise.all([
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -59,6 +59,7 @@ export default async function BestilPage() {
     getItemAvailabilities().catch(() => new Map()),
     getPortalShipmentMethods().catch(() => []),
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
+    getCustomerPortalShipmentMethods(customerNo).catch(() => []),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -195,11 +196,17 @@ export default async function BestilPage() {
     endingDate:      p.endingDate,
   }))
 
-  // ── Leveringsdatoer baseret på kundens leveringsmetode ───────────────────────
+  // ── Leveringsdatoer + kundespecifikke metoder ────────────────────────────────
   const toDate90 = new Date(today); toDate90.setDate(today.getDate() + 90)
   const calendarDays = await getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => [])
 
-  const customerMethod = portalShipmentMethods.find(m => m.code === customerShipMethodCode)
+  // Kundespecifikke metoder fra BC-undertabellen (rækkefølge bevares)
+  // Fallback: kundens standard-leveringsmetode fra kundekort
+  const allowedMethods = customerAllowedCodes.length > 0
+    ? portalShipmentMethods.filter(m => customerAllowedCodes.includes(m.code))
+    : portalShipmentMethods.filter(m => m.code === customerShipMethodCode)
+
+  const customerMethod = allowedMethods[0] ?? portalShipmentMethods.find(m => m.code === customerShipMethodCode)
   const deliveryDays = customerMethod
     ? getDeliveryDatesForMethod(customerMethod, calendarDays, today, 20)
     : nextBusinessDays(today, 20)
@@ -226,8 +233,8 @@ export default async function BestilPage() {
         itemCutoffs={itemCutoffs as any}
         allCategories={allCategories}
         itemAvailabilities={Object.fromEntries(itemAvailabilities)}
-        shipmentMethods={portalShipmentMethods}
-        customerShipmentMethodCode={customerShipMethodCode}
+        shipmentMethods={allowedMethods.length > 0 ? allowedMethods : (customerMethod ? [customerMethod] : [])}
+        customerShipmentMethodCode={customerMethod?.code ?? ''}
         calendarDays={calendarDays}
       />
     </div>
