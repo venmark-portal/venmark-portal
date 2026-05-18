@@ -779,6 +779,37 @@ function DeliveryPicker({
     return day.toLocaleDateString('da-DK', { weekday: 'short' }).replace('.', '')
   }
 
+  // Vis deadline på knappen kun hvis fristen er i dag (haster) eller falder
+  // mere end 1 kalenderdag før leveringsdatoen (ikke-oplagt, fx fredag for mandag)
+  function deadlineIsNotable(deliveryDay: Date, dl: Date): boolean {
+    const dlMidnight  = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
+    const todayMid    = new Date(now); todayMid.setHours(0, 0, 0, 0)
+    const delivMid    = new Date(deliveryDay); delivMid.setHours(0, 0, 0, 0)
+    if (dlMidnight.getTime() === todayMid.getTime()) return true
+    const daysDiff = Math.round((delivMid.getTime() - dlMidnight.getTime()) / 86400000)
+    return daysDiff > 1
+  }
+
+  // Kort fritsttekst til knapper: "fre kl. 12:00" eller "bestil inden kl. 12:00" (i dag)
+  function formatDeadlineShort(dl: Date): string {
+    const dlMidnight = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
+    const todayMid   = new Date(now); todayMid.setHours(0, 0, 0, 0)
+    const time = dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
+    if (dlMidnight.getTime() === todayMid.getTime()) return `inden kl. ${time}`
+    const wd = dl.toLocaleDateString('da-DK', { weekday: 'short' }).replace('.', '')
+    return `${wd} kl. ${time}`
+  }
+
+  // Lang fristtekst til bundpanelet: "fredag inden kl. 12:00" eller "i dag inden kl. 14:00"
+  function formatDeadlineLong(dl: Date): string {
+    const dlMidnight = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
+    const todayMid   = new Date(now); todayMid.setHours(0, 0, 0, 0)
+    const time = dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
+    if (dlMidnight.getTime() === todayMid.getTime()) return `i dag inden kl. ${time}`
+    const wd = dl.toLocaleDateString('da-DK', { weekday: 'long' })
+    return `${wd} inden kl. ${time}`
+  }
+
   return (
     <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -789,6 +820,7 @@ function DeliveryPicker({
       <div className="flex flex-wrap gap-2">
         {quickDays.map((day, i) => {
           const dl         = deadline(day)
+          const notable    = deadlineIsNotable(day, dl)
           const isSelected = i === selectedDay
           return (
             <button
@@ -802,9 +834,11 @@ function DeliveryPicker({
               <span className="text-xs opacity-80">
                 {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
               </span>
-              <span className="mt-0.5 text-[10px] opacity-70">
-                frist {dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+              {notable && (
+                <span className="mt-0.5 text-[10px] opacity-70">
+                  {formatDeadlineShort(dl)}
+                </span>
+              )}
             </button>
           )
         })}
@@ -835,6 +869,7 @@ function DeliveryPicker({
         <div className="mt-2 flex flex-wrap gap-2 max-h-52 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/50 p-2">
           {moreDays.map(({ d: day, i: dlIdx }) => {
             const dl         = deadline(day)
+            const notable    = deadlineIsNotable(day, dl)
             const isSelected = dlIdx === selectedDay
             return (
               <button
@@ -848,9 +883,11 @@ function DeliveryPicker({
                 <span className="text-xs opacity-80">
                   {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
                 </span>
-                <span className="mt-0.5 text-[10px] opacity-70">
-                  frist {dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                {notable && (
+                  <span className="mt-0.5 text-[10px] opacity-70">
+                    {formatDeadlineShort(dl)}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -865,7 +902,7 @@ function DeliveryPicker({
           <p className={`mt-2 text-xs ${isPast ? 'text-red-500' : 'text-gray-400'}`}>
             {isPast
               ? `⛔ Deadline er overskredet for ${formatLongDate(deliveryDays[selectedDay])}`
-              : `📅 Levering ${formatLongDate(deliveryDays[selectedDay])} — bestil inden kl. ${dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`
+              : `📅 Levering ${formatLongDate(deliveryDays[selectedDay])} — bestil inden ${formatDeadlineLong(dl)}`
             }
           </p>
         )
