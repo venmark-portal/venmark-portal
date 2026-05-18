@@ -122,7 +122,7 @@ import type { BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 
 /** Parser BC Time-felt ("HH:MM:SS.fffffff" eller "PTHHM...") til { hour, minute } */
 export function parseCutoffTime(timeStr: string | null | undefined): { hour: number; minute: number } {
-  if (!timeStr) return { hour: 14, minute: 0 }
+  if (!timeStr || timeStr.startsWith('00:00')) return { hour: 14, minute: 0 }
   const colon = timeStr.match(/^(\d{1,2}):(\d{2})/)
   if (colon) return { hour: parseInt(colon[1]), minute: parseInt(colon[2]) }
   const iso = timeStr.match(/PT(\d+)H(\d+)M/)
