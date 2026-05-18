@@ -750,17 +750,18 @@ function OrderRow({
 // ─── Leveringsdato-vælger ─────────────────────────────────────────────────────
 
 function DeliveryPicker({
-  deliveryDays, selectedDay, onSelect, method,
+  deliveryDays, selectedDay, onSelect, method, calendarDays = [],
 }: {
-  deliveryDays: Date[]
-  selectedDay:  number
-  onSelect:     (idx: number) => void
-  method?:      BCShipmentMethod
+  deliveryDays:  Date[]
+  selectedDay:   number
+  onSelect:      (idx: number) => void
+  method?:       BCShipmentMethod
+  calendarDays?: BCCalendarDay[]
 }) {
   const now = new Date()
   const [showMore, setShowMore] = useState(false)
 
-  const deadline = (d: Date) => method ? getDeadlineForMethodDelivery(d, method) : getDeadlineForDelivery(d)
+  const deadline = (d: Date) => method ? getDeadlineForMethodDelivery(d, method, calendarDays) : getDeadlineForDelivery(d)
 
   // Hurtige 3 knapper (første 3 gyldige dage)
   const quickDays = deliveryDays.slice(0, 3).filter(d => now <= deadline(d))
@@ -898,14 +899,14 @@ export default function OrderList({
     return deliveryDate >= earliest
   }
 
-  const deadlineFn = (d: Date) => selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod) : getDeadlineForDelivery(d)
+  const deadlineFn = (d: Date) => selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod, calendarDays) : getDeadlineForDelivery(d)
   const firstValid = deliveryDays.findIndex(d => new Date() <= deadlineFn(d))
   const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
 
   // Nulstil selectedDay til første gyldige dag når leveringsdaglisten ændres (metode-skift)
   useEffect(() => {
     const now = new Date()
-    const fv = deliveryDays.findIndex(d => now <= (selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod) : getDeadlineForDelivery(d)))
+    const fv = deliveryDays.findIndex(d => now <= (selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod, calendarDays) : getDeadlineForDelivery(d)))
     setSelectedDay(Math.max(0, fv))
   }, [deliveryDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1313,7 +1314,7 @@ export default function OrderList({
       )}
 
       {/* Leveringsdato */}
-      <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} />
+      <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} />
 
       {/* Vareliste */}
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">

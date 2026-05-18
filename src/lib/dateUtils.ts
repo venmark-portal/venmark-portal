@@ -144,6 +144,11 @@ export function getDeadlineForMethodDelivery(
   const dispatch = new Date(deliveryDate)
   dispatch.setDate(dispatch.getDate() - transit)
 
+  // Weekend-afsendelsesdag snappes til forrige fredag (kan ikke bestille lør/søn)
+  const dispatchWd0 = dispatch.getDay()
+  if (dispatchWd0 === 0) dispatch.setDate(dispatch.getDate() - 2) // søndag → fredag
+  if (dispatchWd0 === 6) dispatch.setDate(dispatch.getDate() - 1) // lørdag → fredag
+
   const dispatchIso     = dispatch.toISOString().split('T')[0]
   const dispatchWeekday = dispatch.getDay()
 
