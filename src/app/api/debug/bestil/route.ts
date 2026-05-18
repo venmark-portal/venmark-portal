@@ -82,6 +82,46 @@ export async function GET(req: Request) {
   const cutoffSample50 = await rawFetch(cutoffSample50Url)
   const saelgForHInFirst50 = cutoffSample50.sample?.filter((i: any) => i.portalSaelgForH === true)?.length ?? 0
 
+  // ── Fresh token direkte fra Azure AD (bypasser modul-cache) ─────────────────
+  let freshTokenDiag: any = null
+  try {
+    const tokenUrl = `https://login.microsoftonline.com/${process.env.BC_TENANT_ID}/oauth2/v2.0/token`
+    const tokenBody = new URLSearchParams({
+      grant_type:    'client_credentials',
+      client_id:     process.env.BC_CLIENT_ID!,
+      client_secret: process.env.BC_CLIENT_SECRET!,
+      scope:         'https://api.businesscentral.dynamics.com/.default',
+    })
+    const tokenRes = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody,
+      cache: 'no-store',
+    })
+    const tokenData = await tokenRes.json()
+    const freshToken: string = tokenData.access_token ?? ''
+    let freshPayload: any = null
+    if (freshToken) {
+      const [, p64] = freshToken.split('.')
+      const pj = JSON.parse(Buffer.from(p64, 'base64url').toString())
+      freshPayload = {
+        exp:   pj.exp ? new Date(pj.exp * 1000).toISOString() : null,
+        appid: pj.appid,
+        aud:   pj.aud,
+      }
+    }
+    freshTokenDiag = {
+      httpStatus: tokenRes.status,
+      expires_in: tokenData.expires_in,
+      tokenLength: freshToken.length,
+      freshPayload,
+      serverNow: new Date().toISOString(),
+      error: tokenRes.ok ? null : JSON.stringify(tokenData),
+    }
+  } catch (e: any) {
+    freshTokenDiag = { error: String(e) }
+  }
+
   // ── Baseline: standard v2.0 API (companies + items) ─────────────────────────
   const v2CompaniesUrl = `${baseV2}/companies`
   const v2ItemsUrl     = `${baseV2}/companies(${company})/items?$top=1`
@@ -138,6 +178,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     env: envCheck,
     tokenStatus: { ok: !!token, length: token.length, preview: tokenPreview, payload: tokenPayload, clientIdPartial, error: tokenError },
+    freshToken_diagnostik: freshTokenDiag,
     baseline_v2_API: {
       companies: { url: v2CompaniesUrl, ...v2Companies },
       items:     { url: v2ItemsUrl,     ...v2Items },
