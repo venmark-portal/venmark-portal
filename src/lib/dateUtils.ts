@@ -134,12 +134,34 @@ export function parseCutoffTime(timeStr: string | null | undefined): { hour: num
  * Beregner deadline for bestilling til en given leveringsdato og -metode.
  * Deadline = afsendelsesdagen (leveringsdato - transitDage) kl. cutoffTime.
  */
-export function getDeadlineForMethodDelivery(deliveryDate: Date, method: BCShipmentMethod): Date {
+export function getDeadlineForMethodDelivery(
+  deliveryDate: Date,
+  method: BCShipmentMethod,
+  calendarDays: BCCalendarDay[] = [],
+): Date {
   const transit = method.sameDay ? 0 : (method.transitDays ?? 1)
   const { hour, minute } = parseCutoffTime(method.cutoffTime)
   const dispatch = new Date(deliveryDate)
   dispatch.setDate(dispatch.getDate() - transit)
-  dispatch.setHours(hour, minute, 0, 0)
+
+  const dispatchIso     = dispatch.toISOString().split('T')[0]
+  const dispatchWeekday = dispatch.getDay()
+
+  // Kalender-cutoff override for afsendelsesdagen
+  let effectiveHour = hour, effectiveMinute = minute
+  for (const d of calendarDays) {
+    if (d.date === dispatchIso && d.cutoffTime && !d.cutoffTime.startsWith('00:00')) {
+      if (d.shipmentMethodCode === method.code || d.shipmentMethodCode === '') {
+        const p = parseCutoffTime(d.cutoffTime)
+        effectiveHour = p.hour; effectiveMinute = p.minute
+        if (d.shipmentMethodCode === method.code) break
+      }
+    }
+  }
+  // Fredag-loft: cutoff er aldrig efter 12:00 på fredage
+  if (dispatchWeekday === 5 && effectiveHour > 12) { effectiveHour = 12; effectiveMinute = 0 }
+
+  dispatch.setHours(effectiveHour, effectiveMinute, 0, 0)
   return dispatch
 }
 
@@ -165,20 +187,35 @@ export function getDeliveryDatesForMethod(
   // Tidligste afsendelsesdato: i dag hvis cutoff ikke er passeret, ellers i morgen
   const today = new Date(fromDate)
   today.setHours(0, 0, 0, 0)
-  const cutoffToday = new Date(today)
-  cutoffToday.setHours(hour, minute, 0, 0)
-  const earliestDispatch = new Date(today)
-  if (now >= cutoffToday) earliestDispatch.setDate(earliestDispatch.getDate() + 1)
+  const todayIso     = today.toISOString().split('T')[0]
+  const todayWeekday = today.getDay()
 
   // Byg kalender-lookup: specific (dato+kode) har højere prioritet end general (dato+blank)
-  const specificCal = new Map<string, 'Closed' | 'Open'>()
-  const generalCal  = new Map<string, 'Closed' | 'Open'>()
+  const specificCal     = new Map<string, 'Closed' | 'Open'>()
+  const generalCal      = new Map<string, 'Closed' | 'Open'>()
+  const specificCutoffs = new Map<string, string>() // dato → cutoff-tid override (metodespecifik)
+  const generalCutoffs  = new Map<string, string>() // dato → cutoff-tid override (generel)
   for (const d of calendarDays) {
     const status: 'Closed' | 'Open' | null = d.dayType === 1 ? 'Closed' : d.dayType === 2 ? 'Open' : null
-    if (!status) continue
-    if (d.shipmentMethodCode === method.code) specificCal.set(d.date, status)
-    else if (d.shipmentMethodCode === '')     generalCal.set(d.date, status)
+    if (d.shipmentMethodCode === method.code) {
+      if (status) specificCal.set(d.date, status)
+      if (d.cutoffTime && !d.cutoffTime.startsWith('00:00')) specificCutoffs.set(d.date, d.cutoffTime)
+    } else if (d.shipmentMethodCode === '') {
+      if (status) generalCal.set(d.date, status)
+      if (d.cutoffTime && !d.cutoffTime.startsWith('00:00')) generalCutoffs.set(d.date, d.cutoffTime)
+    }
   }
+
+  // Effektiv cutoff for i dag: kalender-override → fredag-loft (12:00) → metode-default
+  const calCutoffStr = specificCutoffs.get(todayIso) ?? generalCutoffs.get(todayIso)
+  const base = calCutoffStr ? parseCutoffTime(calCutoffStr) : { hour, minute }
+  const effectiveHour   = (todayWeekday === 5 && base.hour > 12) ? 12 : base.hour
+  const effectiveMinute = (todayWeekday === 5 && base.hour > 12) ? 0  : base.minute
+
+  const cutoffToday = new Date(today)
+  cutoffToday.setHours(effectiveHour, effectiveMinute, 0, 0)
+  const earliestDispatch = new Date(today)
+  if (now >= cutoffToday) earliestDispatch.setDate(earliestDispatch.getDate() + 1)
 
   // Ugedag-flags: JS getDay() → 0=søn,1=man,2=tir,3=ons,4=tor,5=fre,6=lør
   const delivers = [method.sun, method.mon, method.tue, method.wed, method.thu, method.fri, method.sat]

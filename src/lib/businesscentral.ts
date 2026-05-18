@@ -1697,6 +1697,7 @@ export interface BCCalendarDay {
   date:                 string  // "YYYY-MM-DD"
   shipmentMethodCode:   string
   dayType:              number  // 0=blank, 1=Closed, 2=Open (matcher BC Option)
+  cutoffTime?:          string  // "HH:MM:SS" override for denne dato — blank/00:00 = brug metode-default
 }
 
 export async function getPortalShipmentMethods(): Promise<BCShipmentMethod[]> {
@@ -1748,6 +1749,7 @@ export async function getPortalCalendarDays(fromDate: string, toDate: string): P
       date:               (d.date ?? '').substring(0, 10),
       shipmentMethodCode: d.shipmentMethodCode ?? '',
       dayType:            d.dayType ?? 0,
+      cutoffTime:         d.portalCutoffTime ?? undefined,
     }))
   } catch { return [] }
 }
