@@ -85,7 +85,7 @@ export default async function BestilPage() {
 
   const promoNumbers = promoRows
     .map((p) => p.bcItemNumber)
-    .filter((n) => !blockedSet.has(n))
+    .filter((n) => !blockedSet.has(n) && visFilter(n))
 
   // Faste ordrelinjer — varenumre der ikke er blokerede, ikke starter med X, og har RangeringPrisliste > 0
   const standingNos = standingLines

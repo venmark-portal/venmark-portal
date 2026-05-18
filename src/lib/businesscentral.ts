@@ -702,7 +702,7 @@ export async function getWebshopVisibleItemNos(): Promise<Set<string> | null> {
       if (!res.ok) return null   // BC-fejl → null = fail open
       const data = await res.json()
       for (const item of (data.value ?? []))
-        if (item.itemNo && item.rangeringPrisliste !== 1 && !item.itemNo.toUpperCase().startsWith('X'))
+        if (item.itemNo && item.rangeringPrisliste > 0 && !item.itemNo.toUpperCase().startsWith('X'))
           visible.add(item.itemNo)
       url = data['@odata.nextLink'] ?? null
     }
