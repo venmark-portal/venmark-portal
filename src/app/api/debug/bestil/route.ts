@@ -91,10 +91,30 @@ export async function GET(req: Request) {
   const shipMethodsUrl = `${base}/portalShipmentMethods`
   const shipMethodsRaw = await rawFetch(shipMethodsUrl)
 
-  // ── Token-diagnostik: første + sidste 20 tegn ────────────────────────────────
+  // ── Token-diagnostik: decode JWT payload ────────────────────────────────────
   const tokenPreview = token.length > 40
     ? `${token.slice(0, 20)}...${token.slice(-20)}`
     : token
+  let tokenPayload: any = null
+  try {
+    const parts = token.split('.')
+    if (parts.length === 3) {
+      const json = Buffer.from(parts[1], 'base64url').toString('utf-8')
+      const p = JSON.parse(json)
+      tokenPayload = {
+        aud:   p.aud,
+        iss:   p.iss,
+        appid: p.appid,
+        tid:   p.tid,
+        exp:   p.exp ? new Date(p.exp * 1000).toISOString() : null,
+        roles: p.roles ?? [],
+      }
+    }
+  } catch {}
+  // Vis BC_CLIENT_ID delvist for verifikation
+  const clientIdPartial = process.env.BC_CLIENT_ID
+    ? `${process.env.BC_CLIENT_ID.slice(0, 8)}...${process.env.BC_CLIENT_ID.slice(-4)}`
+    : 'MANGLER'
 
   // Test webshopVisible direkte
   const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
@@ -117,7 +137,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     env: envCheck,
-    tokenStatus: { ok: !!token, length: token.length, preview: tokenPreview, error: tokenError },
+    tokenStatus: { ok: !!token, length: token.length, preview: tokenPreview, payload: tokenPayload, clientIdPartial, error: tokenError },
     baseline_v2_API: {
       companies: { url: v2CompaniesUrl, ...v2Companies },
       items:     { url: v2ItemsUrl,     ...v2Items },
