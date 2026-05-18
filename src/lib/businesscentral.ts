@@ -1775,12 +1775,12 @@ export async function getCustomerShipmentMethodCode(customerNo: string): Promise
     const token  = await getAccessToken()
     const base   = bcBaseUrl()
     const filter = encodeURIComponent(`number eq '${customerNo}'`)
-    const res    = await fetch(`${base}/customers?$filter=${filter}&$select=number,shipmentMethodCode&$top=1`, {
+    const res    = await fetch(`${base}/customers?$filter=${filter}&$expand=shipmentMethod($select=code)&$top=1`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       cache: 'no-store',
     })
     if (!res.ok) return ''
     const data = await res.json()
-    return (data.value?.[0]?.shipmentMethodCode ?? '').trim()
+    return (data.value?.[0]?.shipmentMethod?.code ?? '').trim()
   } catch { return '' }
 }
