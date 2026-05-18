@@ -11,7 +11,23 @@ export async function GET(req: Request) {
   const customerNo = searchParams.get('customerNo') ?? '98945965'
   const priceGroup = searchParams.get('priceGroup') ?? '9999FHSJÆ'
 
-  const token   = await getAccessToken()
+  const envCheck = {
+    BC_TENANT_ID:       process.env.BC_TENANT_ID       ? '✓ sat' : '✗ MANGLER',
+    BC_CLIENT_ID:       process.env.BC_CLIENT_ID        ? '✓ sat' : '✗ MANGLER',
+    BC_CLIENT_SECRET:   process.env.BC_CLIENT_SECRET    ? `✓ sat (${process.env.BC_CLIENT_SECRET.length} tegn)` : '✗ MANGLER',
+    BC_ENVIRONMENT_NAME:process.env.BC_ENVIRONMENT_NAME ?? '✗ MANGLER',
+    BC_COMPANY_ID:      process.env.BC_COMPANY_ID       ? '✓ sat' : '✗ MANGLER',
+  }
+
+  let token: string
+  let tokenError: string | null = null
+  try {
+    token = await getAccessToken()
+  } catch (e: any) {
+    token = ''
+    tokenError = String(e)
+  }
+
   const tenant  = process.env.BC_TENANT_ID!
   const env     = process.env.BC_ENVIRONMENT_NAME!
   const company = process.env.BC_COMPANY_ID!
@@ -85,6 +101,8 @@ export async function GET(req: Request) {
     : []
 
   return NextResponse.json({
+    env: envCheck,
+    tokenStatus: { ok: !!token, length: token.length, error: tokenError },
     shipmentMethods: {
       allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
       custShipCode,
