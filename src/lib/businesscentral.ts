@@ -1673,3 +1673,95 @@ export async function getShipmentMethods(): Promise<{ code: string; description:
     }))
   } catch { return [] }
 }
+
+// ─── Portal leveringsmetoder (med ugedage, cutoff, transitdage m.m.) ──────────
+
+export interface BCShipmentMethod {
+  code:          string
+  description:   string
+  mon:           boolean
+  tue:           boolean
+  wed:           boolean
+  thu:           boolean
+  fri:           boolean
+  sat:           boolean
+  sun:           boolean
+  cutoffTime:    string   // "HH:MM:SS.fffffff" — Edm.TimeOfDay fra BC
+  transitDays:   number
+  sameDay:       boolean
+  portalVisible: boolean
+}
+
+export interface BCCalendarDay {
+  date:                 string  // "YYYY-MM-DD"
+  shipmentMethodCode:   string
+  dayType:              number  // 0=blank, 1=Closed, 2=Open (matcher BC Option)
+}
+
+export async function getPortalShipmentMethods(): Promise<BCShipmentMethod[]> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID!
+    const env     = process.env.BC_ENVIRONMENT_NAME ?? 'production'
+    const company = process.env.BC_COMPANY_ID!
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const res     = await fetch(`${base}/portalShipmentMethods?$top=200`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((m: any): BCShipmentMethod => ({
+      code:          m.code          ?? '',
+      description:   m.description   ?? m.code ?? '',
+      mon:           m.mon           ?? false,
+      tue:           m.tue           ?? false,
+      wed:           m.wed           ?? false,
+      thu:           m.thu           ?? false,
+      fri:           m.fri           ?? false,
+      sat:           m.sat           ?? false,
+      sun:           m.sun           ?? false,
+      cutoffTime:    m.cutoffTime    ?? '14:00:00.0000000',
+      transitDays:   m.transitDays   ?? 1,
+      sameDay:       m.sameDay       ?? false,
+      portalVisible: m.portalVisible ?? false,
+    }))
+  } catch { return [] }
+}
+
+export async function getPortalCalendarDays(fromDate: string, toDate: string): Promise<BCCalendarDay[]> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID!
+    const env     = process.env.BC_ENVIRONMENT_NAME ?? 'production'
+    const company = process.env.BC_COMPANY_ID!
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const filter  = encodeURIComponent(`date ge ${fromDate} and date le ${toDate}`)
+    const res     = await fetch(`${base}/portalCalendar?$filter=${filter}&$top=500`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((d: any): BCCalendarDay => ({
+      date:               (d.date ?? '').substring(0, 10),
+      shipmentMethodCode: d.shipmentMethodCode ?? '',
+      dayType:            d.dayType ?? 0,
+    }))
+  } catch { return [] }
+}
+
+export async function getCustomerShipmentMethodCode(customerNo: string): Promise<string> {
+  try {
+    const token  = await getAccessToken()
+    const base   = bcBaseUrl()
+    const filter = encodeURIComponent(`number eq '${customerNo}'`)
+    const res    = await fetch(`${base}/customers?$filter=${filter}&$select=number,shipmentMethodCode&$top=1`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return ''
+    const data = await res.json()
+    return (data.value?.[0]?.shipmentMethodCode ?? '').trim()
+  } catch { return '' }
+}

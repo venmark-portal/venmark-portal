@@ -1,10 +1,10 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
-import { addBusinessDays, nextBusinessDays } from '@/lib/dateUtils'
+import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,8 +37,8 @@ export default async function BestilPage() {
   const today     = new Date()
   const today8601 = today.toISOString().split('T')[0]
 
-  // ── Hent BC-priser + blokerede varer + anbefalinger + DB-favoritter + BC-favoritter + faste ordrelinjer + varefrist parallelt ──
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities] = await Promise.all([
+  // ── Hent alt parallelt ────────────────────────────────────────────────────────
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -51,17 +51,14 @@ export default async function BestilPage() {
       orderBy: { priority: 'desc' },
     }),
     prisma.favorite.findMany({ where: { customerId: userId } }),
-    // BC Portal Customer Favorite (tabel 50157) — primær kilde til favoritter
     getCustomerFavorites(customerNo).catch(() => []),
-    // BC Portal Standing Order Line — faste ugentlige ordrelinjer
     getStandingOrderLines(customerNo).catch(() => []),
-    // BC Item portal data — cutoffs + SaelgForH (felt 50008 på tabel 27)
     getItemCutoffs().catch(() => new Map()),
     getItemCategories().catch(() => []),
-    // Varer med RangeringPrisliste > 0 — må vises på portalen (null = BC-fejl, vis alt)
     getWebshopVisibleItemNos().catch(() => null),
-    // Varetilgængelighed — disponibelt, blokering, statustekst m.m.
     getItemAvailabilities().catch(() => new Map()),
+    getPortalShipmentMethods().catch(() => []),
+    getCustomerShipmentMethodCode(customerNo).catch(() => ''),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -198,7 +195,14 @@ export default async function BestilPage() {
     endingDate:      p.endingDate,
   }))
 
-  const deliveryDays = nextBusinessDays(today, 20)
+  // ── Leveringsdatoer baseret på kundens leveringsmetode ───────────────────────
+  const toDate90 = new Date(today); toDate90.setDate(today.getDate() + 90)
+  const calendarDays = await getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => [])
+
+  const customerMethod = portalShipmentMethods.find(m => m.code === customerShipMethodCode)
+  const deliveryDays = customerMethod
+    ? getDeliveryDatesForMethod(customerMethod, calendarDays, today, 20)
+    : nextBusinessDays(today, 20)
 
   return (
     <div className="space-y-4">
@@ -222,6 +226,9 @@ export default async function BestilPage() {
         itemCutoffs={itemCutoffs as any}
         allCategories={allCategories}
         itemAvailabilities={Object.fromEntries(itemAvailabilities)}
+        shipmentMethods={portalShipmentMethods}
+        customerShipmentMethodCode={customerShipMethodCode}
+        calendarDays={calendarDays}
       />
     </div>
   )

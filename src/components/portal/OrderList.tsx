@@ -5,8 +5,8 @@ import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X,
 } from 'lucide-react'
-import { formatLongDate, getDeadlineForDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
-import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability } from '@/lib/businesscentral'
+import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, earliestDeliveryForItem } from '@/lib/dateUtils'
+import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
@@ -58,6 +58,9 @@ interface Props {
   itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; itemCategoryCode?: string }>
   allCategories?:    BCItemCategory[]
   itemAvailabilities?: Record<string, BCItemAvailability>
+  shipmentMethods?:             BCShipmentMethod[]
+  customerShipmentMethodCode?:  string
+  calendarDays?:                BCCalendarDay[]
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -747,23 +750,26 @@ function OrderRow({
 // ─── Leveringsdato-vælger ─────────────────────────────────────────────────────
 
 function DeliveryPicker({
-  deliveryDays, selectedDay, onSelect,
+  deliveryDays, selectedDay, onSelect, method,
 }: {
   deliveryDays: Date[]
   selectedDay:  number
   onSelect:     (idx: number) => void
+  method?:      BCShipmentMethod
 }) {
   const now = new Date()
   const [showMore, setShowMore] = useState(false)
 
+  const deadline = (d: Date) => method ? getDeadlineForMethodDelivery(d, method) : getDeadlineForDelivery(d)
+
   // Hurtige 3 knapper (første 3 gyldige dage)
-  const quickDays = deliveryDays.slice(0, 3).filter(d => now <= getDeadlineForDelivery(d))
+  const quickDays = deliveryDays.slice(0, 3).filter(d => now <= deadline(d))
 
   // Resterende dage (fra indeks 3 og frem), kun ikke-forpassede
   const moreDays = deliveryDays
     .map((d, i) => ({ d, i }))
     .slice(3)
-    .filter(({ d }) => now <= getDeadlineForDelivery(d))
+    .filter(({ d }) => now <= deadline(d))
 
   // Er valgt dag ud over de 3 hurtige?
   const moreSelected = selectedDay >= 3
@@ -781,7 +787,7 @@ function DeliveryPicker({
       {/* Hurtige knapper + "Mere"-knap på samme linje */}
       <div className="flex flex-wrap gap-2">
         {quickDays.map((day, i) => {
-          const dl         = getDeadlineForDelivery(day)
+          const dl         = deadline(day)
           const isSelected = i === selectedDay
           return (
             <button
@@ -827,7 +833,7 @@ function DeliveryPicker({
       {showMore && (
         <div className="mt-2 flex flex-wrap gap-2 max-h-52 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/50 p-2">
           {moreDays.map(({ d: day, i: dlIdx }) => {
-            const dl         = getDeadlineForDelivery(day)
+            const dl         = deadline(day)
             const isSelected = dlIdx === selectedDay
             return (
               <button
@@ -852,7 +858,7 @@ function DeliveryPicker({
 
       {/* Valgt dato info */}
       {deliveryDays[selectedDay] && (() => {
-        const dl     = getDeadlineForDelivery(deliveryDays[selectedDay])
+        const dl     = deadline(deliveryDays[selectedDay])
         const isPast = now > dl
         return (
           <p className={`mt-2 text-xs ${isPast ? 'text-red-500' : 'text-gray-400'}`}>
@@ -870,9 +876,19 @@ function DeliveryPicker({
 // ─── Hoved-komponent ──────────────────────────────────────────────────────────
 
 export default function OrderList({
-  promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays, customerId, priceTiers = [], initialFavNos = [],
+  promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
   requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities = {},
+  shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
 }: Props) {
+  // ── Leveringsmetode-state ────────────────────────────────────────────────────
+  const [selectedMethodCode, setSelectedMethodCode] = useState(customerShipmentMethodCode)
+  const selectedMethod = shipmentMethods.find(m => m.code === selectedMethodCode)
+
+  const deliveryDays = useMemo(() => {
+    if (!selectedMethod) return initialDeliveryDays
+    return getDeliveryDatesForMethod(selectedMethod, calendarDays, new Date(), 20)
+  }, [selectedMethod, calendarDays, initialDeliveryDays])
+
   // Tjek om en vare kan leveres på den valgte dato
   function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
     if (!deliveryDate) return true
@@ -882,7 +898,8 @@ export default function OrderList({
     return deliveryDate >= earliest
   }
 
-  const firstValid = deliveryDays.findIndex(d => new Date() <= getDeadlineForDelivery(d))
+  const deadlineFn = (d: Date) => selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod) : getDeadlineForDelivery(d)
+  const firstValid = deliveryDays.findIndex(d => new Date() <= deadlineFn(d))
   const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
 
   // Beregn ugedag for valgt leveringsdato (1=man ... 5=fre)
@@ -961,7 +978,7 @@ export default function OrderList({
   }
 
   const deliveryDate    = deliveryDays[selectedDay]
-  const deadline        = deliveryDate ? getDeadlineForDelivery(deliveryDate) : null
+  const deadline        = deliveryDate ? deadlineFn(deliveryDate) : null
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate
     ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
@@ -1266,8 +1283,30 @@ export default function OrderList({
 
   return (
     <div className="space-y-4">
+      {/* Leveringsmetode-vælger — kun synlige metoder */}
+      {shipmentMethods.filter(m => m.portalVisible).length > 1 && (
+        <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Leveringsform</p>
+          <div className="flex flex-wrap gap-2">
+            {shipmentMethods.filter(m => m.portalVisible).map(m => (
+              <button
+                key={m.code}
+                onClick={() => { setSelectedMethodCode(m.code); setSelectedDay(0) }}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  selectedMethodCode === m.code
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {m.description || m.code}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Leveringsdato */}
-      <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} />
+      <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} />
 
       {/* Vareliste */}
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
