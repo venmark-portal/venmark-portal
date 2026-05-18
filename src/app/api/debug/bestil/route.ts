@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getAccessToken } from '@/lib/businesscentral'
+import { getAccessToken, getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods } from '@/lib/businesscentral'
+import { getDeliveryDatesForMethod, parseCutoffTime } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,32 @@ export async function GET(req: Request) {
   const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
   const webshopVisible = await getWebshopVisibleItemNos().catch(() => null)
 
+  // ── Leveringsmetoder for denne kunde ────────────────────────────────────────
+  const [allMethods, custShipCode, custAllowedCodes] = await Promise.all([
+    getPortalShipmentMethods().catch((e: any) => ({ error: String(e) })),
+    getCustomerShipmentMethodCode(customerNo).catch(() => ''),
+    getCustomerPortalShipmentMethods(customerNo).catch(() => []),
+  ])
+  const methods = Array.isArray(allMethods) ? allMethods : []
+  const allowedMethods = (custAllowedCodes as string[]).length > 0
+    ? methods.filter((m: any) => (custAllowedCodes as string[]).includes(m.code))
+    : methods.filter((m: any) => m.code === custShipCode)
+  const customerMethod = allowedMethods[0] ?? methods.find((m: any) => m.code === custShipCode)
+  const deliveryDays = customerMethod
+    ? getDeliveryDatesForMethod(customerMethod as any, [], new Date(), 10).map(d => d.toISOString().split('T')[0])
+    : []
+
   return NextResponse.json({
+    shipmentMethods: {
+      allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
+      custShipCode,
+      custAllowedCodes,
+      allowedMethods,
+      customerMethod,
+      parsedCutoff: customerMethod ? parseCutoffTime((customerMethod as any).cutoffTime) : null,
+      first10DeliveryDays: deliveryDays,
+      now: new Date().toISOString(),
+    },
     webshopVisible: {
       isNull: webshopVisible === null,
       size: webshopVisible?.size ?? 'N/A',
