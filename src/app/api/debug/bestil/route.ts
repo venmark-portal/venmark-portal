@@ -32,6 +32,7 @@ export async function GET(req: Request) {
   const env     = process.env.BC_ENVIRONMENT_NAME!
   const company = process.env.BC_COMPANY_ID!
   const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+  const baseV2  = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0`
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
   async function rawFetch(url: string) {
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
       hasNextLink: !!parsed?.['@odata.nextLink'],
       nextLink: parsed?.['@odata.nextLink'] ?? null,
       sample: parsed?.value?.slice(0, 3) ?? null,
-      error: res.ok ? null : text,
+      error: res.ok ? null : text.slice(0, 500),
     }
   }
 
@@ -81,6 +82,20 @@ export async function GET(req: Request) {
   const cutoffSample50 = await rawFetch(cutoffSample50Url)
   const saelgForHInFirst50 = cutoffSample50.sample?.filter((i: any) => i.portalSaelgForH === true)?.length ?? 0
 
+  // ── Baseline: standard v2.0 API (companies + items) ─────────────────────────
+  const v2CompaniesUrl = `${baseV2}/companies`
+  const v2ItemsUrl     = `${baseV2}/companies(${company})/items?$top=1`
+  const [v2Companies, v2Items] = await Promise.all([rawFetch(v2CompaniesUrl), rawFetch(v2ItemsUrl)])
+
+  // ── Direkte test: portalShipmentMethods ──────────────────────────────────────
+  const shipMethodsUrl = `${base}/portalShipmentMethods`
+  const shipMethodsRaw = await rawFetch(shipMethodsUrl)
+
+  // ── Token-diagnostik: første + sidste 20 tegn ────────────────────────────────
+  const tokenPreview = token.length > 40
+    ? `${token.slice(0, 20)}...${token.slice(-20)}`
+    : token
+
   // Test webshopVisible direkte
   const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
   const webshopVisible = await getWebshopVisibleItemNos().catch(() => null)
@@ -102,7 +117,12 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     env: envCheck,
-    tokenStatus: { ok: !!token, length: token.length, error: tokenError },
+    tokenStatus: { ok: !!token, length: token.length, preview: tokenPreview, error: tokenError },
+    baseline_v2_API: {
+      companies: { url: v2CompaniesUrl, ...v2Companies },
+      items:     { url: v2ItemsUrl,     ...v2Items },
+    },
+    portalShipmentMethods_direct: { url: shipMethodsUrl, ...shipMethodsRaw },
     shipmentMethods: {
       allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
       custShipCode,
