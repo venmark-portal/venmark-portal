@@ -127,6 +127,10 @@ export async function GET(req: Request) {
   const v2ItemsUrl     = `${baseV2}/companies(${company})/items?$top=1`
   const [v2Companies, v2Items] = await Promise.all([rawFetch(v2CompaniesUrl), rawFetch(v2ItemsUrl)])
 
+  // ── Direkte test: kundens shipmentMethodCode fra v2.0 customers ─────────────
+  const custUrl = `${baseV2}/companies(${company})/customers?$filter=${encodeURIComponent(`number eq '${customerNo}'`)}&$select=number,shipmentMethodCode&$top=1`
+  const custRaw = await rawFetch(custUrl)
+
   // ── Direkte test: portalShipmentMethods ──────────────────────────────────────
   const shipMethodsUrl = `${base}/portalShipmentMethods`
   const shipMethodsRaw = await rawFetch(shipMethodsUrl)
@@ -183,6 +187,7 @@ export async function GET(req: Request) {
       companies: { url: v2CompaniesUrl, ...v2Companies },
       items:     { url: v2ItemsUrl,     ...v2Items },
     },
+    customer_shipmentMethodCode: { url: custUrl, ...custRaw },
     portalShipmentMethods_direct: { url: shipMethodsUrl, ...shipMethodsRaw },
     shipmentMethods: {
       allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
