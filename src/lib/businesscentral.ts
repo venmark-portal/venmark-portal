@@ -64,6 +64,7 @@ export async function getAccessToken(): Promise<string> {
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
+    cache: 'no-store',
   })
 
   if (!res.ok) {
