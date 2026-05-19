@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getDeadlineForDelivery } from '@/lib/dateUtils'
+import { getDeadlineForDelivery, getDeadlineForMethodDelivery } from '@/lib/dateUtils'
 import { sendOrderNotification } from '@/lib/email'
-import { createBCSalesOrder, flagBeskedUlaest } from '@/lib/businesscentral'
+import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays } from '@/lib/businesscentral'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -16,14 +16,30 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { deliveryDate: deliveryDateStr, notes, lines } = body
+    const { deliveryDate: deliveryDateStr, notes, lines, shipmentMethodCode } = body
 
     if (!deliveryDateStr || !lines?.length) {
       return NextResponse.json({ error: 'Mangler leveringsdato eller linjer' }, { status: 400 })
     }
 
     const deliveryDate = new Date(deliveryDateStr)
-    const deadline     = getDeadlineForDelivery(deliveryDate)
+
+    // Beregn deadline med leveringsmetode-logik hvis muligt, ellers simpel fallback
+    let deadline: Date
+    if (shipmentMethodCode) {
+      const toDate90 = new Date(); toDate90.setDate(toDate90.getDate() + 90)
+      const today8601 = new Date().toISOString().split('T')[0]
+      const [allMethods, calendarDays] = await Promise.all([
+        getPortalShipmentMethods().catch(() => []),
+        getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => []),
+      ])
+      const method = allMethods.find(m => m.code === shipmentMethodCode)
+      deadline = method
+        ? getDeadlineForMethodDelivery(deliveryDate, method, calendarDays)
+        : getDeadlineForDelivery(deliveryDate)
+    } else {
+      deadline = getDeadlineForDelivery(deliveryDate)
+    }
 
     // Tjek deadline
     if (new Date() > deadline) {

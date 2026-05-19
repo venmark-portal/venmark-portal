@@ -1223,6 +1223,7 @@ export default function OrderList({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           deliveryDate: deliveryDate.toISOString(), notes, driverNote, poNumber, lines: orderLines,
+          shipmentMethodCode: selectedMethodCode,
           reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
         }),
       })
