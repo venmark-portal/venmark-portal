@@ -61,6 +61,7 @@ interface Props {
   shipmentMethods?:             BCShipmentMethod[]
   customerShipmentMethodCode?:  string
   calendarDays?:                BCCalendarDay[]
+  estimatedPrices?:             Map<string, number>
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -517,6 +518,7 @@ function OrderRow({
   disponibeltLabel = null,
   disponibeltColor = null,
   infoNote = '',
+  estimatedPrice,
 }: {
   item:             EnrichedItem
   quantity:         number
@@ -537,6 +539,7 @@ function OrderRow({
   disponibeltLabel?: string | null
   disponibeltColor?: 'red' | 'orange' | null
   infoNote?:         string
+  estimatedPrice?:   number
 }) {
   const fmt    = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const attrs  = item.attributes ?? []
@@ -618,6 +621,11 @@ function OrderRow({
             {displayPrice > 0 && (
               <span className={`font-semibold ${priceChanged ? 'text-blue-600' : 'text-gray-600'}`}>
                 {fmt.format(displayPrice)}/{baseUomCode}
+              </span>
+            )}
+            {displayPrice === 0 && estimatedPrice && estimatedPrice > 0 && (
+              <span className="text-xs text-gray-400 italic">
+                ca. {fmt.format(estimatedPrice)}/{baseUomCode}
               </span>
             )}
 
@@ -795,9 +803,9 @@ function DeliveryPicker({
     const dlMidnight = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
     const todayMid   = new Date(now); todayMid.setHours(0, 0, 0, 0)
     const time = dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
-    if (dlMidnight.getTime() === todayMid.getTime()) return `inden kl. ${time}`
+    if (dlMidnight.getTime() === todayMid.getTime()) return `bestil inden kl. ${time}`
     const wd = dl.toLocaleDateString('da-DK', { weekday: 'short' }).replace('.', '')
-    return `${wd} kl. ${time}`
+    return `bestil ${wd} kl. ${time}`
   }
 
   // Lang fristtekst til bundpanelet: "fredag kl. 12:00" eller "i dag kl. 14:00"
@@ -917,6 +925,7 @@ export default function OrderList({
   promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
   requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities = {},
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
+  estimatedPrices = new Map<string, number>(),
 }: Props) {
   // ── Leveringsmetode-state ────────────────────────────────────────────────────
   const [selectedMethodCode, setSelectedMethodCode] = useState(customerShipmentMethodCode)
@@ -1543,6 +1552,7 @@ export default function OrderList({
                     disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                     disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                     infoNote={rowInfoNote(item.number)}
+                    estimatedPrice={estimatedPrices.get(item.number)}
                   />
                 ))}
               </div>
@@ -1585,6 +1595,7 @@ export default function OrderList({
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                   infoNote={rowInfoNote(item.number)}
+                  estimatedPrice={estimatedPrices.get(item.number)}
                 />
               ))}
             </div>
@@ -1629,6 +1640,7 @@ export default function OrderList({
                         disponibeltLabel={rowAvailStatus(s.item.number).disponibeltLabel}
                         disponibeltColor={rowAvailStatus(s.item.number).disponibeltColor}
                         infoNote={rowInfoNote(s.item.number)}
+                        estimatedPrice={estimatedPrices.get(s.item.number)}
                       />
                     </div>
                   )
@@ -1674,6 +1686,7 @@ export default function OrderList({
                     disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                     disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                     infoNote={rowInfoNote(item.number)}
+                    estimatedPrice={estimatedPrices.get(item.number)}
                   />
                 ))}
               </div>
@@ -1700,6 +1713,7 @@ export default function OrderList({
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                   infoNote={rowInfoNote(item.number)}
+                  estimatedPrice={estimatedPrices.get(item.number)}
                 />
               ))}
             </div>

@@ -1786,3 +1786,53 @@ export async function getCustomerShipmentMethodCode(customerNo: string): Promise
     return (data.value?.[0]?.shipmentMethod?.code ?? '').trim()
   } catch { return '' }
 }
+
+/**
+ * Beregner gennemsnitsprisen (ikke-vægtet) fra de seneste op til 10 bogførte
+ * salgsfakturalinjer pr. vare for denne kunde.
+ * Bruges til at vise "ca. X kr." på varer uden aftalt pris.
+ */
+export async function getAverageSalesPriceForItems(
+  customerNo: string,
+  itemNos:    string[],
+): Promise<Map<string, number>> {
+  if (!customerNo || !itemNos.length) return new Map()
+  try {
+    const token  = await getAccessToken()
+    const tenant = process.env.BC_TENANT_ID!
+    const env    = process.env.BC_ENVIRONMENT_NAME ?? 'production'
+    const company = process.env.BC_COMPANY_ID!
+    const base   = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+    // Hent i batches af 15 varenumre for at holde URL-længden nede
+    const BATCH = 15
+    const allLines: { itemNo: string; unitPrice: number }[] = []
+    for (let i = 0; i < itemNos.length; i += BATCH) {
+      const batch  = itemNos.slice(i, i + BATCH)
+      const itemF  = batch.map(n => `itemNumber eq '${n.replace(/'/g, "''")}'`).join(' or ')
+      const filter = encodeURIComponent(`(${itemF}) and sellToCustomerNumber eq '${customerNo}'`)
+      const res = await fetch(
+        `${base}/postedSalesInvoiceLines?$filter=${filter}&$orderby=postingDate desc&$top=200&$select=itemNumber,unitPrice`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' },
+      )
+      if (!res.ok) continue
+      const data = await res.json()
+      for (const l of data.value ?? []) {
+        if (l.itemNumber && l.unitPrice > 0) allLines.push({ itemNo: l.itemNumber, unitPrice: l.unitPrice })
+      }
+    }
+
+    // Gennemsnit af seneste 10 salg pr. vare (rækkefølge er postingDate desc)
+    const grouped = new Map<string, number[]>()
+    for (const { itemNo, unitPrice } of allLines) {
+      const arr = grouped.get(itemNo) ?? []
+      if (arr.length < 10) arr.push(unitPrice)
+      grouped.set(itemNo, arr)
+    }
+    const result = new Map<string, number>()
+    for (const [itemNo, prices] of grouped) {
+      result.set(itemNo, prices.reduce((a, b) => a + b, 0) / prices.length)
+    }
+    return result
+  } catch { return new Map() }
+}
