@@ -7,6 +7,7 @@ import {
   getItemsByNumbers,
   getItemsAttributeValues,
   getItemsUoMs,
+  getWebshopVisibleItemNos,
 } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import { prisma } from '@/lib/prisma'
@@ -36,15 +37,18 @@ export async function GET(req: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Hent priser + varenumre i kategori + blokerede parallelt
-  const [portalPrices, categoryNos, blockedRows] = await Promise.all([
+  // Hent priser + varenumre i kategori + blokerede + rangering parallelt
+  const [portalPrices, categoryNos, blockedRows, webshopVisible] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     getItemNumbersByCategory(category),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
+    getWebshopVisibleItemNos().catch(() => null),
   ])
 
   const blockedSet  = new Set(blockedRows.map(b => b.bcItemNumber))
-  const filteredNos = categoryNos.filter(no => !blockedSet.has(no))
+  const filteredNos = categoryNos.filter(no =>
+    !blockedSet.has(no) && (webshopVisible === null || webshopVisible.has(no))
+  )
 
   if (filteredNos.length === 0) return NextResponse.json({ items: [], priceTiers: [] })
 
