@@ -800,14 +800,14 @@ function DeliveryPicker({
     return `${wd} kl. ${time}`
   }
 
-  // Lang fristtekst til bundpanelet: "fredag inden kl. 12:00" eller "i dag inden kl. 14:00"
+  // Lang fristtekst til bundpanelet: "fredag kl. 12:00" eller "i dag kl. 14:00"
   function formatDeadlineLong(dl: Date): string {
     const dlMidnight = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
     const todayMid   = new Date(now); todayMid.setHours(0, 0, 0, 0)
     const time = dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
-    if (dlMidnight.getTime() === todayMid.getTime()) return `i dag inden kl. ${time}`
+    if (dlMidnight.getTime() === todayMid.getTime()) return `i dag kl. ${time}`
     const wd = dl.toLocaleDateString('da-DK', { weekday: 'long' })
-    return `${wd} inden kl. ${time}`
+    return `${wd} kl. ${time}`
   }
 
   return (
