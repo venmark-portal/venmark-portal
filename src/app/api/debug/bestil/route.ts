@@ -167,6 +167,10 @@ export async function GET(req: Request) {
   const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
   const webshopVisible = await getWebshopVisibleItemNos().catch(() => null)
 
+  // ── Direkte BC-test: portalkalender omkring 5. juni ───────────────────────
+  const calJune5Url = `${base}/portalCalendar?$filter=${encodeURIComponent('date ge 2026-06-01 and date le 2026-06-10')}&$top=50`
+  const calJune5 = await rawFetch(calJune5Url)
+
   // ── Direkte BC-test: portalCustomerShipmentMethods ────────────────────────
   const custShipMethodsUrl = `${base}/portalCustomerShipmentMethods?$filter=${encodeURIComponent(`customerNo eq '${customerNo}'`)}&$orderby=sortOrder&$top=20`
   const custShipMethodsDirect = await rawFetch(custShipMethodsUrl)
@@ -215,6 +219,7 @@ export async function GET(req: Request) {
     customer_allFields: { url: custAllUrl, sample: custAll.sample },
     portalShipmentMethods_direct: { url: shipMethodsUrl, ...shipMethodsRaw },
     portalCustomerShipmentMethods_direct: { url: custShipMethodsUrl, ...custShipMethodsDirect },
+    calendarJune5: { url: calJune5Url, status: calJune5.status, count: calJune5.count, entries: calJune5.sample, error: calJune5.error },
     shipmentMethods: {
       allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
       custShipCode,
