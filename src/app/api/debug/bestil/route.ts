@@ -167,6 +167,10 @@ export async function GET(req: Request) {
   const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
   const webshopVisible = await getWebshopVisibleItemNos().catch(() => null)
 
+  // ── Direkte BC-test: portalCustomerShipmentMethods ────────────────────────
+  const custShipMethodsUrl = `${base}/portalCustomerShipmentMethods?$filter=${encodeURIComponent(`customerNo eq '${customerNo}'`)}&$orderby=sortOrder&$top=20`
+  const custShipMethodsDirect = await rawFetch(custShipMethodsUrl)
+
   // ── Leveringsmetoder for denne kunde ────────────────────────────────────────
   const [allMethods, custShipCode, custAllowedCodes] = await Promise.all([
     getPortalShipmentMethods().catch((e: any) => ({ error: String(e) })),
@@ -182,6 +186,23 @@ export async function GET(req: Request) {
     ? getDeliveryDatesForMethod(customerMethod as any, [], new Date(), 10).map(d => d.toISOString().split('T')[0])
     : []
 
+  // ── Rangering diagnostik: hvilke saelgForH-varer overlever webshopVisible? ──
+  let rangeringDiag: any = { skipped: 'webshopVisible er null — ingen filter aktiv' }
+  if (webshopVisible) {
+    const allCutoffsUrl = `${base}/itemCutoffs?$filter=${encodeURIComponent('portalSaelgForH eq true')}&$select=itemNo,portalSaelgForH,rangeringPrisliste&$top=200`
+    const allSaelgRes = await fetch(allCutoffsUrl, { headers, cache: 'no-store' } as any).then(r => r.json()).catch(() => ({ value: [] }))
+    const saelgItems: any[] = allSaelgRes.value ?? []
+    const hidden = saelgItems.filter((i: any) => !webshopVisible.has(i.itemNo))
+    const visible = saelgItems.filter((i: any) => webshopVisible.has(i.itemNo))
+    rangeringDiag = {
+      saelgForHTotal_sample: saelgItems.length,
+      visibleCount: visible.length,
+      hiddenCount: hidden.length,
+      hiddenItems: hidden.slice(0, 10),
+      visibleSample: visible.slice(0, 5),
+    }
+  }
+
   return NextResponse.json({
     env: envCheck,
     tokenStatus: { ok: !!token, length: token.length, preview: tokenPreview, payload: tokenPayload, clientIdPartial, error: tokenError },
@@ -193,6 +214,7 @@ export async function GET(req: Request) {
     customer_shipmentMethodCode: { url: custUrl, ...custRaw },
     customer_allFields: { url: custAllUrl, sample: custAll.sample },
     portalShipmentMethods_direct: { url: shipMethodsUrl, ...shipMethodsRaw },
+    portalCustomerShipmentMethods_direct: { url: custShipMethodsUrl, ...custShipMethodsDirect },
     shipmentMethods: {
       allMethodsRaw: Array.isArray(allMethods) ? allMethods : allMethods,
       custShipCode,
@@ -208,6 +230,7 @@ export async function GET(req: Request) {
       size: webshopVisible?.size ?? 'N/A',
       sample: webshopVisible ? Array.from(webshopVisible).slice(0, 10) : [],
     },
+    rangeringDiag,
     params: { customerNo, priceGroup },
     customerFavorites: { url: favUrl, ...favResult },
     portalPrices_customer: {
