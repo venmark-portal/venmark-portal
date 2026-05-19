@@ -167,6 +167,14 @@ export async function GET(req: Request) {
   const { getWebshopVisibleItemNos } = await import('@/lib/businesscentral')
   const webshopVisible = await getWebshopVisibleItemNos().catch(() => null)
 
+  // ── Test: gennemsnitspris via postedSalesInvoiceLines ────────────────────
+  const { getAverageSalesPriceForItems } = await import('@/lib/businesscentral')
+  const testZeroItems = ['62020', '80204', '49095']
+  const avgPrices = await getAverageSalesPriceForItems(customerNo, testZeroItems).catch((e: any) => ({ error: String(e) }))
+  // Direkte råt kald til postedSalesInvoiceLines for at se hvad BC returnerer
+  const invLinesUrl = `${base}/postedSalesInvoiceLines?$filter=${encodeURIComponent(`(itemNumber eq '62020' or itemNumber eq '80204') and sellToCustomerNumber eq '${customerNo}'`)}&$orderby=postingDate desc&$top=5&$select=itemNumber,unitPrice,postingDate`
+  const invLinesRaw = await rawFetch(invLinesUrl)
+
   // ── Direkte BC-test: portalkalender omkring 5. juni ───────────────────────
   const calJune5Url = `${base}/portalCalendar?$filter=${encodeURIComponent('date ge 2026-06-01 and date le 2026-06-10')}&$top=50`
   const calJune5 = await rawFetch(calJune5Url)
@@ -209,6 +217,11 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     env: envCheck,
+    avgPriceDiag: {
+      testedItems: testZeroItems,
+      result: avgPrices instanceof Map ? Object.fromEntries(avgPrices) : avgPrices,
+      invLinesRaw: { url: invLinesUrl, status: invLinesRaw.status, count: invLinesRaw.count, sample: invLinesRaw.sample, error: invLinesRaw.error },
+    },
     tokenStatus: { ok: !!token, length: token.length, preview: tokenPreview, payload: tokenPayload, clientIdPartial, error: tokenError },
     freshToken_diagnostik: freshTokenDiag,
     baseline_v2_API: {
