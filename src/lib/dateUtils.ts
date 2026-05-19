@@ -120,6 +120,11 @@ export function earliestDeliveryForItem(
 
 import type { BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 
+/** YYYY-MM-DD i lokal tid — undgår UTC-skift (toISOString giver forkert dato i UTC+2) */
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** Parser BC Time-felt ("HH:MM:SS.fffffff" eller "PTHHM...") til { hour, minute } */
 export function parseCutoffTime(timeStr: string | null | undefined): { hour: number; minute: number } {
   if (!timeStr || timeStr.startsWith('00:00')) return { hour: 14, minute: 0 }
@@ -149,7 +154,7 @@ export function getDeadlineForMethodDelivery(
   if (dispatchWd0 === 0) dispatch.setDate(dispatch.getDate() - 2) // søndag → fredag
   if (dispatchWd0 === 6) dispatch.setDate(dispatch.getDate() - 1) // lørdag → fredag
 
-  const dispatchIso     = dispatch.toISOString().split('T')[0]
+  const dispatchIso     = localDateStr(dispatch)
   const dispatchWeekday = dispatch.getDay()
 
   // Kalender-cutoff override for afsendelsesdagen
@@ -192,7 +197,7 @@ export function getDeliveryDatesForMethod(
   // Tidligste afsendelsesdato: i dag hvis cutoff ikke er passeret, ellers i morgen
   const today = new Date(fromDate)
   today.setHours(0, 0, 0, 0)
-  const todayIso     = today.toISOString().split('T')[0]
+  const todayIso     = localDateStr(today)
   const todayWeekday = today.getDay()
 
   // Byg kalender-lookup: specific (dato+kode) har højere prioritet end general (dato+blank)
@@ -232,7 +237,7 @@ export function getDeliveryDatesForMethod(
   while (dates.length < count && limit-- > 0) {
     const delivery = new Date(cursor)
     delivery.setDate(cursor.getDate() + transit)
-    const iso     = delivery.toISOString().split('T')[0]
+    const iso     = localDateStr(delivery)
     const weekday = delivery.getDay()
 
     let canDeliver: boolean
