@@ -15,7 +15,7 @@ function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): num
       p.itemNo === itemNo &&
       p.minimumQuantity <= 1 &&
       (!p.startingDate || p.startingDate <= today) &&
-      (!p.endingDate   || p.endingDate   >= today),
+      (!p.endingDate   || p.endingDate.startsWith('0001') || p.endingDate   >= today),
   )
   if (!applicable.length) return null
   return Math.min(...applicable.map(p => p.unitPrice))

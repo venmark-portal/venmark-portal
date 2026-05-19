@@ -259,7 +259,7 @@ function resolvePrice(
       // For anden enhed: skal matche præcist
       : t.unitOfMeasure === uomCode) &&
     (!t.startingDate || t.startingDate <= today) &&
-    (!t.endingDate   || t.endingDate   >= today),
+    (!t.endingDate   || t.endingDate.startsWith('0001') || t.endingDate   >= today),
   )
   if (directTiers.length) return Math.min(...directTiers.map(t => t.unitPrice))
 
@@ -271,7 +271,7 @@ function resolvePrice(
       t.minimumQuantity <= effectiveBaseQty &&
       (!t.unitOfMeasure || t.unitOfMeasure === baseUomCode) &&
       (!t.startingDate || t.startingDate <= today) &&
-      (!t.endingDate   || t.endingDate   >= today),
+      (!t.endingDate   || t.endingDate.startsWith('0001') || t.endingDate   >= today),
     )
     if (baseTiers.length) return Math.min(...baseTiers.map(t => t.unitPrice)) * qtyPerUom
   }
@@ -297,7 +297,7 @@ function buildDisplayTiers(
       ? (!tier.unitOfMeasure || !uomCode || tier.unitOfMeasure === uomCode)
       : tier.unitOfMeasure === uomCode) &&
     (!tier.startingDate || tier.startingDate <= t) &&
-    (!tier.endingDate   || tier.endingDate   >= t),
+    (!tier.endingDate   || tier.endingDate.startsWith('0001') || tier.endingDate   >= t),
   )
 
   function buildFromValid(valid: PriceTier[], multiply = 1, divideBreakpoints = 1) {
@@ -326,7 +326,7 @@ function buildDisplayTiers(
       tier.itemNo === itemNo &&
       (!tier.unitOfMeasure || tier.unitOfMeasure === baseUomCode) &&
       (!tier.startingDate || tier.startingDate <= t) &&
-      (!tier.endingDate   || tier.endingDate   >= t),
+      (!tier.endingDate   || tier.endingDate.startsWith('0001') || tier.endingDate   >= t),
     )
     if (baseTiers.length) return buildFromValid(baseTiers, qtyPerUom, qtyPerUom)
   }
@@ -337,7 +337,7 @@ function buildDisplayTiers(
     const anyTiers = tiers.filter(tier =>
       tier.itemNo === itemNo &&
       (!tier.startingDate || tier.startingDate <= t) &&
-      (!tier.endingDate   || tier.endingDate   >= t),
+      (!tier.endingDate   || tier.endingDate.startsWith('0001') || tier.endingDate   >= t),
     )
     if (anyTiers.length) return buildFromValid(anyTiers)
   }
