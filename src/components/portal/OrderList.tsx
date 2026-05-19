@@ -61,7 +61,7 @@ interface Props {
   shipmentMethods?:             BCShipmentMethod[]
   customerShipmentMethodCode?:  string
   calendarDays?:                BCCalendarDay[]
-  estimatedPrices?:             Map<string, number>
+  estimatedPrices?:             Record<string, number>
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -699,11 +699,12 @@ function OrderRow({
           <input
             type="number"
             min={0}
+            step="any"
             value={quantity || ''}
             placeholder="0"
             data-qty-input="true"
             disabled={isBlocked}
-            onChange={(e) => onQty(Math.max(0, parseInt(e.target.value) || 0))}
+            onChange={(e) => onQty(Math.max(0, parseFloat(e.target.value) || 0))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
@@ -925,7 +926,7 @@ export default function OrderList({
   promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
   requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities = {},
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
-  estimatedPrices = new Map<string, number>(),
+  estimatedPrices = {} as Record<string, number>,
 }: Props) {
   // ── Leveringsmetode-state ────────────────────────────────────────────────────
   const [selectedMethodCode, setSelectedMethodCode] = useState(customerShipmentMethodCode)
@@ -1553,7 +1554,7 @@ export default function OrderList({
                     disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                     disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                     infoNote={rowInfoNote(item.number)}
-                    estimatedPrice={estimatedPrices.get(item.number)}
+                    estimatedPrice={estimatedPrices[item.number]}
                   />
                 ))}
               </div>
@@ -1596,7 +1597,7 @@ export default function OrderList({
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                   infoNote={rowInfoNote(item.number)}
-                  estimatedPrice={estimatedPrices.get(item.number)}
+                  estimatedPrice={estimatedPrices[item.number]}
                 />
               ))}
             </div>
@@ -1641,7 +1642,7 @@ export default function OrderList({
                         disponibeltLabel={rowAvailStatus(s.item.number).disponibeltLabel}
                         disponibeltColor={rowAvailStatus(s.item.number).disponibeltColor}
                         infoNote={rowInfoNote(s.item.number)}
-                        estimatedPrice={estimatedPrices.get(s.item.number)}
+                        estimatedPrice={estimatedPrices[s.item.number]}
                       />
                     </div>
                   )
@@ -1687,7 +1688,7 @@ export default function OrderList({
                     disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                     disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                     infoNote={rowInfoNote(item.number)}
-                    estimatedPrice={estimatedPrices.get(item.number)}
+                    estimatedPrice={estimatedPrices[item.number]}
                   />
                 ))}
               </div>
@@ -1714,7 +1715,7 @@ export default function OrderList({
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
                   infoNote={rowInfoNote(item.number)}
-                  estimatedPrice={estimatedPrices.get(item.number)}
+                  estimatedPrice={estimatedPrices[item.number]}
                 />
               ))}
             </div>

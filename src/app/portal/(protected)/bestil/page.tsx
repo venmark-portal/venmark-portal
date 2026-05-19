@@ -242,7 +242,7 @@ export default async function BestilPage() {
         shipmentMethods={allowedMethods.length > 0 ? allowedMethods : (customerMethod ? [customerMethod] : [])}
         customerShipmentMethodCode={customerMethod?.code ?? ''}
         calendarDays={calendarDays}
-        estimatedPrices={estimatedPrices}
+        estimatedPrices={Object.fromEntries(estimatedPrices)}
       />
     </div>
   )
