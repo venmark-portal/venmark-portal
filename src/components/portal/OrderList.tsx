@@ -1222,7 +1222,7 @@ export default function OrderList({
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          deliveryDate: deliveryDate.toISOString(), notes, driverNote, poNumber, lines: orderLines,
+          deliveryDate: `${deliveryDate.getFullYear()}-${String(deliveryDate.getMonth()+1).padStart(2,'0')}-${String(deliveryDate.getDate()).padStart(2,'0')}`, notes, driverNote, poNumber, lines: orderLines,
           shipmentMethodCode: selectedMethodCode,
           reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
         }),
