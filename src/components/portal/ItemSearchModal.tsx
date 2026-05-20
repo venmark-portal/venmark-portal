@@ -1,10 +1,88 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react'
-import type { BCItem, BCItemCategory } from '@/lib/businesscentral'
+import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus, ChevronLeft, ChevronRight, Check, Clock } from 'lucide-react'
+import type { BCItem, BCItemCategory, BCItemAvailability } from '@/lib/businesscentral'
 
 type EnrichedItem = BCItem & { unitPrice: number }
+
+// ── Hjælper: parser BC OData Time "PT10H30M00S" eller "10:30:00" ────────────
+function parseAabnTil(s: string): { hh: number; mm: number } | null {
+  const iso = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
+  if (iso) {
+    const hh = parseInt(iso[1] ?? '0'), mm = parseInt(iso[2] ?? '0')
+    return (hh === 0 && mm === 0) ? null : { hh, mm }
+  }
+  const parts = s.split(':').map(Number)
+  const hh = parts[0] ?? 0, mm = parts[1] ?? 0
+  return (hh === 0 && mm === 0) ? null : { hh, mm }
+}
+
+const DA_WEEKDAYS = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
+function formatDate(dateStr: string): string {
+  const t = new Date(dateStr + 'T00:00:00')
+  const diff = Math.round((new Date(t.toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000)
+  if (diff <= 6) return `${DA_WEEKDAYS[t.getDay()]}`
+  return `${String(t.getDate()).padStart(2,'0')}/${String(t.getMonth()+1).padStart(2,'0')}`
+}
+
+interface RowStatus {
+  blocked: boolean
+  blockLabel: string
+  disponibeltLabel: string | null
+  disponibeltColor: 'red' | 'orange' | null
+  aabnTilLabel: string | null
+}
+
+function computeStatus(
+  avail: BCItemAvailability | undefined,
+  deliveryDate: Date | undefined,
+): RowStatus {
+  const none: RowStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+  if (!avail || !deliveryDate) return none
+
+  const now = new Date()
+  const deliveryStr = deliveryDate.toISOString().split('T')[0]
+  const todayStr    = now.toISOString().split('T')[0]
+  const isToday     = deliveryStr === todayStr
+
+  let aabnTilLabel: string | null = null
+  if (avail.aabnTil) {
+    const p = parseAabnTil(avail.aabnTil)
+    if (p) aabnTilLabel = `Afg.frist: kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
+  }
+
+  if (avail.tilgaengeligFra && deliveryStr < avail.tilgaengeligFra)
+    return { blocked: true, blockLabel: `Tilgængelig ${formatDate(avail.tilgaengeligFra)}`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+
+  if (avail.strengtLager) {
+    const disp = avail.disponibelt
+    if (disp <= 0) {
+      const label = avail.naesteLevering ? `Tilgængelig til afgang ${formatDate(avail.naesteLevering)}` : 'Ingen lager – kontakt os'
+      return { blocked: true, blockLabel: label, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
+    }
+    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
+    return { blocked: false, blockLabel: '', disponibeltLabel: '>50', disponibeltColor: null, aabnTilLabel }
+  }
+
+  if (isToday) {
+    if (avail.lukAfgang) return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+    if (avail.aabnTil) {
+      const p = parseAabnTil(avail.aabnTil)
+      if (p) {
+        const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+        if (nowSec > p.hh * 3600 + p.mm * 60)
+          return { blocked: true, blockLabel: `Frist kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+      }
+    }
+    const disp = avail.disponibelt
+    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
+    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
+    return { ...none, aabnTilLabel }
+  }
+
+  return { ...none, aabnTilLabel }
+}
 
 const PAGE_SIZE = 100
 
@@ -20,11 +98,14 @@ interface Props {
   onToggleFav?:    (item: EnrichedItem) => void
   /** Allerede valgte varenumre (vises som allerede markeret i favPicker) */
   existingNos?:    Set<string>
+  itemAvailabilities?: Record<string, BCItemAvailability>
+  deliveryDate?:   Date
 }
 
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
+  itemAvailabilities, deliveryDate,
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
@@ -277,11 +358,16 @@ export default function ItemSearchModal({
             const isFav    = favNos?.has(item.number) ?? false
             const isExist  = existingNos.has(item.number)
             const isSel    = selected.has(item.number)
+            const status   = (!favMode && !singleMode)
+              ? computeStatus(itemAvailabilities?.[item.number], deliveryDate)
+              : { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null as null, aabnTilLabel: null }
 
             return (
               <div
                 key={item.id}
                 className={`px-3 py-2 border-b border-gray-50 last:border-0 transition-colors ${
+                  status.blocked ? 'opacity-70' : ''
+                } ${
                   favMode
                     ? (isExist ? 'opacity-40' : isSel ? 'bg-blue-50' : 'cursor-pointer hover:bg-gray-50/60')
                     : singleMode
@@ -294,6 +380,20 @@ export default function ItemSearchModal({
                   : undefined
                 }
               >
+                {/* Status-badges */}
+                {status.blockLabel && (
+                  <div className="mb-1 flex items-center gap-1 text-[10px] text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit font-semibold">
+                    <X size={9} />
+                    {status.blockLabel}
+                  </div>
+                )}
+                {!status.blockLabel && status.aabnTilLabel && (
+                  <div className="mb-1 flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 w-fit">
+                    <Clock size={9} />
+                    {status.aabnTilLabel}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2">
                   {/* Checkbox i favMode */}
                   {favMode && (
@@ -320,11 +420,22 @@ export default function ItemSearchModal({
 
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-gray-900">{item.displayName}</div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
                       <span className="font-mono">{item.number}</span>
                       {item.unitPrice > 0 && (
                         <><span>·</span>
                         <span className="font-semibold text-gray-600">{fmt.format(item.unitPrice)}/{item.baseUnitOfMeasureCode}</span></>
+                      )}
+                      {status.disponibeltLabel && (
+                        <span className={`rounded px-1 py-0 leading-tight text-[10px] font-semibold ${
+                          status.disponibeltColor === 'red'
+                            ? 'bg-red-100 text-red-600'
+                            : status.disponibeltColor === 'orange'
+                              ? 'bg-orange-100 text-orange-600'
+                              : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {status.disponibeltLabel} {item.baseUnitOfMeasureCode}
+                        </span>
                       )}
                       {isExist && <span className="text-gray-400 italic">allerede favorit</span>}
                     </div>
@@ -352,7 +463,7 @@ export default function ItemSearchModal({
                   <div className="flex items-center gap-1 justify-end mt-1.5">
                     <button
                       onClick={() => setQty(item.number, Math.max(0, qty - 1))}
-                      disabled={qty === 0}
+                      disabled={qty === 0 || status.blocked}
                       className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
                       <Minus size={12} />
@@ -360,26 +471,31 @@ export default function ItemSearchModal({
                     <input
                       type="number"
                       min={0}
+                      step="any"
                       value={qty || ''}
                       placeholder="0"
-                      onChange={(e) => setQty(item.number, Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
+                      disabled={status.blocked}
+                      onChange={(e) => setQty(item.number, Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40"
                     />
                     <button
                       onClick={() => setQty(item.number, qty + 1)}
-                      className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                      disabled={status.blocked}
+                      className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
                       <Plus size={12} />
                     </button>
                     <button
                       onClick={() => setQty(item.number, qty + 10)}
-                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                      disabled={status.blocked}
+                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
                       +10
                     </button>
                     <button
                       onClick={() => setQty(item.number, qty + 50)}
-                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                      disabled={status.blocked}
+                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
                       +50
                     </button>

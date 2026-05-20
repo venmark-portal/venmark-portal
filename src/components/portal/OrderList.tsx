@@ -1901,6 +1901,8 @@ export default function OrderList({
           onClose={() => setShowSearch(false)}
           favNos={favSet}
           onToggleFav={toggleFavorite}
+          itemAvailabilities={itemAvailabilities}
+          deliveryDate={deliveryDate}
         />
       )}
 
