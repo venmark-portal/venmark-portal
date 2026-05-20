@@ -1615,6 +1615,7 @@ export interface BCItemAvailability {
   statusNote:        string
   danskTekstPrisliste: string
   priserOpdateret:   string | null   // ISO datetime eller null
+  naesteLevering:    string | null   // 'YYYY-MM-DD': tidligste fremtidige indkøbsordre (kun strengtLager + disponibelt<=0)
 }
 
 /**
@@ -1648,6 +1649,7 @@ export async function getItemAvailabilities(): Promise<Map<string, BCItemAvailab
           statusNote:          item.statusNote           ?? '',
           danskTekstPrisliste: item.danskTekstPrisliste  ?? '',
           priserOpdateret:     item.priserOpdateret      || null,
+          naesteLevering:      item.naesteLevering        || null,
         })
       }
       url = data['@odata.nextLink'] ?? null

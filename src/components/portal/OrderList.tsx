@@ -3,7 +3,7 @@
 import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from 'react'
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
-  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X,
+  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
@@ -163,13 +163,26 @@ interface ItemAvailStatus {
   blockLabel: string
   disponibeltLabel: string | null
   disponibeltColor: 'red' | 'orange' | null
+  aabnTilLabel: string | null   // tidspunkt synligt på vare FØR fristen
+}
+
+// Parser BC OData Time "PT10H30M00S" eller "10:30:00" → { hh, mm } eller null (0T = ingen begrænsning)
+function parseAabnTil(s: string): { hh: number; mm: number } | null {
+  const iso = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
+  if (iso) {
+    const hh = parseInt(iso[1] ?? '0'), mm = parseInt(iso[2] ?? '0')
+    return (hh === 0 && mm === 0) ? null : { hh, mm }
+  }
+  const parts = s.split(':').map(Number)
+  const hh = parts[0] ?? 0, mm = parts[1] ?? 0
+  return (hh === 0 && mm === 0) ? null : { hh, mm }
 }
 
 function getItemAvailStatus(
   avail: BCItemAvailability | undefined,
   deliveryDate: Date | undefined,
 ): ItemAvailStatus {
-  const none: ItemAvailStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null }
+  const none: ItemAvailStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
   if (!avail || !deliveryDate) return none
 
   const now = new Date()
@@ -177,36 +190,40 @@ function getItemAvailStatus(
   const todayStr = now.toISOString().split('T')[0]
   const isToday = deliveryStr === todayStr
 
+  // aabnTil-tidspunkt: altid synligt som info på varen (Clock-ikon)
+  let aabnTilLabel: string | null = null
+  if (avail.aabnTil) {
+    const p = parseAabnTil(avail.aabnTil)
+    if (p) aabnTilLabel = `Afg.frist: kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
+  }
+
   if (avail.tilgaengeligFra && deliveryStr < avail.tilgaengeligFra) {
-    return { blocked: true, blockLabel: formatTilgaengeligFra(avail.tilgaengeligFra), disponibeltLabel: null, disponibeltColor: null }
+    return { blocked: true, blockLabel: formatTilgaengeligFra(avail.tilgaengeligFra), disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
   }
 
   // Strengt lager — total pipeline (alle datoer)
   if (avail.strengtLager) {
     const disp = avail.disponibelt
-    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
-    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange' }
-    return { blocked: false, blockLabel: '', disponibeltLabel: '>50', disponibeltColor: null }
+    if (disp <= 0) {
+      const dateLabel = avail.naesteLevering
+        ? `Tilgængelig til afgang ${formatTilgaengeligFra(avail.naesteLevering)}`
+        : 'Ingen lager – kontakt os'
+      return { blocked: true, blockLabel: dateLabel, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
+    }
+    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange', aabnTilLabel }
+    return { blocked: false, blockLabel: '', disponibeltLabel: '>50', disponibeltColor: null, aabnTilLabel }
   }
 
   if (isToday) {
     if (avail.lukAfgang)
-      return { blocked: true, blockLabel: 'Lukket for dags afgang', disponibeltLabel: null, disponibeltColor: null }
+      return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
 
     if (avail.aabnTil) {
-      const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
-      // BC OData Time format: "PT10H30M00S" (ISO 8601 duration) eller "10:30:00"
-      let hh = 0, mm2 = 0
-      const isoMatch = avail.aabnTil.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
-      if (isoMatch) {
-        hh = parseInt(isoMatch[1] ?? '0'); mm2 = parseInt(isoMatch[2] ?? '0')
-      } else {
-        const parts = avail.aabnTil.split(':').map(Number)
-        hh = parts[0] ?? 0; mm2 = parts[1] ?? 0
-      }
-      const limitSec = hh * 3600 + mm2 * 60
-      if (limitSec > 0 && nowSec > limitSec) {
-        return { blocked: true, blockLabel: `Frist kl. ${String(hh).padStart(2,'0')}:${String(mm2).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null }
+      const p = parseAabnTil(avail.aabnTil)
+      if (p) {
+        const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+        if (nowSec > p.hh * 3600 + p.mm * 60)
+          return { blocked: true, blockLabel: `Frist kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
       }
     }
 
@@ -215,20 +232,20 @@ function getItemAvailStatus(
       const priserDato = avail.priserOpdateret?.slice(0, 10)
       if (priserDato === todayStr) {
         const disp = avail.disponibelt
-        if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
-        if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange' }
+        if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
+        if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange', aabnTilLabel }
       }
-      return none
+      return { ...none, aabnTilLabel }
     }
 
-    // Handelsvare (default) — kun blokér for dags afgang
+    // Handelsvare (default)
     const disp = avail.disponibelt
-    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
-    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange' }
-    return none
+    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
+    if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange', aabnTilLabel }
+    return { ...none, aabnTilLabel }
   }
 
-  return none
+  return { ...none, aabnTilLabel }
 }
 
 // ─── Trappepris-hjælpere ─────────────────────────────────────────────────────
@@ -517,6 +534,7 @@ function OrderRow({
   blockedLabel = '',
   disponibeltLabel = null,
   disponibeltColor = null,
+  aabnTilLabel = null,
   infoNote = '',
   estimatedPrice,
 }: {
@@ -538,6 +556,7 @@ function OrderRow({
   blockedLabel?:     string
   disponibeltLabel?: string | null
   disponibeltColor?: 'red' | 'orange' | null
+  aabnTilLabel?:     string | null
   infoNote?:         string
   estimatedPrice?:   number
 }) {
@@ -584,6 +603,12 @@ function OrderRow({
         <div className="mb-1 flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5 w-fit">
           <Calendar size={9} />
           {unavailableLabel}
+        </div>
+      )}
+      {!blockedLabel && aabnTilLabel && (
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 w-fit">
+          <Clock size={9} />
+          {aabnTilLabel}
         </div>
       )}
       <div className="flex items-center gap-1 sm:gap-2">
@@ -1553,6 +1578,7 @@ export default function OrderList({
                     blockedLabel={rowAvailStatus(item.number).blockLabel}
                     disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                     disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                    aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
                     infoNote={rowInfoNote(item.number)}
                     estimatedPrice={estimatedPrices[item.number]}
                   />
@@ -1687,6 +1713,7 @@ export default function OrderList({
                     blockedLabel={rowAvailStatus(item.number).blockLabel}
                     disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                     disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                    aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
                     infoNote={rowInfoNote(item.number)}
                     estimatedPrice={estimatedPrices[item.number]}
                   />
