@@ -1643,13 +1643,13 @@ export async function getItemAvailabilities(): Promise<Map<string, BCItemAvailab
           disponibelt:         item.disponibelt         ?? 0,
           strengtLager:        item.strengtLager         === true,
           auktionsKategori:    item.auktionsKategori     === true,
-          tilgaengeligFra:     item.tilgaengeligFra      || null,
-          aabnTil:             item.aabnTil              || null,
+          tilgaengeligFra:     (item.tilgaengeligFra && item.tilgaengeligFra !== '0001-01-01') ? item.tilgaengeligFra : null,
+          aabnTil:             (item.aabnTil && item.aabnTil !== '00:00:00' && item.aabnTil !== 'PT0S') ? item.aabnTil : null,
           lukAfgang:           item.lukAfgang            === true,
           statusNote:          item.statusNote           ?? '',
           danskTekstPrisliste: item.danskTekstPrisliste  ?? '',
           priserOpdateret:     item.priserOpdateret      || null,
-          naesteLevering:      item.naesteLevering        || null,
+          naesteLevering:      (item.naesteLevering && item.naesteLevering !== '0001-01-01') ? item.naesteLevering : null,
         })
       }
       url = data['@odata.nextLink'] ?? null

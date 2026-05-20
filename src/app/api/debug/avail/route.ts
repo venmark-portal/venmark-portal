@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   const withStrengt    = all.filter(i => i.strengtLager === true)
   const withTilgFra    = all.filter(i => i.tilgaengeligFra && i.tilgaengeligFra !== '0001-01-01')
   const withLukAfgang  = all.filter(i => i.lukAfgang === true)
-  const withAabnTil    = all.filter(i => i.aabnTil && i.aabnTil !== 'PT0S' && i.aabnTil !== '')
+  const withAabnTil    = all.filter(i => i.aabnTil && i.aabnTil !== 'PT0S' && i.aabnTil !== '' && i.aabnTil !== '00:00:00')
   const withNaesteLev  = all.filter(i => i.naesteLevering && i.naesteLevering !== '0001-01-01')
   const withDisp0      = all.filter(i => (i.disponibelt ?? 0) <= 0)
   const withDispLow    = all.filter(i => (i.disponibelt ?? 99) < 50 && (i.disponibelt ?? 0) > 0)
