@@ -61,7 +61,9 @@ export async function GET(
 
     if (genRes.ok) {
       const { value: pdfBase64 } = await genRes.json()
-      if (pdfBase64) {
+      // Under 25 KB base64 (≈18 KB PDF) = tom/blank Word-skabelon uden data — spring over
+      const MIN_REAL_PDF_B64 = 25_000
+      if (pdfBase64 && pdfBase64.length > MIN_REAL_PDF_B64) {
         console.log('[PDF] genereret via bound action, base64 længde:', pdfBase64.length)
         const pdfBuffer = Buffer.from(pdfBase64, 'base64')
         return new NextResponse(pdfBuffer, {
@@ -72,6 +74,8 @@ export async function GET(
             'Content-Length':      String(pdfBuffer.byteLength),
           },
         })
+      } else {
+        console.log('[PDF] bound action PDF for lille (sandsynligvis blank skabelon):', pdfBase64?.length ?? 0, '— prøver v2.0 fallback')
       }
     } else {
       console.log('[PDF] bound action fejlede:', genRes.status, await genRes.text().catch(() => ''))
