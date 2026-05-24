@@ -56,7 +56,7 @@ export async function GET(
     if (pdfApiRes.ok) {
       const pdfData = await pdfApiRes.json()
       const pdfBase64 = pdfData.pdfBase64 ?? ''
-      if (pdfBase64.length > 25_000) {
+      if (pdfBase64.length > 100) {
         console.log('[PDF] genereret via postedInvoicePdfs, base64 længde:', pdfBase64.length)
         const pdfBuffer = Buffer.from(pdfBase64, 'base64')
         return new NextResponse(pdfBuffer, {
@@ -68,7 +68,7 @@ export async function GET(
           },
         })
       }
-      console.log('[PDF] postedInvoicePdfs PDF for lille eller tom:', pdfBase64.length, '— prøver bound action')
+      console.log('[PDF] postedInvoicePdfs PDF tom (0 chars):', pdfBase64.length, '— prøver bound action')
     } else {
       console.log('[PDF] postedInvoicePdfs fejlede:', pdfApiRes.status)
     }
