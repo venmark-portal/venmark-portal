@@ -1769,11 +1769,12 @@ export default function OrderList({
           )}
           <button
             onClick={() => { setShowReview(true); setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
-            disabled={totalLines === 0 || pastDeadline}
+            disabled={totalLines === 0 || pastDeadline || !deliveryDate}
             className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
           >
             {pastDeadline ? 'Deadline passeret for denne dag'
               : totalLines === 0 ? 'Tilføj varer for at bestille'
+              : !deliveryDate ? 'Vælg en leveringsdato'
               : `Gennemse og send (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
           </button>
         </div>
@@ -1786,7 +1787,7 @@ export default function OrderList({
           <div className="bg-blue-600 px-4 py-3 flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-white">Gennemse bestilling</h2>
-              <p className="text-xs text-blue-200">{formatLongDate(deliveryDate)}</p>
+              <p className="text-xs text-blue-200">{deliveryDate ? formatLongDate(deliveryDate) : ''}</p>
             </div>
             <button
               onClick={() => { setShowReview(false); setError('') }}
