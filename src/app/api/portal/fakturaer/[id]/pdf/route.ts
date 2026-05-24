@@ -47,8 +47,33 @@ export async function GET(
 
     const customBase = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
+    // Forsøg 0: postedInvoicePdfs API (page 50175) — altid rapport 50040, Venmark-skabelon
+    console.log('[PDF] forsøg 0 — postedInvoicePdfs (rapport 50040) for:', invoice.number)
+    const pdfApiRes = await fetch(
+      `${customBase}/postedInvoicePdfs(${invoiceId})`,
+      { headers: authHeader },
+    )
+    if (pdfApiRes.ok) {
+      const pdfData = await pdfApiRes.json()
+      const pdfBase64 = pdfData.pdfBase64 ?? ''
+      if (pdfBase64.length > 25_000) {
+        console.log('[PDF] genereret via postedInvoicePdfs, base64 længde:', pdfBase64.length)
+        const pdfBuffer = Buffer.from(pdfBase64, 'base64')
+        return new NextResponse(pdfBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type':        'application/pdf',
+            'Content-Disposition': `inline; filename="Faktura-${invoice.number}.pdf"`,
+            'Content-Length':      String(pdfBuffer.byteLength),
+          },
+        })
+      }
+      console.log('[PDF] postedInvoicePdfs PDF for lille eller tom:', pdfBase64.length, '— prøver bound action')
+    } else {
+      console.log('[PDF] postedInvoicePdfs fejlede:', pdfApiRes.status)
+    }
+
     // Forsøg 1: bound action generatePdf på portal API page 50170
-    // Genererer PDF via BC Report Selection (rapport 50040 eller standard 1306)
     console.log('[PDF] forsøg 1 — generatePdf bound action for:', invoice.number)
     const genRes = await fetch(
       `${customBase}/postedSalesInvoices(${invoiceId})/Microsoft.NAV.generatePdf`,
@@ -61,9 +86,8 @@ export async function GET(
 
     if (genRes.ok) {
       const { value: pdfBase64 } = await genRes.json()
-      // Under 25 KB base64 (≈18 KB PDF) = tom/blank Word-skabelon uden data — spring over
-      const MIN_REAL_PDF_B64 = 25_000
-      if (pdfBase64 && pdfBase64.length > MIN_REAL_PDF_B64) {
+      // Under 25 KB base64 = tom/blank Word-skabelon — spring over
+      if (pdfBase64 && pdfBase64.length > 25_000) {
         console.log('[PDF] genereret via bound action, base64 længde:', pdfBase64.length)
         const pdfBuffer = Buffer.from(pdfBase64, 'base64')
         return new NextResponse(pdfBuffer, {
@@ -75,7 +99,7 @@ export async function GET(
           },
         })
       } else {
-        console.log('[PDF] bound action PDF for lille (sandsynligvis blank skabelon):', pdfBase64?.length ?? 0, '— prøver v2.0 fallback')
+        console.log('[PDF] bound action PDF for lille:', pdfBase64?.length ?? 0, '— prøver v2.0 fallback')
       }
     } else {
       console.log('[PDF] bound action fejlede:', genRes.status, await genRes.text().catch(() => ''))
