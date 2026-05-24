@@ -959,7 +959,8 @@ export default function OrderList({
 
   const deliveryDays = useMemo(() => {
     if (!selectedMethod) return initialDeliveryDays
-    return getDeliveryDatesForMethod(selectedMethod, calendarDays, new Date(), 20)
+    const raw = getDeliveryDatesForMethod(selectedMethod, calendarDays, new Date(), 20)
+    return raw.length > 0 ? raw : initialDeliveryDays
   }, [selectedMethod, calendarDays, initialDeliveryDays])
 
   // Tjek om en vare kan leveres på den valgte dato
