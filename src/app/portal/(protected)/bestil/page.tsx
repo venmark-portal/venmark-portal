@@ -207,9 +207,11 @@ export default async function BestilPage() {
     : portalShipmentMethods.filter(m => m.code === customerShipMethodCode)
 
   const customerMethod = allowedMethods[0] ?? portalShipmentMethods.find(m => m.code === customerShipMethodCode)
-  const deliveryDays = customerMethod
+  const rawDeliveryDays = customerMethod
     ? getDeliveryDatesForMethod(customerMethod, calendarDays, today, 20)
-    : nextBusinessDays(today, 20)
+    : []
+  // Fallback: hvis BC-leveringsmetode ikke har konfigurerede ugedage, brug næste hverdage
+  const deliveryDays = rawDeliveryDays.length > 0 ? rawDeliveryDays : nextBusinessDays(today, 20)
 
   // Estimerede priser: gennemsnit af seneste 10 salg for varer uden aftalt pris
   const zeroPriceNos = allNumbers.filter(n => (itemMap.get(n)?.unitPrice ?? 0) === 0)
