@@ -1,8 +1,9 @@
+import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { flagBeskedUlaest } from '@/lib/businesscentral'
+import { flagBeskedUlaest, pushBeskedTilBC } from '@/lib/businesscentral'
 
 // GET — kundens tråd (seneste 30 dage)
 export async function GET() {
@@ -39,17 +40,33 @@ export async function POST(req: Request) {
   if (!body?.trim()) return NextResponse.json({ error: 'Tom besked' }, { status: 400 })
 
   const expires = new Date(); expires.setDate(expires.getDate() + 30)
+  const msgId = randomUUID()
+  const now = new Date()
 
   await prisma.$executeRaw`
     INSERT INTO "Message" (id, "customerId", sender, "senderName", body, "readByAdmin", "readByCustomer", "createdAt", "expiresAt")
-    VALUES (gen_random_uuid()::text, ${customerId}, 'customer', ${customerName}, ${body.trim()}, false, true, NOW(), ${expires})
+    VALUES (${msgId}, ${customerId}, 'customer', ${customerName}, ${body.trim()}, false, true, NOW(), ${expires})
   `
 
-  // Notificer BC om ulæst besked (non-blocking — fejl er ikke fatale)
+  // Push besked + ulæst-flag til BC (non-blocking)
   const rows = await prisma.$queryRaw<{ bcCustomerNumber: string }[]>`
     SELECT "bcCustomerNumber" FROM "Customer" WHERE id = ${customerId} LIMIT 1
   `
   if (rows[0]?.bcCustomerNumber) {
+    const tz = 'Europe/Copenhagen'
+    const createdAtDK =
+      now.toLocaleTimeString('da-DK', { timeZone: tz, hour: '2-digit', minute: '2-digit' }) +
+      ' ' +
+      now.toLocaleDateString('da-DK', { timeZone: tz, day: '2-digit', month: '2-digit' })
+
+    pushBeskedTilBC(rows[0].bcCustomerNumber, {
+      id:         msgId,
+      sender:     'customer',
+      senderName: customerName,
+      body:       body.trim(),
+      createdAtDK,
+    }).catch(() => {})
+
     flagBeskedUlaest(rows[0].bcCustomerNumber).catch(() => {})
   }
 

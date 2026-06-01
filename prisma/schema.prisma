@@ -209,13 +209,14 @@ model VenmarkRecommended {
 // ─── Portal-udseende (admin-styret) ──────────────────────────────────────────
 
 model PortalSettings {
-  id              String   @id @default("default")
-  bgColor         String   @default("#eff6ff")   // Baggrundsfarve (standard: lys blå)
-  bannerEnabled   Boolean  @default(false)
-  bannerText      String?                         // Banner-tekst
-  bannerBgColor   String   @default("#1e40af")   // Banner-baggrundsfarve
-  bannerTextColor String   @default("#ffffff")   // Banner-tekstfarve
-  updatedAt       DateTime @updatedAt
+  id                  String   @id @default("default")
+  bgColor             String   @default("#eff6ff")
+  bannerEnabled       Boolean  @default(false)
+  bannerText          String?
+  bannerBgColor       String   @default("#1e40af")
+  bannerTextColor     String   @default("#ffffff")
+  kvalitetschefEmail  String?  // Modtager eskaleringsmail ved manglende leverandørerklæring
+  updatedAt           DateTime @updatedAt
 }
 
 // ─── Ordrer ───────────────────────────────────────────────────────────────────
@@ -511,4 +512,89 @@ model PasswordResetToken {
   createdAt DateTime @default(now())
 
   @@index([email])
+}
+
+// ─── Leverandørerklæringer ────────────────────────────────────────────────────
+
+model SupplierDeclaration {
+  id              String    @id @default(cuid())
+  bcVendorNo      String    // BC leverandørnummer
+  token           String    @unique @default(cuid()) // URL-token til leverandørens adgang
+  lang            String    @default("da") // da/sv/en/de/fr/nl/it/es
+
+  // Stamdata
+  companyName     String?
+  vatNo           String?
+  address         String?
+  country         String?
+  phone           String?
+  email           String?
+  contactPerson   String?
+  qualityManager  String?
+  emergencyPhone  String?
+
+  // Certificeringer
+  hasThirdPartyCert     Boolean?
+  certTypes             String?  // JSON-array: ["ISO22000","FSSC","BRC","IFS","MSC","ASC",...]
+  certNumber            String?
+  certExpiry            DateTime?
+  hasMsc                Boolean?
+  mscCertNumber         String?
+  mscExpiry             DateTime?
+
+  // HACCP (JSON: { key: "ja"|"nej"|"n/a", comment?: string })
+  haccpAnswers          String?
+
+  // Egenkontrol (JSON: { key: "ja"|"nej"|"n/a", comment?: string })
+  selfControlAnswers    String?
+
+  // Digital godkendelse
+  signerName            String?
+  signerTitle           String?
+  signerEmail           String?
+  confirmedAt           DateTime?
+  ipAddress             String?
+
+  // Status + datoer
+  status          String    @default("PENDING") // PENDING | SUBMITTED | APPROVED | EXPIRED
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  approvedBy      String?   // admin email
+  nextRenewalDate DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  documents       SupplierDocument[]
+  reminders       SupplierReminderLog[]
+
+  @@index([bcVendorNo])
+  @@index([status])
+  @@index([nextRenewalDate])
+  @@index([token])
+}
+
+model SupplierDocument {
+  id            String              @id @default(cuid())
+  declaration   SupplierDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  declarationId String
+  docType       String  // CERT_BRC | CERT_IFS | CERT_MSC | CERT_OTHER | HACCP | AUDIT | WATER | PEST | RECALL | OTHER
+  fileName      String
+  filePath      String  // uploads/leverandoer/[vendorNo]/[id].[ext]
+  mimeType      String
+  fileSize      Int
+  uploadedAt    DateTime @default(now())
+
+  @@index([declarationId])
+}
+
+model SupplierReminderLog {
+  id            String              @id @default(cuid())
+  declaration   SupplierDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  declarationId String
+  type          String  // INITIAL | REMINDER_10M | ESCALATION_11M
+  sentTo        String  // email-adresse
+  sentAt        DateTime @default(now())
+
+  @@index([declarationId])
 }

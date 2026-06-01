@@ -98,7 +98,51 @@ export function bcBaseUrl(): string {
   )
 }
 
-// ─── Portal webhook → BC: flag ulæst besked på kunde ─────────────────────────
+export function bcPortalBaseUrl(): string {
+  const tenantId  = process.env.BC_TENANT_ID!
+  const envName   = process.env.BC_ENVIRONMENT_NAME ?? 'production'
+  const companyId = process.env.BC_COMPANY_ID!
+  if (!tenantId || !companyId) {
+    throw new Error('BC_TENANT_ID og BC_COMPANY_ID skal sættes i .env.local')
+  }
+  return (
+    `https://api.businesscentral.dynamics.com/v2.0` +
+    `/${tenantId}/${envName}/api/venmark/portal/v1.0/companies(${companyId})`
+  )
+}
+
+// ─── Portal webhook → BC: flag ulæst besked + push beskedindhold ─────────────
+
+export async function pushBeskedTilBC(
+  bcCustomerNumber: string,
+  message: { id: string; sender: string; senderName: string; body: string; createdAtDK: string },
+): Promise<void> {
+  if (!bcCustomerNumber) return
+  try {
+    const base  = bcPortalBaseUrl()
+    const token = await getAccessToken()
+    const res = await fetch(`${base}/portalBeskeder`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerNo:      bcCustomerNumber,
+        sender:          message.sender,
+        senderName:      message.senderName,
+        body:            message.body,
+        createdAtDK:     message.createdAtDK,
+        portalMessageId: message.id,
+      }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      console.error('[pushBeskedTilBC] fejl', res.status, txt.slice(0, 300))
+    } else {
+      console.log('[pushBeskedTilBC] OK', bcCustomerNumber)
+    }
+  } catch (e: any) {
+    console.error('[pushBeskedTilBC] exception:', e.message)
+  }
+}
 
 export async function flagBeskedUlaest(bcCustomerNumber: string): Promise<void> {
   const tenantId  = process.env.BC_TENANT_ID
@@ -1114,23 +1158,29 @@ export async function createBCSalesOrder(
   deliveryDate:   Date,
   portalOrderId:  string,
   lines: Array<{ itemNumber: string; quantity: number; uomCode: string }>,
+  poNumber?: string,
 ): Promise<BCCreateOrderResult> {
-  const token = await getAccessToken()
-  const base  = bcBaseUrl()
+  const token      = await getAccessToken()
+  const portalBase = bcPortalBaseUrl()
+  const stdBase    = bcBaseUrl()
 
-  // 1. Opret ordrehoved
-  const orderRes = await fetch(`${base}/salesOrders`, {
+  // 1. Opret ordrehoved via custom SWF portal API (tildeler W-nummerserie)
+  const orderBody: Record<string, unknown> = {
+    customerNumber,
+    requestedDeliveryDate: deliveryDate.toISOString().split('T')[0],
+  }
+  if (poNumber?.trim()) {
+    orderBody.externalDocumentNumber = poNumber.trim()
+  }
+
+  const orderRes = await fetch(`${portalBase}/portalSalesOrders`, {
     method:  'POST',
     headers: {
       Authorization:  `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept:         'application/json',
     },
-    body: JSON.stringify({
-      customerNumber,
-      requestedDeliveryDate:  deliveryDate.toISOString().split('T')[0],
-      externalDocumentNumber: `PORTAL-${portalOrderId}`,
-    }),
+    body: JSON.stringify(orderBody),
   })
 
   if (!orderRes.ok) {
@@ -1141,10 +1191,10 @@ export async function createBCSalesOrder(
   const order    = await orderRes.json()
   const orderId  = order.id as string
 
-  // 2. Opret linjer — fejl samles og returneres
+  // 2. Opret linjer via standard v2.0 API — fejl samles og returneres
   const lineErrors: string[] = []
   for (const line of lines) {
-    const lineRes = await fetch(`${base}/salesOrderLines`, {
+    const lineRes = await fetch(`${stdBase}/salesOrderLines`, {
       method:  'POST',
       headers: {
         Authorization:  `Bearer ${token}`,

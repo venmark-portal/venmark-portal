@@ -4,19 +4,21 @@ import { useState, useEffect } from 'react'
 import { Palette, Save, RotateCcw, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 interface Settings {
-  bgColor:         string
-  bannerEnabled:   boolean
-  bannerText:      string
-  bannerBgColor:   string
-  bannerTextColor: string
+  bgColor:             string
+  bannerEnabled:       boolean
+  bannerText:          string
+  bannerBgColor:       string
+  bannerTextColor:     string
+  kvalitetschefEmail:  string
 }
 
 const DEFAULTS: Settings = {
-  bgColor:         '#eff6ff',
-  bannerEnabled:   false,
-  bannerText:      '',
-  bannerBgColor:   '#1e40af',
-  bannerTextColor: '#ffffff',
+  bgColor:             '#eff6ff',
+  bannerEnabled:       false,
+  bannerText:          '',
+  bannerBgColor:       '#1e40af',
+  bannerTextColor:     '#ffffff',
+  kvalitetschefEmail:  '',
 }
 
 // Hurtige farvevalg til baggrund
@@ -52,11 +54,12 @@ export default function UdseendePage() {
       .then(r => r.json())
       .then(d => {
         setSettings({
-          bgColor:         d.bgColor         ?? DEFAULTS.bgColor,
-          bannerEnabled:   d.bannerEnabled    ?? DEFAULTS.bannerEnabled,
-          bannerText:      d.bannerText       ?? '',
-          bannerBgColor:   d.bannerBgColor    ?? DEFAULTS.bannerBgColor,
-          bannerTextColor: d.bannerTextColor  ?? DEFAULTS.bannerTextColor,
+          bgColor:             d.bgColor             ?? DEFAULTS.bgColor,
+          bannerEnabled:       d.bannerEnabled        ?? DEFAULTS.bannerEnabled,
+          bannerText:          d.bannerText           ?? '',
+          bannerBgColor:       d.bannerBgColor        ?? DEFAULTS.bannerBgColor,
+          bannerTextColor:     d.bannerTextColor      ?? DEFAULTS.bannerTextColor,
+          kvalitetschefEmail:  d.kvalitetschefEmail   ?? '',
         })
       })
       .catch(() => setError('Kunne ikke hente indstillinger'))
@@ -238,6 +241,22 @@ export default function UdseendePage() {
             />
             <code className="text-xs text-gray-400">{settings.bannerTextColor}</code>
           </div>
+        </div>
+      </section>
+
+      {/* ── Leverandørerklæringer ── */}
+      <section className="rounded-xl bg-white p-6 ring-1 ring-gray-200 space-y-4">
+        <h2 className="font-semibold text-gray-800">Leverandørerklæringer</h2>
+        <p className="text-sm text-gray-500">Email til kvalitetschef — modtager eskaleringsmail når leverandørerklæring er overskredet med 11 måneder.</p>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-gray-500">Kvalitetschef email</label>
+          <input
+            type="email"
+            value={settings.kvalitetschefEmail}
+            onChange={e => setSettings(s => ({ ...s, kvalitetschefEmail: e.target.value }))}
+            placeholder="fx pp@venmark.dk"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+          />
         </div>
       </section>
 

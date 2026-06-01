@@ -6,35 +6,36 @@ import { prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 const DEFAULTS = {
-  id:             'default',
-  bgColor:        '#eff6ff',
-  bannerEnabled:  false,
-  bannerText:     '',
-  bannerBgColor:  '#1e40af',
-  bannerTextColor:'#ffffff',
+  id:                 'default',
+  bgColor:            '#eff6ff',
+  bannerEnabled:      false,
+  bannerText:         '',
+  bannerBgColor:      '#1e40af',
+  bannerTextColor:    '#ffffff',
+  kvalitetschefEmail: '',
 }
 
 async function getOrCreate() {
-  // Sørg for at rækken eksisterer
   await prisma.$executeRaw`
     INSERT INTO "PortalSettings"
-      (id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "updatedAt")
+      (id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "kvalitetschefEmail", "updatedAt")
     VALUES
-      ('default', '#eff6ff', false, '', '#1e40af', '#ffffff', NOW())
+      ('default', '#eff6ff', false, '', '#1e40af', '#ffffff', '', NOW())
     ON CONFLICT (id) DO NOTHING
   `
   const rows = await prisma.$queryRaw<any[]>`
-    SELECT id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor"
+    SELECT id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "kvalitetschefEmail"
     FROM "PortalSettings" WHERE id = 'default'
   `
   const r = rows[0]
   return {
-    id:             r.id,
-    bgColor:        r.bgColor,
-    bannerEnabled:  Boolean(r.bannerEnabled),
-    bannerText:     r.bannerText ?? '',
-    bannerBgColor:  r.bannerBgColor,
-    bannerTextColor:r.bannerTextColor,
+    id:                 r.id,
+    bgColor:            r.bgColor,
+    bannerEnabled:      Boolean(r.bannerEnabled),
+    bannerText:         r.bannerText ?? '',
+    bannerBgColor:      r.bannerBgColor,
+    bannerTextColor:    r.bannerTextColor,
+    kvalitetschefEmail: r.kvalitetschefEmail ?? '',
   }
 }
 
@@ -54,24 +55,26 @@ export async function PUT(req: NextRequest) {
 
   try {
     const b = await req.json()
-    const bgColor        = b.bgColor        ?? DEFAULTS.bgColor
-    const bannerEnabled  = b.bannerEnabled  ? 1 : 0
-    const bannerText     = b.bannerText     ?? ''
-    const bannerBgColor  = b.bannerBgColor  ?? DEFAULTS.bannerBgColor
-    const bannerTextColor= b.bannerTextColor?? DEFAULTS.bannerTextColor
+    const bgColor             = b.bgColor             ?? DEFAULTS.bgColor
+    const bannerEnabled       = b.bannerEnabled       ? 1 : 0
+    const bannerText          = b.bannerText          ?? ''
+    const bannerBgColor       = b.bannerBgColor       ?? DEFAULTS.bannerBgColor
+    const bannerTextColor     = b.bannerTextColor     ?? DEFAULTS.bannerTextColor
+    const kvalitetschefEmail  = b.kvalitetschefEmail  ?? ''
 
     await prisma.$executeRaw`
       INSERT INTO "PortalSettings"
-        (id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "updatedAt")
+        (id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "kvalitetschefEmail", "updatedAt")
       VALUES
-        ('default', ${bgColor}, ${bannerEnabled}, ${bannerText}, ${bannerBgColor}, ${bannerTextColor}, CURRENT_TIMESTAMP)
+        ('default', ${bgColor}, ${bannerEnabled}, ${bannerText}, ${bannerBgColor}, ${bannerTextColor}, ${kvalitetschefEmail}, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
-        "bgColor"         = excluded."bgColor",
-        "bannerEnabled"   = excluded."bannerEnabled",
-        "bannerText"      = excluded."bannerText",
-        "bannerBgColor"   = excluded."bannerBgColor",
-        "bannerTextColor" = excluded."bannerTextColor",
-        "updatedAt"       = CURRENT_TIMESTAMP
+        "bgColor"             = excluded."bgColor",
+        "bannerEnabled"       = excluded."bannerEnabled",
+        "bannerText"          = excluded."bannerText",
+        "bannerBgColor"       = excluded."bannerBgColor",
+        "bannerTextColor"     = excluded."bannerTextColor",
+        "kvalitetschefEmail"  = excluded."kvalitetschefEmail",
+        "updatedAt"           = CURRENT_TIMESTAMP
     `
     return NextResponse.json(await getOrCreate())
   } catch (e) {
