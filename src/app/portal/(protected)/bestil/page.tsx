@@ -206,6 +206,13 @@ export default async function BestilPage() {
     ? portalShipmentMethods.filter(m => customerAllowedCodes.includes(m.code))
     : portalShipmentMethods.filter(m => m.code === customerShipMethodCode)
 
+  console.log('[DEBUG bestil] customerNo:', customerNo)
+  console.log('[DEBUG bestil] customerShipMethodCode:', customerShipMethodCode)
+  console.log('[DEBUG bestil] customerAllowedCodes:', customerAllowedCodes)
+  console.log('[DEBUG bestil] portalShipmentMethods count:', portalShipmentMethods.length)
+  console.log('[DEBUG bestil] portalShipmentMethods:', JSON.stringify(portalShipmentMethods.map(m => ({ code: m.code, portalVisible: m.portalVisible }))))
+  console.log('[DEBUG bestil] allowedMethods:', JSON.stringify(allowedMethods.map(m => ({ code: m.code, portalVisible: m.portalVisible }))))
+
   const customerMethod = allowedMethods[0] ?? portalShipmentMethods.find(m => m.code === customerShipMethodCode)
   const rawDeliveryDays = customerMethod
     ? getDeliveryDatesForMethod(customerMethod, calendarDays, today, 20)
