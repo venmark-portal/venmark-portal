@@ -1,0 +1,51 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Miljø at deploye til'
+        required: true
+        default: 'staging'
+        type: choice
+        options: [staging, production]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy produktion (main)
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /var/www/venmark
+            git pull origin main
+            npm ci --omit=dev
+            npx prisma migrate deploy
+            npm run build
+            pm2 restart venmark
+            echo "✅ Produktion deployet"
+
+      - name: Deploy test (staging)
+        if: github.ref == 'refs/heads/staging' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /var/www/venmark-test
+            git pull origin staging
+            npm ci --omit=dev
+            npx prisma migrate deploy
+            npm run build
+            pm2 restart venmark-test || PORT=3002 pm2 start ecosystem.config.js --only venmark-test
+            echo "✅ Test deployet"
