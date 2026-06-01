@@ -1159,6 +1159,7 @@ export async function createBCSalesOrder(
   portalOrderId:  string,
   lines: Array<{ itemNumber: string; quantity: number; uomCode: string }>,
   poNumber?: string,
+  driverNote?: string,
 ): Promise<BCCreateOrderResult> {
   const token      = await getAccessToken()
   const portalBase = bcPortalBaseUrl()
@@ -1171,6 +1172,9 @@ export async function createBCSalesOrder(
   }
   if (poNumber?.trim()) {
     orderBody.externalDocumentNumber = poNumber.trim()
+  }
+  if (driverNote?.trim()) {
+    orderBody.portalDriverNote = driverNote.trim()
   }
 
   const orderRes = await fetch(`${portalBase}/portalSalesOrders`, {

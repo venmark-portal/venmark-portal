@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { deliveryDate: deliveryDateStr, notes, lines, shipmentMethodCode, poNumber } = body
+    const { deliveryDate: deliveryDateStr, notes, lines, shipmentMethodCode, poNumber, driverNote } = body
 
     if (!deliveryDateStr || !lines?.length) {
       return NextResponse.json({ error: 'Mangler leveringsdato eller linjer' }, { status: 400 })
@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
           uomCode:    l.uom,
         })),
         poNumber ?? undefined,
+        driverNote ?? undefined,
       )
 
       // Opdater til SENT_TO_BC med BC-referencer
