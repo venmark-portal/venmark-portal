@@ -8,9 +8,13 @@ import { getT } from '@/lib/leverandoer/i18n'
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session || (session.user as any)?.role !== 'admin')
-    return new NextResponse('Unauthorized', { status: 401 })
+  // Accept enten NextAuth-session (portal) eller BC_PORTAL_API_KEY (BC codeunit)
+  const apiKey = req.headers.get('x-api-key')
+  if (apiKey !== process.env.BC_PORTAL_API_KEY) {
+    const session = await getServerSession(authOptions)
+    if (!session || (session.user as any)?.role !== 'admin')
+      return new NextResponse('Unauthorized', { status: 401 })
+  }
 
   const { bcVendorNo, vendorName, vendorEmail, lang } = await req.json()
   if (!bcVendorNo || !vendorEmail)
