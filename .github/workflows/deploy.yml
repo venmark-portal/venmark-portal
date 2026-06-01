@@ -27,8 +27,9 @@ jobs:
             set -e
             cd /var/www/venmark
             git pull origin main
-            npm ci --omit=dev
-            npx prisma migrate deploy
+            npm install --omit=dev
+            set -a && source .env.local && set +a
+            npx prisma generate
             npm run build
             pm2 restart venmark
             echo "✅ Produktion deployet"
@@ -44,8 +45,9 @@ jobs:
             set -e
             cd /var/www/venmark-test
             git pull origin staging
-            npm ci --omit=dev
-            npx prisma migrate deploy
+            npm install --omit=dev
+            set -a && source .env.local && set +a
+            npx prisma generate
             npm run build
-            pm2 restart venmark-test || PORT=3002 pm2 start ecosystem.config.js --only venmark-test
+            pm2 restart venmark-test || pm2 start /var/www/venmark-test/ecosystem.config.js
             echo "✅ Test deployet"
