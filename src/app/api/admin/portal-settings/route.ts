@@ -21,7 +21,7 @@ async function getOrCreate() {
     INSERT INTO "PortalSettings"
       (id, "bgColor", "bannerEnabled", "bannerText", "bannerBgColor", "bannerTextColor", "kvalitetschefEmail", "updatedAt")
     VALUES
-      ('default', '#eff6ff', false, '', '#1e40af', '#ffffff', '', NOW())
+      ('default', '#eff6ff', false::boolean, '', '#1e40af', '#ffffff', '', NOW())
     ON CONFLICT (id) DO NOTHING
   `
   const rows = await prisma.$queryRaw<any[]>`
@@ -57,7 +57,7 @@ export async function PUT(req: NextRequest) {
   try {
     const b = await req.json()
     const bgColor             = b.bgColor             ?? DEFAULTS.bgColor
-    const bannerEnabled       = b.bannerEnabled       ? 1 : 0
+    const bannerEnabled       = Boolean(b.bannerEnabled)
     const bannerText          = b.bannerText          ?? ''
     const bannerBgColor       = b.bannerBgColor       ?? DEFAULTS.bannerBgColor
     const bannerTextColor     = b.bannerTextColor     ?? DEFAULTS.bannerTextColor
