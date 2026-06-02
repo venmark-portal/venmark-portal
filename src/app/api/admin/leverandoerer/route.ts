@@ -13,7 +13,7 @@ export async function GET() {
   const declarations = await prisma.supplierDeclaration.findMany({
     orderBy: { updatedAt: 'desc' },
     include: {
-      documents: { select: { id: true, docType: true, fileName: true } },
+      documents: { select: { id: true, docType: true, fileName: true, filePath: true } },
       reminders: { orderBy: { sentAt: 'desc' }, take: 1, select: { sentAt: true, type: true } },
     },
   })

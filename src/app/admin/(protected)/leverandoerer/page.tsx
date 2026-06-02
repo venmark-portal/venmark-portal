@@ -216,7 +216,7 @@ export default function LeverandoererPage() {
                         <p className="text-xs font-medium text-gray-500 mb-1.5">Dokumenter:</p>
                         <div className="flex flex-wrap gap-2">
                           {d.documents.map(doc => (
-                            <a key={doc.id} href={`/api/leverandoer/dokument?path=uploads/leverandoer/${d.bcVendorNo}/${doc.fileName}`}
+                            <a key={doc.id} href={`/api/leverandoer/dokument?path=${(doc as any).filePath ?? `uploads/leverandoer/${d.bcVendorNo}/${doc.fileName}`}`}
                               target="_blank" className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 rounded px-2 py-1 hover:bg-blue-100">
                               <FileText size={11} />{doc.docType} — {doc.fileName}
                             </a>
