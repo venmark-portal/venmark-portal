@@ -61,6 +61,8 @@ function AnswerToggle({ k, answers, setAnswers, t }: {
 
 export default function LeverandoerFormPage() {
   const { token } = useParams() as { token: string }
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const isReview = searchParams?.get('mode') === 'review'
   const [lang, setLang]       = useState<Lang>('en')
   const [t, setT]             = useState<Translations>(getT('en'))
   const [loading, setLoading] = useState(true)
@@ -159,7 +161,7 @@ export default function LeverandoerFormPage() {
     </div>
   )
 
-  if (submitted) return (
+  if (submitted && !isReview) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md mx-auto text-center space-y-4 p-8">
         <CheckCircle2 className="mx-auto text-green-500" size={48} />
@@ -168,6 +170,51 @@ export default function LeverandoerFormPage() {
         <div className="pt-2">
           <img src="/venmark-logo.png" alt="Venmark Fisk" className="h-10 mx-auto opacity-60" onError={e => (e.currentTarget.style.display='none')} />
         </div>
+      </div>
+    </div>
+  )
+
+  if (submitted && isReview) return (
+    <div className="min-h-screen bg-gray-50 py-10 px-4">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <CheckCircle2 className="text-green-500" size={24} />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">{decl?.companyName ?? decl?.bcVendorNo} — {t.title}</h1>
+              <p className="text-sm text-gray-500">Indsendt · Afventer godkendelse</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {[
+              ['Firma', decl?.companyName], ['CVR/VAT', decl?.vatNo], ['Land', decl?.country],
+              ['Email', decl?.email], ['Kontaktperson', decl?.contactPerson], ['Kvalitetsansvarlig', decl?.qualityManager],
+              ['Underskrevet af', decl?.signerName], ['Funktion', decl?.signerTitle], ['Underskriver email', decl?.signerEmail],
+              ['Underskrevet', decl?.confirmedAt ? new Date(decl.confirmedAt).toLocaleDateString('da-DK') : ''],
+              ['Næste fornyelse', decl?.nextRenewalDate ? new Date(decl.nextRenewalDate).toLocaleDateString('da-DK') : ''],
+            ].filter(([,v]) => v).map(([label, value]) => (
+              <div key={label as string}>
+                <p className="text-xs font-medium text-gray-400">{label}</p>
+                <p className="text-gray-800">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        {decl?.haccpAnswers && (
+          <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
+            <h2 className="font-semibold text-gray-700 mb-3">HACCP</h2>
+            <div className="space-y-1 text-sm">
+              {Object.entries(JSON.parse(decl.haccpAnswers)).map(([k, v]: any) => (
+                <div key={k} className="flex gap-2">
+                  <span className="text-gray-500 w-64 shrink-0">{t.haccpItems[k] ?? k}</span>
+                  <span className={`font-medium ${v.val === 'yes' ? 'text-green-700' : v.val === 'no' ? 'text-red-700' : 'text-gray-500'}`}>
+                    {t.answers[v.val as keyof typeof t.answers] ?? v.val}{v.comment ? ` — ${v.comment}` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

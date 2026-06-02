@@ -226,7 +226,7 @@ export default function LeverandoererPage() {
                     )}
 
                     <div className="flex items-center gap-2 flex-wrap pt-1">
-                      <a href={`/leverandoer/${d.token}`} target="_blank"
+                      <a href={`/leverandoer/${d.token}?mode=review`} target="_blank"
                         className="flex items-center gap-1.5 text-xs rounded-lg border border-gray-200 px-3 py-1.5 text-gray-600 hover:border-gray-300 bg-white transition">
                         <ExternalLink size={12} /> Åbn formular
                       </a>
