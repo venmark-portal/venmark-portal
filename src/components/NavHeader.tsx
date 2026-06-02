@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod']
+const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/leverandoer']
 
 export default function NavHeader() {
   const [open, setOpen] = useState(false)
