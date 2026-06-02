@@ -76,9 +76,8 @@ export default function LeverandoerFormPage() {
   const [fields, setFields] = useState({
     companyName: '', vatNo: '', address: '', country: '', phone: '',
     email: '', contactPerson: '', qualityManager: '', emergencyPhone: '',
-    hasThirdPartyCert: false, certTypes: [] as string[], certNumber: '', certExpiry: '',
-    hasMsc: false, mscCertNumber: '', mscExpiry: '',
-    hasAsc: false, ascCertNumber: '', ascExpiry: '',
+    hasThirdPartyCert: false, certTypes: [] as string[],
+    certData: {} as Record<string, { number: string; expiry: string }>,
     signerName: '', signerTitle: '', signerEmail: '', confirmed: false,
   })
   const [haccpAnswers, setHaccpAnswers]         = useState<Answers>({})
@@ -111,14 +110,7 @@ export default function LeverandoerFormPage() {
           emergencyPhone:   d.emergencyPhone    ?? '',
           hasThirdPartyCert:Boolean(d.hasThirdPartyCert),
           certTypes:        d.certTypes ? JSON.parse(d.certTypes) : [],
-          certNumber:       d.certNumber        ?? '',
-          certExpiry:       d.certExpiry        ? d.certExpiry.split('T')[0] : '',
-          hasMsc:           Boolean(d.hasMsc),
-          mscCertNumber:    d.mscCertNumber     ?? '',
-          mscExpiry:        d.mscExpiry         ? d.mscExpiry.split('T')[0] : '',
-          hasAsc:           Boolean(d.hasAsc),
-          ascCertNumber:    d.ascCertNumber     ?? '',
-          ascExpiry:        d.ascExpiry         ? d.ascExpiry.split('T')[0] : '',
+          certData:         d.certData  ? JSON.parse(d.certData)  : {},
           signerName:       d.signerName        ?? '',
           signerTitle:      d.signerTitle       ?? '',
           signerEmail:      d.signerEmail       ?? '',
@@ -165,6 +157,7 @@ export default function LeverandoerFormPage() {
     fd.append('lang', lang)
     Object.entries(fields).forEach(([k, v]) => {
       if (k === 'certTypes') fd.append('certTypes', JSON.stringify(v))
+      else if (k === 'certData') fd.append('certData', JSON.stringify(v))
       else if (k !== 'confirmed') fd.append(k, String(v))
     })
     fd.append('haccpAnswers',     JSON.stringify(haccpAnswers))
@@ -367,50 +360,54 @@ export default function LeverandoerFormPage() {
           {/* ── 2. Certificeringer ── */}
           <Section title={t.sections.certs}>
             <div className="space-y-4">
+              <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 border border-blue-100">
+                📎 Du vil blive bedt om at uploade certifikatdokumenter under &quot;Dokumentupload&quot; nedenfor.
+              </p>
+
               <YesNoField label={t.fields.hasThirdPartyCert} value={fields.hasThirdPartyCert}
                 onChange={v => setFields(s => ({ ...s, hasThirdPartyCert: v }))} t={t} />
 
               {fields.hasThirdPartyCert && (
-                <div className="space-y-4 pl-4 border-l-2 border-blue-100">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-2">{t.fields.certTypes}</label>
-                    <div className="flex flex-wrap gap-2">
-                      {CERT_TYPE_KEYS.map(k => (
-                        <button key={k} type="button"
-                          onClick={() => toggleCert(k)}
-                          className={`rounded-full px-3 py-1 text-xs font-medium border transition ${
-                            fields.certTypes.includes(k)
-                              ? 'bg-blue-100 border-blue-400 text-blue-800'
-                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                          }`}
-                        >{t.certTypes[k]}</button>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {CERT_TYPE_KEYS.map(k => (
+                      <button key={k} type="button"
+                        onClick={() => toggleCert(k)}
+                        className={`rounded-full px-3 py-1 text-xs font-medium border transition ${
+                          fields.certTypes.includes(k)
+                            ? 'bg-blue-100 border-blue-400 text-blue-800'
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >{t.certTypes[k]}</button>
+                    ))}
+                  </div>
+
+                  {/* En rubrik pr. valgt certifikat */}
+                  {fields.certTypes.length > 0 && (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-3 gap-3 text-xs font-medium text-gray-400 px-1">
+                        <span>Certifikat</span><span>Nummer</span><span>Udløbsdato</span>
+                      </div>
+                      {fields.certTypes.map(k => (
+                        <div key={k} className="grid grid-cols-3 gap-3 items-center bg-gray-50 rounded-lg px-3 py-2">
+                          <span className="text-sm font-medium text-gray-700">{t.certTypes[k]}</span>
+                          <input
+                            type="text"
+                            placeholder="Cert.nr."
+                            value={fields.certData[k]?.number ?? ''}
+                            onChange={e => setFields(s => ({ ...s, certData: { ...s.certData, [k]: { ...s.certData[k], number: e.target.value } } }))}
+                            className={input}
+                          />
+                          <input
+                            type="date"
+                            value={fields.certData[k]?.expiry ?? ''}
+                            onChange={e => setFields(s => ({ ...s, certData: { ...s.certData, [k]: { ...s.certData[k], expiry: e.target.value } } }))}
+                            className={input}
+                          />
+                        </div>
                       ))}
                     </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label={t.fields.certNumber}><input type="text" value={fields.certNumber} onChange={f('certNumber')} className={input} /></Field>
-                    <Field label={t.certExpiry}><input type="date" value={fields.certExpiry} onChange={f('certExpiry')} className={input} /></Field>
-                  </div>
-                </div>
-              )}
-
-              <YesNoField label={t.fields.hasMsc} value={fields.hasMsc}
-                onChange={v => setFields(s => ({ ...s, hasMsc: v }))} t={t} />
-
-              {fields.hasMsc && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-4 border-l-2 border-blue-100">
-                  <Field label={t.fields.mscCertNumber}><input type="text" value={fields.mscCertNumber} onChange={f('mscCertNumber')} className={input} /></Field>
-                  <Field label={t.fields.mscExpiry}><input type="date" value={fields.mscExpiry} onChange={f('mscExpiry')} className={input} /></Field>
-                </div>
-              )}
-
-              <YesNoField label={t.hasAsc} value={fields.hasAsc}
-                onChange={v => setFields(s => ({ ...s, hasAsc: v }))} t={t} />
-
-              {fields.hasAsc && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-4 border-l-2 border-blue-100">
-                  <Field label={t.ascCertNumber}><input type="text" value={fields.ascCertNumber} onChange={f('ascCertNumber')} className={input} /></Field>
-                  <Field label={t.ascExpiry}><input type="date" value={fields.ascExpiry} onChange={f('ascExpiry')} className={input} /></Field>
+                  )}
                 </div>
               )}
             </div>

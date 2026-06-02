@@ -27,7 +27,9 @@ jobs:
             set -e
             cd /var/www/venmark
             git pull origin main
-            npm install --omit=dev
+            if git diff HEAD@{1} --name-only | grep -q 'package\.json\|package-lock\.json'; then
+              npm install --omit=dev
+            fi
             set -a && source .env.local && set +a
             npx prisma generate
             npm run build

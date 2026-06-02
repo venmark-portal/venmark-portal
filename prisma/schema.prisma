@@ -538,6 +538,15 @@ model SupplierDeclaration {
   certTypes             String?  // JSON-array: ["ISO22000","FSSC","BRC","IFS","MSC","ASC",...]
   certNumber            String?
   certExpiry            DateTime?
+  // Certifikater — JSON: { "ISO22000": { "number": "...", "expiry": "YYYY-MM-DD" }, ... }
+  certData              String?
+  // Legacy felter bibeholdes for bagudkompatibilitet
+  hasIso                Boolean?
+  certIsoNumber         String?
+  certIsoExpiry         DateTime?
+  hasBrc                Boolean?
+  certBrcNumber         String?
+  certBrcExpiry         DateTime?
   hasMsc                Boolean?
   mscCertNumber         String?
   mscExpiry             DateTime?
