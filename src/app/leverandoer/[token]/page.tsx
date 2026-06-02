@@ -255,15 +255,19 @@ export default function LeverandoerFormPage() {
             <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
               <h2 className="font-semibold text-gray-700 mb-3">{t.sections.haccp}</h2>
               <div className="space-y-2 text-sm">
-                {Object.entries(haccpData).map(([k, v]: any) => (
+                {HACCP_KEYS.map(k => {
+                  const v = haccpData[k]
+                  return (
                   <div key={k} className="flex items-start gap-3">
                     <span className="text-gray-600 flex-1">{t.haccpItems[k] ?? k}</span>
                     <div className="text-right shrink-0">
-                      {answerBadge(v.val)}
-                      {v.comment && <p className="text-xs text-gray-500 mt-0.5">{v.comment}</p>}
+                      {v ? (
+                        <>{answerBadge(v.val)}{v.comment && <p className="text-xs text-gray-500 mt-0.5">{v.comment}</p>}</>
+                      ) : <span className="text-xs text-gray-300">—</span>}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -276,12 +280,16 @@ export default function LeverandoerFormPage() {
                 {Object.entries(SELF_CONTROL_GROUPS).map(([group, keys]) => (
                   <div key={group}>
                     <p className="text-xs font-semibold text-gray-500 mt-3 mb-1">{t.selfControlGroups[group]}</p>
-                    {keys.filter(k => selfData[k]).map(k => (
+                    {keys.map(k => (
                       <div key={k} className="flex items-start gap-3 py-0.5">
                         <span className="text-gray-600 flex-1">{t.selfControlItems[k] ?? k}</span>
                         <div className="text-right shrink-0">
-                          {answerBadge(selfData[k].val)}
-                          {selfData[k].comment && <p className="text-xs text-gray-500 mt-0.5">{selfData[k].comment}</p>}
+                          {selfData[k] ? (
+                            <>
+                              {answerBadge(selfData[k].val)}
+                              {selfData[k].comment && <p className="text-xs text-gray-500 mt-0.5">{selfData[k].comment}</p>}
+                            </>
+                          ) : <span className="text-xs text-gray-300">—</span>}
                         </div>
                       </div>
                     ))}

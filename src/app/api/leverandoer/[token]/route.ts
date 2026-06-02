@@ -82,6 +82,30 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     })
   }
 
+  // Gem/opdater certifikater i selvstændig tabel
+  try {
+    const certData = data.certData ? JSON.parse(data.certData as string) : {}
+    for (const [certType, entry] of Object.entries(certData) as [string, any][]) {
+      await prisma.vendorCertificate.upsert({
+        where: { bcVendorNo_certType: { bcVendorNo: decl.bcVendorNo, certType } },
+        update: {
+          certNumber:    entry.number  || null,
+          certExpiry:    entry.expiry  ? new Date(entry.expiry) : null,
+          updatedFromId: params.token,
+        },
+        create: {
+          bcVendorNo:    decl.bcVendorNo,
+          certType,
+          certNumber:    entry.number  || null,
+          certExpiry:    entry.expiry  ? new Date(entry.expiry) : null,
+          updatedFromId: params.token,
+        },
+      })
+    }
+  } catch (e) {
+    console.error('Cert upsert fejlede:', e)
+  }
+
   // Notificer admin
   try {
     const settings = await prisma.portalSettings.findUnique({ where: { id: 'default' } })

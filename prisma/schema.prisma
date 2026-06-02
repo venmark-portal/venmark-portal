@@ -600,6 +600,21 @@ model SupplierDocument {
   @@index([declarationId])
 }
 
+// Certifikater lever uafhængigt af erklæringsrunder — opdateres kun ved fornyelse
+model VendorCertificate {
+  id            String   @id @default(cuid())
+  bcVendorNo    String
+  certType      String   // ISO22000, FSSC, BRC, IFS, MSC, ASC, GLOBALG, OTHER
+  certNumber    String?
+  certExpiry    DateTime?
+  updatedAt     DateTime @updatedAt
+  updatedFromId String?  // token på den erklæring der sidst opdaterede
+
+  @@unique([bcVendorNo, certType])
+  @@index([bcVendorNo])
+  @@index([certExpiry])
+}
+
 model SupplierReminderLog {
   id            String              @id @default(cuid())
   declaration   SupplierDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
