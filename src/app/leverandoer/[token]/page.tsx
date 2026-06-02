@@ -96,7 +96,37 @@ export default function LeverandoerFormPage() {
         if (d.status === 'APPROVED' || d.status === 'SUBMITTED') setSubmitted(true)
         const l = (d.lang ?? 'en') as Lang
         setLang(l); setT(getT(l))
-        setFields(f => ({ ...f, companyName: d.companyName ?? '', email: d.email ?? '' }))
+
+        // Præ-udfyld alle felter fra forrige indsendelse
+        setFields(f => ({
+          ...f,
+          companyName:      d.companyName      ?? '',
+          vatNo:            d.vatNo             ?? '',
+          address:          d.address           ?? '',
+          country:          d.country           ?? '',
+          phone:            d.phone             ?? '',
+          email:            d.email             ?? '',
+          contactPerson:    d.contactPerson     ?? '',
+          qualityManager:   d.qualityManager    ?? '',
+          emergencyPhone:   d.emergencyPhone    ?? '',
+          hasThirdPartyCert:Boolean(d.hasThirdPartyCert),
+          certTypes:        d.certTypes ? JSON.parse(d.certTypes) : [],
+          certNumber:       d.certNumber        ?? '',
+          certExpiry:       d.certExpiry        ? d.certExpiry.split('T')[0] : '',
+          hasMsc:           Boolean(d.hasMsc),
+          mscCertNumber:    d.mscCertNumber     ?? '',
+          mscExpiry:        d.mscExpiry         ? d.mscExpiry.split('T')[0] : '',
+          hasAsc:           Boolean(d.hasAsc),
+          ascCertNumber:    d.ascCertNumber     ?? '',
+          ascExpiry:        d.ascExpiry         ? d.ascExpiry.split('T')[0] : '',
+          signerName:       d.signerName        ?? '',
+          signerTitle:      d.signerTitle       ?? '',
+          signerEmail:      d.signerEmail       ?? '',
+        }))
+
+        // Præ-udfyld HACCP og egenkontrol
+        if (d.haccpAnswers)      setHaccpAnswers(JSON.parse(d.haccpAnswers))
+        if (d.selfControlAnswers) setSelfAnswers(JSON.parse(d.selfControlAnswers))
       })
       .finally(() => setLoading(false))
   }, [token])

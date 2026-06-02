@@ -541,6 +541,9 @@ model SupplierDeclaration {
   hasMsc                Boolean?
   mscCertNumber         String?
   mscExpiry             DateTime?
+  hasAsc                Boolean?
+  ascCertNumber         String?
+  ascExpiry             DateTime?
 
   // HACCP (JSON: { key: "ja"|"nej"|"n/a", comment?: string })
   haccpAnswers          String?
