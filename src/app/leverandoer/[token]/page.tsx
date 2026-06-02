@@ -89,7 +89,8 @@ export default function LeverandoerFormPage() {
       .then(d => {
         if (!d) { setNotFound(true); return }
         setDecl(d)
-        if (d.status === 'APPROVED' || d.confirmedAt) setSubmitted(true)
+        // Vis "Tak" kun ved APPROVED eller SUBMITTED — ikke PENDING (returneret til revision)
+        if (d.status === 'APPROVED' || d.status === 'SUBMITTED') setSubmitted(true)
         const l = (d.lang ?? 'en') as Lang
         setLang(l); setT(getT(l))
         setFields(f => ({ ...f, companyName: d.companyName ?? '', email: d.email ?? '' }))
