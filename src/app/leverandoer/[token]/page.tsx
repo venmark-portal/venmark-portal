@@ -21,7 +21,7 @@ const SELF_CONTROL_GROUPS: Record<string, string[]> = {
   authority:   ['authorityApproval','authorityValid'],
 }
 const CERT_TYPE_KEYS = ['ISO22000','FSSC','BRC','IFS','MSC','ASC','GLOBALG','OTHER']
-const DOC_TYPE_KEYS  = ['CERT_BRC','CERT_MSC','CERT_OTHER','HACCP','AUDIT','WATER','PEST','RECALL','AUTHORITY','OTHER']
+const DOC_TYPE_KEYS  = ['CERT_ISO','CERT_BRC','CERT_MSC','CERT_ASC','CERT_OTHER','HACCP','AUDIT','WATER','PEST','RECALL','AUTHORITY','OTHER']
 
 type Answer = 'yes' | 'no' | 'na'
 type Answers = Record<string, { val: Answer; comment: string }>
@@ -78,6 +78,7 @@ export default function LeverandoerFormPage() {
     email: '', contactPerson: '', qualityManager: '', emergencyPhone: '',
     hasThirdPartyCert: false, certTypes: [] as string[], certNumber: '', certExpiry: '',
     hasMsc: false, mscCertNumber: '', mscExpiry: '',
+    hasAsc: false, ascCertNumber: '', ascExpiry: '',
     signerName: '', signerTitle: '', signerEmail: '', confirmed: false,
   })
   const [haccpAnswers, setHaccpAnswers]         = useState<Answers>({})
@@ -370,6 +371,16 @@ export default function LeverandoerFormPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-4 border-l-2 border-blue-100">
                   <Field label={t.fields.mscCertNumber}><input type="text" value={fields.mscCertNumber} onChange={f('mscCertNumber')} className={input} /></Field>
                   <Field label={t.fields.mscExpiry}><input type="date" value={fields.mscExpiry} onChange={f('mscExpiry')} className={input} /></Field>
+                </div>
+              )}
+
+              <YesNoField label={t.hasAsc} value={fields.hasAsc}
+                onChange={v => setFields(s => ({ ...s, hasAsc: v }))} t={t} />
+
+              {fields.hasAsc && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-4 border-l-2 border-blue-100">
+                  <Field label={t.ascCertNumber}><input type="text" value={fields.ascCertNumber} onChange={f('ascCertNumber')} className={input} /></Field>
+                  <Field label={t.ascExpiry}><input type="date" value={fields.ascExpiry} onChange={f('ascExpiry')} className={input} /></Field>
                 </div>
               )}
             </div>

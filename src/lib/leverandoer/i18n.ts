@@ -38,6 +38,9 @@ export type Translations = {
   noFile: string
   addCert: string
   certExpiry: string
+  hasAsc: string
+  ascCertNumber: string
+  ascExpiry: string
 }
 
 const t: Record<Lang, Translations> = {
@@ -129,8 +132,8 @@ const t: Record<Lang, Translations> = {
     },
     answers: { yes: 'Ja', no: 'Nej', na: 'Ikke relevant' },
     docTypes: {
-      CERT_BRC: 'BRC/IFS/FSSC certifikat', CERT_IFS: 'IFS certifikat',
-      CERT_MSC: 'MSC certifikat', CERT_OTHER: 'Andet certifikat',
+      CERT_ISO: 'ISO certifikat', CERT_BRC: 'BRC/IFS/FSSC certifikat', CERT_IFS: 'IFS certifikat',
+      CERT_MSC: 'MSC certifikat', CERT_ASC: 'ASC certifikat', CERT_OTHER: 'Andet certifikat',
       HACCP: 'HACCP-dokumentation', AUDIT: 'Auditrapport',
       WATER: 'Vandanalyse', PEST: 'Skadedyrsrapport',
       RECALL: 'Tilbagekaldelsesprocedure', AUTHORITY: 'Fødevaregodkendelse', OTHER: 'Andet dokument',
@@ -148,6 +151,7 @@ const t: Record<Lang, Translations> = {
     noFile: 'Ingen fil valgt',
     addCert: 'Tilføj certifikat',
     certExpiry: 'Udløbsdato',
+    hasAsc: 'Leverer I ASC-certificerede produkter?', ascCertNumber: 'ASC-certificeringsnummer', ascExpiry: 'ASC-udløbsdato',
   },
 
   sv: {
@@ -223,6 +227,7 @@ const t: Record<Lang, Translations> = {
     required: 'Obligatoriskt', uploadLabel: 'Ladda upp dokument',
     uploadHint: 'PDF, JPG eller PNG — max 10 MB', chooseFile: 'Välj fil',
     noFile: 'Ingen fil vald', addCert: 'Lägg till certifikat', certExpiry: 'Utgångsdatum',
+    hasAsc: 'Levererar ni ASC-certifierade produkter?', ascCertNumber: 'ASC-certifieringsnummer', ascExpiry: 'ASC-utgångsdatum',
   },
 
   en: {
@@ -300,6 +305,7 @@ const t: Record<Lang, Translations> = {
     required: 'Required', uploadLabel: 'Upload document',
     uploadHint: 'PDF, JPG or PNG — max 10 MB', chooseFile: 'Choose file',
     noFile: 'No file selected', addCert: 'Add certificate', certExpiry: 'Expiry date',
+    hasAsc: 'Do you supply ASC-certified products?', ascCertNumber: 'ASC certification number', ascExpiry: 'ASC expiry date',
   },
 
   de: {
@@ -375,6 +381,7 @@ const t: Record<Lang, Translations> = {
     required: 'Pflichtfeld', uploadLabel: 'Dokument hochladen',
     uploadHint: 'PDF, JPG oder PNG — max. 10 MB', chooseFile: 'Datei auswählen',
     noFile: 'Keine Datei ausgewählt', addCert: 'Zertifikat hinzufügen', certExpiry: 'Ablaufdatum',
+    hasAsc: 'Liefern Sie ASC-zertifizierte Produkte?', ascCertNumber: 'ASC-Zertifizierungsnummer', ascExpiry: 'ASC-Ablaufdatum',
   },
 
   fr: {
@@ -450,6 +457,7 @@ const t: Record<Lang, Translations> = {
     required: 'Obligatoire', uploadLabel: 'Télécharger un document',
     uploadHint: 'PDF, JPG ou PNG — max. 10 Mo', chooseFile: 'Choisir un fichier',
     noFile: 'Aucun fichier sélectionné', addCert: 'Ajouter un certificat', certExpiry: 'Date d\'expiration',
+    hasAsc: 'Fournissez-vous des produits certifiés ASC?', ascCertNumber: 'Numéro de certification ASC', ascExpiry: 'Date d\'expiration ASC',
   },
 
   nl: {
@@ -525,6 +533,7 @@ const t: Record<Lang, Translations> = {
     required: 'Verplicht', uploadLabel: 'Document uploaden',
     uploadHint: 'PDF, JPG of PNG — max. 10 MB', chooseFile: 'Bestand kiezen',
     noFile: 'Geen bestand geselecteerd', addCert: 'Certificaat toevoegen', certExpiry: 'Vervaldatum',
+    hasAsc: 'Levert u ASC-gecertificeerde producten?', ascCertNumber: 'ASC-certificeringsnummer', ascExpiry: 'ASC-vervaldatum',
   },
 
   it: {
@@ -600,6 +609,7 @@ const t: Record<Lang, Translations> = {
     required: 'Obbligatorio', uploadLabel: 'Carica documento',
     uploadHint: 'PDF, JPG o PNG — max. 10 MB', chooseFile: 'Scegli file',
     noFile: 'Nessun file selezionato', addCert: 'Aggiungi certificato', certExpiry: 'Data di scadenza',
+    hasAsc: 'Fornite prodotti certificati ASC?', ascCertNumber: 'Numero certificazione ASC', ascExpiry: 'Scadenza ASC',
   },
 
   es: {
@@ -675,6 +685,7 @@ const t: Record<Lang, Translations> = {
     required: 'Obligatorio', uploadLabel: 'Subir documento',
     uploadHint: 'PDF, JPG o PNG — máx. 10 MB', chooseFile: 'Elegir archivo',
     noFile: 'Ningún archivo seleccionado', addCert: 'Añadir certificado', certExpiry: 'Fecha de vencimiento',
+    hasAsc: '¿Suministran productos certificados ASC?', ascCertNumber: 'Número de certificación ASC', ascExpiry: 'Vencimiento ASC',
   },
 }
 
