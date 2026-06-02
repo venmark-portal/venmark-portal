@@ -174,50 +174,117 @@ export default function LeverandoerFormPage() {
     </div>
   )
 
-  if (submitted && isReview) return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-3xl mx-auto space-y-4">
-        <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <CheckCircle2 className="text-green-500" size={24} />
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">{decl?.companyName ?? decl?.bcVendorNo} — {t.title}</h1>
-              <p className="text-sm text-gray-500">Indsendt · Afventer godkendelse</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {[
-              ['Firma', decl?.companyName], ['CVR/VAT', decl?.vatNo], ['Land', decl?.country],
-              ['Email', decl?.email], ['Kontaktperson', decl?.contactPerson], ['Kvalitetsansvarlig', decl?.qualityManager],
-              ['Underskrevet af', decl?.signerName], ['Funktion', decl?.signerTitle], ['Underskriver email', decl?.signerEmail],
-              ['Underskrevet', decl?.confirmedAt ? new Date(decl.confirmedAt).toLocaleDateString('da-DK') : ''],
-              ['Næste fornyelse', decl?.nextRenewalDate ? new Date(decl.nextRenewalDate).toLocaleDateString('da-DK') : ''],
-            ].filter(([,v]) => v).map(([label, value]) => (
-              <div key={label as string}>
-                <p className="text-xs font-medium text-gray-400">{label}</p>
-                <p className="text-gray-800">{value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        {decl?.haccpAnswers && (
+  if (submitted && isReview) {
+    const certTypes = decl?.certTypes ? JSON.parse(decl.certTypes) : []
+    const haccpData = decl?.haccpAnswers ? JSON.parse(decl.haccpAnswers) : null
+    const selfData  = decl?.selfControlAnswers ? JSON.parse(decl.selfControlAnswers) : null
+    const answerBadge = (val: string) => (
+      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${val === 'yes' ? 'bg-green-100 text-green-800' : val === 'no' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}`}>
+        {t.answers[val as keyof typeof t.answers] ?? val}
+      </span>
+    )
+    return (
+      <div className="min-h-screen bg-gray-50 py-10 px-4">
+        <div className="max-w-3xl mx-auto space-y-4">
+
+          {/* Header */}
           <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
-            <h2 className="font-semibold text-gray-700 mb-3">HACCP</h2>
-            <div className="space-y-1 text-sm">
-              {Object.entries(JSON.parse(decl.haccpAnswers)).map(([k, v]: any) => (
-                <div key={k} className="flex gap-2">
-                  <span className="text-gray-500 w-64 shrink-0">{t.haccpItems[k] ?? k}</span>
-                  <span className={`font-medium ${v.val === 'yes' ? 'text-green-700' : v.val === 'no' ? 'text-red-700' : 'text-gray-500'}`}>
-                    {t.answers[v.val as keyof typeof t.answers] ?? v.val}{v.comment ? ` — ${v.comment}` : ''}
-                  </span>
-                </div>
+            <div className="flex items-center gap-3 mb-5">
+              <CheckCircle2 className="text-green-500 shrink-0" size={24} />
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">{decl?.companyName ?? decl?.bcVendorNo} — {t.title}</h1>
+                <p className="text-sm text-gray-500">Indsendt {decl?.confirmedAt ? new Date(decl.confirmedAt).toLocaleDateString('da-DK') : ''} · Næste fornyelse {decl?.nextRenewalDate ? new Date(decl.nextRenewalDate).toLocaleDateString('da-DK') : ''}</p>
+              </div>
+            </div>
+
+            {/* Stamdata */}
+            <h2 className="text-sm font-semibold text-gray-600 mb-3">{t.sections.stamdata}</h2>
+            <div className="grid grid-cols-2 gap-3 text-sm mb-5">
+              {([['Firma', decl?.companyName],['CVR/VAT', decl?.vatNo],['Adresse', decl?.address],['Land', decl?.country],['Telefon', decl?.phone],['Email', decl?.email],['Kontaktperson', decl?.contactPerson],['Kvalitetsansvarlig', decl?.qualityManager],['Nødtelefon', decl?.emergencyPhone]] as [string,string][]).filter(([,v]) => v).map(([label, value]) => (
+                <div key={label}><p className="text-xs text-gray-400">{label}</p><p className="text-gray-800">{value}</p></div>
+              ))}
+            </div>
+
+            {/* Godkendelse */}
+            <h2 className="text-sm font-semibold text-gray-600 mb-3">{t.sections.confirm}</h2>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {([['Underskrevet af', decl?.signerName],['Funktion', decl?.signerTitle],['Email', decl?.signerEmail]] as [string,string][]).filter(([,v]) => v).map(([label, value]) => (
+                <div key={label}><p className="text-xs text-gray-400">{label}</p><p className="text-gray-800">{value}</p></div>
               ))}
             </div>
           </div>
-        )}
+
+          {/* Certificeringer */}
+          <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6 text-sm space-y-2">
+            <h2 className="font-semibold text-gray-700 mb-3">{t.sections.certs}</h2>
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-gray-500">Tredjepartscertificering:</span>
+              <span className="font-medium">{decl?.hasThirdPartyCert ? t.answers.yes : t.answers.no}</span>
+            </div>
+            {certTypes.length > 0 && <p className="text-gray-700">{certTypes.map((c: string) => t.certTypes[c] ?? c).join(', ')}</p>}
+            {decl?.certNumber && <p className="text-gray-600">Nr.: {decl.certNumber} · Udløb: {decl.certExpiry ? new Date(decl.certExpiry).toLocaleDateString('da-DK') : '—'}</p>}
+            {decl?.hasMsc && <p className="text-gray-700">MSC: {decl.mscCertNumber} · Udløb: {decl.mscExpiry ? new Date(decl.mscExpiry).toLocaleDateString('da-DK') : '—'}</p>}
+          </div>
+
+          {/* HACCP */}
+          {haccpData && (
+            <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
+              <h2 className="font-semibold text-gray-700 mb-3">{t.sections.haccp}</h2>
+              <div className="space-y-2 text-sm">
+                {Object.entries(haccpData).map(([k, v]: any) => (
+                  <div key={k} className="flex items-start gap-3">
+                    <span className="text-gray-600 flex-1">{t.haccpItems[k] ?? k}</span>
+                    <div className="text-right shrink-0">
+                      {answerBadge(v.val)}
+                      {v.comment && <p className="text-xs text-gray-500 mt-0.5">{v.comment}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Egenkontrol */}
+          {selfData && (
+            <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6">
+              <h2 className="font-semibold text-gray-700 mb-3">{t.sections.selfControl}</h2>
+              <div className="space-y-2 text-sm">
+                {Object.entries(SELF_CONTROL_GROUPS).map(([group, keys]) => (
+                  <div key={group}>
+                    <p className="text-xs font-semibold text-gray-500 mt-3 mb-1">{t.selfControlGroups[group]}</p>
+                    {keys.filter(k => selfData[k]).map(k => (
+                      <div key={k} className="flex items-start gap-3 py-0.5">
+                        <span className="text-gray-600 flex-1">{t.selfControlItems[k] ?? k}</span>
+                        <div className="text-right shrink-0">
+                          {answerBadge(selfData[k].val)}
+                          {selfData[k].comment && <p className="text-xs text-gray-500 mt-0.5">{selfData[k].comment}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Dokumenter */}
+          {decl?.documents?.length > 0 && (
+            <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-6 text-sm">
+              <h2 className="font-semibold text-gray-700 mb-3">{t.sections.documents}</h2>
+              <div className="flex flex-wrap gap-2">
+                {decl.documents.map((doc: any) => (
+                  <a key={doc.id} href={`/api/leverandoer/dokument?path=${doc.filePath ?? `uploads/leverandoer/${decl.bcVendorNo}/${doc.fileName}`}`}
+                    target="_blank" className="flex items-center gap-1 text-blue-600 bg-blue-50 rounded px-2 py-1 hover:bg-blue-100 text-xs">
+                    <Upload size={11} />{t.docTypes[doc.docType] ?? doc.docType} — {doc.fileName}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
