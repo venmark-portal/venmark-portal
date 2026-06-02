@@ -247,6 +247,12 @@ export default function LeverandoererPage() {
                           </button>
                         </>
                       )}
+                      {(d.status === 'SUBMITTED' || d.status === 'APPROVED') && (
+                        <button onClick={() => approve(d.id, 'reject')} disabled={approving === d.id}
+                          className="flex items-center gap-1.5 text-xs rounded-lg border border-gray-200 px-3 py-1.5 text-gray-600 hover:border-gray-300 bg-white transition disabled:opacity-50">
+                          <RefreshCw size={12} /> Nulstil til afventer
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

@@ -99,5 +99,48 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     }
   } catch {}
 
+  // Opdater BC vendor status → Afventer (1)
+  try {
+    await updateBCVendorStatus(decl.bcVendorNo, 'Afventer', updated.nextRenewalDate)
+  } catch (e) {
+    console.error('BC vendor status webhook fejlede:', e)
+  }
+
   return NextResponse.json({ ok: true })
+}
+
+async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewal: Date | null) {
+  const { getAccessToken, bcPortalBaseUrl } = await import('@/lib/businesscentral')
+  const token = await getAccessToken()
+  const base  = bcPortalBaseUrl()
+
+  // Find vendor via API
+  const searchRes = await fetch(
+    `${base}/vendorDeclarationStatuses?$filter=vendorNo eq '${vendorNo}'`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+  )
+  if (!searchRes.ok) return
+
+  const data = await searchRes.json()
+  const vendor = data.value?.[0]
+  if (!vendor) return
+
+  const statusMap: Record<string, number> = { 'Ikke Modtaget': 0, 'Afventer': 1, 'Godkendt': 2, 'Udlobet': 3 }
+
+  await fetch(
+    `${base}/vendorDeclarationStatuses('${vendorNo}')`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'If-Match': '*',
+      },
+      body: JSON.stringify({
+        erklaeringStatus: statusMap[status] ?? 1,
+        erlaeringSidstModtaget: new Date().toISOString().split('T')[0],
+        naestFornyelsesdato: nextRenewal ? nextRenewal.toISOString().split('T')[0] : null,
+      }),
+    }
+  )
 }
