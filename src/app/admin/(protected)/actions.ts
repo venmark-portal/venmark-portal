@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { createBCSalesOrder, addLinesToBCOrder } from '@/lib/businesscentral'
+import { sendBCVerificationAlert } from '@/lib/email'
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
 
@@ -36,10 +37,10 @@ export async function approveOrders(
       }
 
       // ── Forsøg BC-oprettelse ──────────────────────────────────────────────
-      let bcOrderNumber: string | undefined
+      let bc: Awaited<ReturnType<typeof createBCSalesOrder>>
 
       try {
-        const bc = await createBCSalesOrder(
+        bc = await createBCSalesOrder(
           order.customer.bcCustomerNumber,
           order.deliveryDate,
           order.id,
@@ -49,7 +50,6 @@ export async function approveOrders(
             uomCode:    l.uom,
           })),
         )
-        bcOrderNumber = bc.number
       } catch (bcErr) {
         // BC fejl — godkend alligevel lokalt, men marker fejlen
         const msg = bcErr instanceof Error ? bcErr.message : String(bcErr)
@@ -67,10 +67,23 @@ export async function approveOrders(
       // ── BC lykkedes — opdater til SENT_TO_BC ─────────────────────────────
       await prisma.order.update({
         where: { id },
-        data:  { status: 'SENT_TO_BC', bcOrderNumber, bcOrderId: bc.id, approvedAt: new Date() },
+        data:  { status: 'SENT_TO_BC', bcOrderNumber: bc.number, bcOrderId: bc.id, approvedAt: new Date() },
       })
 
-      results.push({ id, bcOrderNumber, ...(bc.lineErrors && { lineErrors: bc.lineErrors }) })
+      // Hvis post-create GET ikke kunne bekraefte ordren → roede-bogstaver-alarm
+      if (!bc.verified) {
+        console.error(`BC-verifikation FEJLEDE for ordre ${id}: ${bc.verifyError}`)
+        await sendBCVerificationAlert({
+          customer: { name: order.customer.bcCustomerNumber, bcCustomerNumber: order.customer.bcCustomerNumber },
+          portalOrderId: id,
+          bcOrderNumber: bc.number,
+          expected: order.lines.length,
+          actual: bc.bcLineCount,
+          reason: bc.verifyError ?? 'Ukendt verifikationsfejl',
+        }).catch((e) => console.warn('Alert-mail fejlede:', e.message))
+      }
+
+      results.push({ id, bcOrderNumber: bc.number, ...(bc.lineErrors && { lineErrors: bc.lineErrors }) })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       results.push({ id, bcError: msg })

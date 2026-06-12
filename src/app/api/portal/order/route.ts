@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDeadlineForDelivery, getDeadlineForMethodDelivery } from '@/lib/dateUtils'
-import { sendOrderNotification } from '@/lib/email'
+import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
 import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays } from '@/lib/businesscentral'
 
 export async function POST(req: NextRequest) {
@@ -137,6 +137,19 @@ export async function POST(req: NextRequest) {
           approvedAt:   new Date(),
         },
       })
+
+      // BC-verifikation: hvis post-create GET ikke kunne bekraefte alle linjer → alarm
+      if (!bc.verified) {
+        console.error(`BC-verifikation FEJLEDE for ordre ${order.id}: ${bc.verifyError}`)
+        await sendBCVerificationAlert({
+          customer,
+          portalOrderId: order.id,
+          bcOrderNumber: bc.number,
+          expected: order.lines.length,
+          actual: bc.bcLineCount,
+          reason: bc.verifyError ?? 'Ukendt verifikationsfejl',
+        }).catch((e) => console.warn('Alert-mail fejlede:', e.message))
+      }
 
       // Send email-notifikation
       await sendOrderNotification({

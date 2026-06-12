@@ -1142,9 +1142,12 @@ export async function getItemsByNumbers(numbers: string[]): Promise<BCItem[]> {
 // ─── Opret salgsordre i BC ───────────────────────────────────────────────────
 
 export interface BCCreateOrderResult {
-  id:         string    // BC ordre GUID
-  number:     string    // BC ordrenummer (f.eks. "SO-1234")
-  lineErrors?: string[] // linjefejl (ordre er oprettet men nogle linjer fejlede)
+  id:           string    // BC ordre GUID
+  number:       string    // BC ordrenummer (f.eks. "SO-1234")
+  lineErrors?:  string[]  // linjefejl (ordre er oprettet men nogle linjer fejlede)
+  verified:     boolean   // true hvis post-create GET bekraeftede header + alle linjer i BC
+  verifyError?: string    // udfyldt hvis verified=false (forklaring til fejl-mail)
+  bcLineCount?: number    // antal linjer faktisk fundet i BC efter GET
 }
 
 /**
@@ -1222,10 +1225,39 @@ export async function createBCSalesOrder(
     }
   }
 
+  // 3. Verifikation: GET ordren tilbage fra BC og taeller linjer der faktisk er der.
+  //    Bekraefter at POST'erne ikke bare returnerede 201 uden at gemme i databasen.
+  let verified = false
+  let verifyError: string | undefined
+  let bcLineCount: number | undefined
+  try {
+    const verifyRes = await fetch(
+      `${stdBase}/salesOrders(${orderId})/salesOrderLines?$select=id&$top=500`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
+    )
+    if (!verifyRes.ok) {
+      verifyError = `GET salesOrderLines fejlede (HTTP ${verifyRes.status}): ${await verifyRes.text()}`
+    } else {
+      const verifyBody = await verifyRes.json()
+      bcLineCount = Array.isArray(verifyBody.value) ? verifyBody.value.length : 0
+      const expected = lines.length - lineErrors.length // hvad VI forventer naar linje-fejl traekkes fra
+      if (bcLineCount < expected) {
+        verifyError = `Forventede ${expected} linje(r) i BC, fandt kun ${bcLineCount}`
+      } else {
+        verified = true
+      }
+    }
+  } catch (e: any) {
+    verifyError = `Verifikations-GET kastede: ${e?.message ?? String(e)}`
+  }
+
   return {
     id:     orderId,
     number: order.number ?? orderId,
-    ...(lineErrors.length > 0 && { lineErrors }),
+    verified,
+    ...(verifyError ? { verifyError } : {}),
+    ...(bcLineCount !== undefined ? { bcLineCount } : {}),
+    ...(lineErrors.length > 0 ? { lineErrors } : {}),
   }
 }
 

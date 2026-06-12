@@ -270,3 +270,64 @@ export async function sendOrderNotification(data: OrderEmailData) {
     html,
   })
 }
+
+// ─── BC-verifikations-alarm ───────────────────────────────────────────────────
+// Sendes når portalens efter-POST GET ikke kunne bekræfte at ordren faktisk
+// er gemt i BC. Visuelt mere skrigende end den normale notifikation.
+
+interface VerificationAlertData {
+  customer:       { name: string; bcCustomerNumber: string }
+  portalOrderId:  string
+  bcOrderNumber?: string
+  expected:       number   // antal linjer portalen forsoegte at oprette
+  actual?:        number   // antal linjer der faktisk laa i BC ved GET (undefined hvis GET fejlede)
+  reason:         string   // teknisk forklaring til logging
+}
+
+export async function sendBCVerificationAlert(data: VerificationAlertData) {
+  const transporter = createTransporter()
+  const to = process.env.NOTIFICATION_EMAIL ?? 'fisk@venmark.dk'
+  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'no-reply@venmark.dk'
+  const subject = `🚨 BC-VERIFIKATION FEJLEDE — ${data.customer.name} (portal-ordre ${data.portalOrderId})`
+
+  const html = `
+<!DOCTYPE html>
+<html lang="da">
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;padding:0;background:#fff5f5;font-family:system-ui,sans-serif">
+  <div style="max-width:640px;margin:32px auto;background:white;border:3px solid #dc2626;border-radius:12px;overflow:hidden">
+
+    <div style="background:#dc2626;padding:24px 32px;color:white">
+      <div style="font-size:32px;font-weight:900;letter-spacing:-0.5px">🚨 BC-VERIFIKATION FEJLEDE</div>
+      <div style="margin-top:6px;font-size:16px;opacity:0.95">Portal-ordren er sendt til BC, men kunne IKKE bekræftes efterfølgende.</div>
+    </div>
+
+    <div style="padding:24px 32px">
+      <p style="font-size:18px;color:#dc2626;font-weight:700;margin-top:0">Tjek BC manuelt — ordren mangler muligvis linjer eller findes slet ikke.</p>
+
+      <table style="width:100%;margin:18px 0;border-collapse:collapse">
+        <tr><td style="padding:6px 12px 6px 0;color:#666;width:160px">Kunde</td><td style="padding:6px 0;font-weight:600">${data.customer.name} (#${data.customer.bcCustomerNumber})</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:#666">Portal-ordre ID</td><td style="padding:6px 0;font-family:monospace;font-size:13px">${data.portalOrderId}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:#666">BC ordrenr.</td><td style="padding:6px 0;font-weight:600">${data.bcOrderNumber ?? '<i style="color:#dc2626">ukendt</i>'}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:#666">Linjer forventet</td><td style="padding:6px 0;font-weight:600">${data.expected}</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:#666">Linjer i BC</td><td style="padding:6px 0;font-weight:700;color:#dc2626">${data.actual ?? '<i>GET fejlede</i>'}</td></tr>
+      </table>
+
+      <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:12px 16px;margin:18px 0;font-family:monospace;font-size:13px;color:#7f1d1d">${data.reason}</div>
+
+      <p style="margin-top:20px;color:#666;font-size:13px">
+        Genfinde ordren i BC: søg på Eksterne Dokumentnr. = <b>${data.portalOrderId}</b> eller BC-nummeret hvis det er kendt.<br>
+        Hvis ordren mangler helt: genoptag via portalens admin → Ordrer → Godkend.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`
+
+  if (!transporter) {
+    console.error(`[BC VERIFY ALERT] ${subject}\n${data.reason}`)
+    return
+  }
+  await transporter.sendMail({ from, to, subject, html })
+}
+
