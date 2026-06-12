@@ -261,28 +261,37 @@ function resolvePrice(
   itemNo: string, qty: number, tiers: PriceTier[], fallback: number,
   uomCode?: string, qtyPerUom = 1, baseUomCode?: string,
 ): number {
-  if (!tiers.length || qty <= 0) return fallback
+  if (!tiers.length) return fallback
   const today = new Date().toISOString().split('T')[0]
 
   const isBaseUnit = !uomCode || uomCode === baseUomCode || qtyPerUom <= 1
 
-  // ── 1. Direkte priser for den valgte enhed ──────────────────────────────────
-  const directTiers = tiers.filter(t =>
+  // Alle gyldige tiers for varen (uafhængigt af qty) — bruges som vis-pris-pulje
+  // når qty=0 eller under mindste tier-minimum.
+  const validTiers = tiers.filter(t =>
     t.itemNo === itemNo &&
-    t.minimumQuantity <= qty &&
     (isBaseUnit
-      // For base-enhed: acceptér tiers uden enhed ELLER med base-enhed
       ? (!t.unitOfMeasure || !uomCode || t.unitOfMeasure === uomCode)
-      // For anden enhed: skal matche præcist
       : t.unitOfMeasure === uomCode) &&
     (!t.startingDate || t.startingDate <= today) &&
     (!t.endingDate   || t.endingDate.startsWith('0001') || t.endingDate   >= today),
   )
+
+  // ── 1. Direkte priser for den valgte enhed ──────────────────────────────────
+  const directTiers = validTiers.filter(t => t.minimumQuantity <= qty)
   if (directTiers.length) return Math.min(...directTiers.map(t => t.unitPrice))
 
-  // ── 2. Fallback: base-enhedspriser × konverteringsfaktor ───────────────────
+  // ── 2. qty=0 eller under mindste minimum: vis prisen for mindste minimum ──
+  // (så kunden ser den "fra-pris" varen kan opnås til, ikke 999 system-pris)
+  if (validTiers.length) {
+    const lowestMin = Math.min(...validTiers.map(t => t.minimumQuantity))
+    const tiersAtLowestMin = validTiers.filter(t => t.minimumQuantity === lowestMin)
+    return Math.min(...tiersAtLowestMin.map(t => t.unitPrice))
+  }
+
+  // ── 3. Fallback: base-enhedspriser × konverteringsfaktor ───────────────────
   if (!isBaseUnit && qtyPerUom > 1) {
-    const effectiveBaseQty = qty * qtyPerUom
+    const effectiveBaseQty = Math.max(qty, 1) * qtyPerUom
     const baseTiers = tiers.filter(t =>
       t.itemNo === itemNo &&
       t.minimumQuantity <= effectiveBaseQty &&

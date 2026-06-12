@@ -23,7 +23,7 @@ export async function GET() {
       client_secret: process.env.BC_CLIENT_SECRET ?? '',
       scope:         'https://api.businesscentral.dynamics.com/.default',
     })
-    const res = await fetch(tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
+    const res = await fetch(tokenUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, cache: 'no-store' } as any)
     const data = await res.json()
     if (res.ok && data.access_token) {
       tokenOk = true
@@ -37,10 +37,11 @@ export async function GET() {
 
   // Trin 2: list companies (kræver ikke company-ID)
   let companiesResult: any = null
+  let companiesUrlUsed = ''
   if (tokenOk) {
     try {
-      const companiesUrl = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies`
-      const res = await fetch(companiesUrl, {
+      companiesUrlUsed = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/v2.0/companies`
+      const res = await fetch(companiesUrlUsed, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         cache: 'no-store',
       } as any)
@@ -48,6 +49,7 @@ export async function GET() {
       let parsed: any = null
       try { parsed = JSON.parse(text) } catch {}
       companiesResult = {
+        urlUsed: companiesUrlUsed,
         status: res.status,
         companies: parsed?.value?.map((c: any) => ({ id: c.id, name: c.name })) ?? null,
         error: res.ok ? null : text,
@@ -94,8 +96,15 @@ export async function GET() {
     }
   }
 
+  const secretRaw = process.env.BC_CLIENT_SECRET ?? ''
   return NextResponse.json({
-    config: { tenant, clientId, env, company, hasSecret },
+    config: { tenant, clientId, env, company, hasSecret,
+      secretLength: secretRaw.length,
+      secretFirst5: secretRaw.substring(0, 5),
+      secretLast3: secretRaw.substring(secretRaw.length - 3),
+      tokenFirst30: token.substring(0, 30),
+      tokenLength: token.length,
+    },
     step1_token: { ok: tokenOk, error: tokenError },
     step2_companies: companiesResult,
     step3_companyById: companyTest,
