@@ -47,6 +47,7 @@ interface StandingOrderData {
 
 interface Props {
   promotions:        { item: EnrichedItem; note: string }[]
+  stdFavorites?:     EnrichedItem[]
   favorites:         EnrichedItem[]
   venmarkItems?:     { item: EnrichedItem; note: string }[]
   standingOrders?:   StandingOrderData[]
@@ -957,7 +958,7 @@ function DeliveryPicker({
 // ─── Hoved-komponent ──────────────────────────────────────────────────────────
 
 export default function OrderList({
-  promotions, favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
+  promotions, stdFavorites = [], favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
   requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities = {},
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
   estimatedPrices = {} as Record<string, number>,
@@ -1286,23 +1287,19 @@ export default function OrderList({
   const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
 
   const promoNos    = new Set(promotions.map(p => p.item.number))
-  const favNos      = new Set(favorites.map(f => f.number))
+  const stdFavNos   = new Set(stdFavorites.map(f => f.number))
+  // favNos dækker BÅDE STD og almindelige favoritter — bruges andre steder til "er denne række en favorit"
+  const favNos      = new Set<string>([...stdFavNos, ...favorites.map(f => f.number)])
   const venmarkNos  = new Set(venmarkItems.map(v => v.item.number))
   const standingNos = new Set(standingOrders.map(s => s.item.number))
 
-  // Flettet liste: favoritter + Venmark-anbefalede, dedupliceret og sorteret efter varenummer
-  const mergedFavVenmark = (() => {
-    type MEntry = { item: EnrichedItem; isVenmark: boolean; vNote: string }
-    const mm = new Map<string, MEntry>()
-    for (const f of favorites.filter(f => !promoNos.has(f.number)))
-      mm.set(f.number, { item: f, isVenmark: false, vNote: '' })
-    for (const { item, note } of venmarkItems.filter(v => !promoNos.has(v.item.number))) {
-      const e = mm.get(item.number)
-      if (e) { e.isVenmark = true; e.vNote = note }
-      else mm.set(item.number, { item, isVenmark: true, vNote: note })
-    }
-    return Array.from(mm.values()).sort((a, b) => a.item.number.localeCompare(b.item.number))
-  })()
+  // Tre adskilte sektioner — hver vare vises kun i sin højest-prioriterede sektion.
+  // STD > Kundens favoritter > Venmark anbefaler. Ingen sortering/fletning på tværs.
+  // Promo-varer udelades fra alle tre sektioner (de har deres egen Hot-sektion).
+  const stdFavSection      = stdFavorites.filter(f => !promoNos.has(f.number))
+  const customerFavSection = favorites.filter(f => !promoNos.has(f.number) && !stdFavNos.has(f.number))
+  const venmarkSection     = venmarkItems
+    .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number))
 
   // ── Katalog-navigation ───────────────────────────────────────────────────────
   const catTree        = useMemo(() => buildCatTree(allCategories), [allCategories])
@@ -1611,19 +1608,77 @@ export default function OrderList({
           </div>
         )}
 
-        {/* Favoritter & Venmark-anbefalede — flettet og sorteret efter varenummer */}
-        {!isCatalogMode && mergedFavVenmark.length > 0 && (
+        {/* STD-favoritter — allerøverst (Standard Favorite = true på BC) */}
+        {!isCatalogMode && stdFavSection.length > 0 && (
           <>
-            <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
-              <Heart size={10} className="text-red-300" /> Favoritter &amp; anbefalede
+            <div className="px-3 py-1 bg-amber-50 border-y border-amber-100 text-[10px] font-semibold uppercase tracking-wide text-amber-700 flex items-center gap-1">
+              <span className="text-[11px]">✪</span> STD — varer du altid skal have
             </div>
             <div className="divide-y divide-blue-200">
-              {mergedFavVenmark.map(({ item, isVenmark, vNote }) => (
+              {stdFavSection.map((item) => (
                 <OrderRow
-                  key={`favvenmark-${item.number}`}
+                  key={`std-${item.number}`}
                   item={item} quantity={getQty(item.number)}
                   onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
-                  isVenmark={isVenmark} venmarkNote={vNote}
+                  isVenmark={false} venmarkNote=""
+                  isStandingOrder={standingNos.has(item.number)}
+                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                  onOpenDetail={() => setDetailItem(item)}
+                  unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                  blockedLabel={rowAvailStatus(item.number).blockLabel}
+                  disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                  disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  infoNote={rowInfoNote(item.number)}
+                  estimatedPrice={estimatedPrices[item.number]}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Kundens egne favoritter — næst øverst (Standard Favorite = false) */}
+        {!isCatalogMode && customerFavSection.length > 0 && (
+          <>
+            <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1">
+              <Heart size={10} className="text-red-400" /> Dine favoritter
+            </div>
+            <div className="divide-y divide-blue-200">
+              {customerFavSection.map((item) => (
+                <OrderRow
+                  key={`fav-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isVenmark={false} venmarkNote=""
+                  isStandingOrder={standingNos.has(item.number)}
+                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                  onOpenDetail={() => setDetailItem(item)}
+                  unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                  blockedLabel={rowAvailStatus(item.number).blockLabel}
+                  disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                  disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  infoNote={rowInfoNote(item.number)}
+                  estimatedPrice={estimatedPrices[item.number]}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Venmark anbefaler — nederst (SaelgForH på BC) */}
+        {!isCatalogMode && venmarkSection.length > 0 && (
+          <>
+            <div className="px-3 py-1 bg-blue-50 border-y border-blue-100 text-[10px] font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1">
+              <span className="text-[11px]">⭐</span> Venmark anbefaler
+            </div>
+            <div className="divide-y divide-blue-200">
+              {venmarkSection.map(({ item, note }) => (
+                <OrderRow
+                  key={`venmark-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isVenmark={true} venmarkNote={note}
                   isStandingOrder={standingNos.has(item.number)}
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}

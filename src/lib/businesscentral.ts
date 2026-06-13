@@ -556,14 +556,15 @@ export function resolvePrice(
 // ─── Hent favoritvarer via Sales-warehouse-facade API (tabel 50157) ──────────
 
 export interface BCCustomerFavorite {
-  customerNo:      string
-  lineNo:          number
-  itemNo:          string
-  description:     string
-  defaultQuantity: number
-  unitOfMeasure:   string
-  sortOrder:       number
-  active:          boolean
+  customerNo:       string
+  lineNo:           number
+  itemNo:           string
+  description:      string
+  defaultQuantity:  number
+  unitOfMeasure:    string
+  sortOrder:        number
+  active:           boolean
+  standardFavorite: boolean
 }
 
 /**
@@ -593,14 +594,15 @@ export async function getCustomerFavorites(customerNo: string): Promise<BCCustom
     }
 
     return allItems.map((f: any) => ({
-      customerNo:      f.customerNo ?? '',
-      lineNo:          f.lineNo ?? 0,
-      itemNo:          f.itemNo ?? '',
-      description:     f.description ?? '',
-      defaultQuantity: f.defaultQuantity ?? 1,
-      unitOfMeasure:   f.unitOfMeasure ?? '',
-      sortOrder:       f.sortOrder ?? f.lineNo ?? 0,
-      active:          f.active !== false,
+      customerNo:       f.customerNo ?? '',
+      lineNo:           f.lineNo ?? 0,
+      itemNo:           f.itemNo ?? '',
+      description:      f.description ?? '',
+      defaultQuantity:  f.defaultQuantity ?? 1,
+      unitOfMeasure:    f.unitOfMeasure ?? '',
+      sortOrder:        f.sortOrder ?? f.lineNo ?? 0,
+      active:           f.active !== false,
+      standardFavorite: f.standardFavorite === true,
     }))
   } catch { return [] }
 }

@@ -77,11 +77,27 @@ export default async function BestilPage() {
   // ── Favoritter: BC tabel 50157 er eneste master ──
   // Portalen læser KUN fra BC tabel 50157. Portal DB bruges kun til optimistiske writes (❤️-klik).
   // Fallback til portal DB hvis BC er utilgængeligt (bcStandardLines er tom pga. catch(() => [])).
-  const bcStandardNos = new Set(bcStandardLines.map(l => l.itemNo))
-  const dbFavNos      = new Set(dbFavRows.map(f => f.bcItemNumber))
-  const favSource     = bcStandardNos.size > 0 ? bcStandardNos : dbFavNos
-  const allFavNos     = Array.from(favSource)
-    .filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n))
+  // STD-favoritter (Standard Favorite = true) vises øverst som egen sektion.
+  const filterableFav = (n: string) =>
+    !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n)
+
+  const bcStdLines      = bcStandardLines.filter(l => l.standardFavorite)
+  const bcRegularLines  = bcStandardLines.filter(l => !l.standardFavorite)
+  const bcStdNos        = new Set(bcStdLines.map(l => l.itemNo))
+  const bcRegularNos    = new Set(bcRegularLines.map(l => l.itemNo))
+  const dbFavNos        = new Set(dbFavRows.map(f => f.bcItemNumber))
+
+  // STD-favoritter findes kun i BC (portal DB har ikke STD-flaget endnu)
+  const stdFavNos       = Array.from(bcStdNos).filter(filterableFav)
+  // Almindelige favoritter: BC først, ellers DB (uden dem der er STD)
+  const customerFavSrc  = bcRegularNos.size > 0 || bcStdNos.size > 0 ? bcRegularNos : dbFavNos
+  const customerFavNos  = Array.from(customerFavSrc)
+    .filter(n => !bcStdNos.has(n) && filterableFav(n))
+
+  // Bagudkompatibilitet — allFavNos bruges flere steder til "denne vare er en favorit" (uden STD-skel)
+  const allFavNos       = [...stdFavNos, ...customerFavNos]
+  const stdFavSet       = new Set(stdFavNos)
+  const customerFavSet  = new Set(customerFavNos)
 
   const promoNumbers = promoRows
     .map((p) => p.bcItemNumber)
@@ -151,14 +167,21 @@ export default async function BestilPage() {
     .map((p) => ({ item: itemMap.get(p.bcItemNumber), note: p.note ?? '' }))
     .filter((p) => p.item != null) as { item: NonNullable<ReturnType<typeof itemMap.get>>; note: string }[]
 
-  const favorites = allFavNos
+  // STD-favoritter (allerøverst — Standard Favorite = true på BC)
+  const stdFavorites = stdFavNos
     .map((n) => itemMap.get(n))
     .filter(Boolean) as NonNullable<ReturnType<typeof itemMap.get>>[]
 
-  // Venmark-anbefalede varer fra BC felt 50008 — ikke vist hvis allerede i favoritter eller promos
-  const allFavSet  = new Set(allFavNos)
+  // Kundens egne favoritter — kun dem der IKKE er STD (de er allerede i stdFavorites)
+  const favorites = customerFavNos
+    .map((n) => itemMap.get(n))
+    .filter(Boolean) as NonNullable<ReturnType<typeof itemMap.get>>[]
+
+  // Venmark-anbefalede (SaelgForH) — kun dem der IKKE allerede er STD eller kundens favorit.
+  // Sikrer at hver vare kun vises én gang på siden, i sin højest-prioriterede sektion.
+  const promoNoSet = new Set(promoRows.map(p => p.bcItemNumber))
   const venmarkItems = Array.from(venmarkNos)
-    .filter(n => !promoRows.some(p => p.bcItemNumber === n)) // ikke promo
+    .filter(n => !stdFavSet.has(n) && !customerFavSet.has(n) && !promoNoSet.has(n))
     .map(n => ({ item: itemMap.get(n), note: '' }))
     .filter(p => p.item != null) as { item: NonNullable<ReturnType<typeof itemMap.get>>; note: string }[]
 
@@ -237,6 +260,7 @@ export default async function BestilPage() {
 
       <OrderList
         promotions={promotions as any}
+        stdFavorites={stdFavorites as any}
         favorites={favorites as any}
         venmarkItems={venmarkItems as any}
         standingOrders={standingOrders as any}
