@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Plus, Minus, Trash2, ArrowLeft, CheckCircle2, Heart } from 'lucide-react'
+import { Search, Minus, Plus, Trash2, ArrowLeft, CheckCircle2, Heart } from 'lucide-react'
+import { OrderRow } from '@/components/portal/OrderList'
+import type { EnrichedItem, PriceTier } from '@/components/portal/OrderList'
 
-interface LineItem {
+interface BasketLine {
   bcItemNumber: string
   itemName:     string
   quantity:     number
@@ -12,37 +14,78 @@ interface LineItem {
   unitPrice:    number
 }
 
-interface Item {
-  number:                string
-  displayName:           string
-  baseUnitOfMeasureCode: string
-  unitPrice:             number
-}
-
 interface Props {
-  orderId:         string
-  bcOrderNumber?:  string
-  deliveryLabel:   string
-  deadline:        string
-  stdFavorites?:   Item[]
-  favorites?:      Item[]
-  venmarkItems?:   Item[]
+  orderId:             string
+  bcOrderNumber?:      string
+  deliveryLabel:       string
+  deadline:            string
+  stdFavorites?:       EnrichedItem[]
+  favorites?:          EnrichedItem[]
+  venmarkItems?:       { item: EnrichedItem; note: string }[]
+  priceTiers?:         PriceTier[]
+  initialFavNos?:      string[]
+  itemAvailabilities?: Record<string, any>
 }
-
-const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' })
 
 export default function AddLinesClient({
   orderId, bcOrderNumber, deliveryLabel,
   stdFavorites = [], favorites = [], venmarkItems = [],
+  priceTiers = [], initialFavNos = [],
 }: Props) {
   const router = useRouter()
   const [query,   setQuery]   = useState('')
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [basket,  setBasket]  = useState<LineItem[]>([])
-  const [saving,  setSaving]  = useState(false)
-  const [done,    setDone]    = useState(false)
-  const [error,   setError]   = useState('')
+
+  // Lokal kurv per varenr
+  const [qtyMap,    setQtyMap]    = useState<Map<string, number>>(new Map())
+  const [uomMap,    setUomMap]    = useState<Map<string, string>>(new Map())
+  const [saving,    setSaving]    = useState(false)
+  const [done,      setDone]      = useState(false)
+  const [error,     setError]     = useState('')
+
+  const favSet = new Set(initialFavNos)
+
+  function getQty(itemNo: string) { return qtyMap.get(itemNo) ?? 0 }
+  function setQty(item: EnrichedItem, qty: number) {
+    setQtyMap(prev => {
+      const next = new Map(prev)
+      if (qty <= 0) next.delete(item.number)
+      else          next.set(item.number, qty)
+      return next
+    })
+    if (!uomMap.has(item.number)) {
+      setUomMap(prev => {
+        const next = new Map(prev)
+        next.set(item.number, item.baseUnitOfMeasureCode)
+        return next
+      })
+    }
+  }
+  function setLineUom(item: EnrichedItem, code: string) {
+    setUomMap(prev => {
+      const next = new Map(prev)
+      next.set(item.number, code)
+      return next
+    })
+  }
+
+  // Søgeresultat → tilføj qty=1
+  function addSearchResult(item: { number: string; displayName: string; baseUnitOfMeasureCode?: string; unitPrice?: number }) {
+    const itemNo = item.number
+    setQtyMap(prev => {
+      const next = new Map(prev)
+      next.set(itemNo, (next.get(itemNo) ?? 0) + 1)
+      return next
+    })
+    if (!uomMap.has(itemNo)) {
+      setUomMap(prev => {
+        const next = new Map(prev)
+        next.set(itemNo, item.baseUnitOfMeasureCode ?? 'KG')
+        return next
+      })
+    }
+  }
 
   async function search(q: string) {
     setQuery(q)
@@ -57,31 +100,33 @@ export default function AddLinesClient({
     }
   }
 
-  function addToBasket(item: { number: string; displayName: string; baseUnitOfMeasureCode?: string; unitPrice?: number }) {
-    setBasket((prev) => {
-      const existing = prev.find((l) => l.bcItemNumber === item.number)
-      if (existing) {
-        return prev.map((l) => l.bcItemNumber === item.number ? { ...l, quantity: l.quantity + 1 } : l)
-      }
-      return [...prev, {
-        bcItemNumber: item.number,
-        itemName:     item.displayName,
-        quantity:     1,
-        uom:          item.baseUnitOfMeasureCode ?? 'KG',
-        unitPrice:    item.unitPrice ?? 0,
-      }]
-    })
-  }
+  // Saml kurven til submit
+  function buildBasket(): BasketLine[] {
+    // Index alle items vi har EnrichedItem-data på
+    const itemIndex = new Map<string, EnrichedItem>()
+    for (const i of stdFavorites) itemIndex.set(i.number, i)
+    for (const i of favorites)    itemIndex.set(i.number, i)
+    for (const v of venmarkItems) itemIndex.set(v.item.number, v.item)
 
-  function setQty(itemNumber: string, qty: number) {
-    if (qty <= 0) {
-      setBasket((prev) => prev.filter((l) => l.bcItemNumber !== itemNumber))
-    } else {
-      setBasket((prev) => prev.map((l) => l.bcItemNumber === itemNumber ? { ...l, quantity: qty } : l))
+    const lines: BasketLine[] = []
+    for (const [itemNo, qty] of qtyMap) {
+      if (qty <= 0) continue
+      const item = itemIndex.get(itemNo)
+      const fromSearch = results.find(r => r.number === itemNo)
+      const uom = uomMap.get(itemNo) ?? (item?.baseUnitOfMeasureCode ?? fromSearch?.baseUnitOfMeasureCode ?? 'KG')
+      lines.push({
+        bcItemNumber: itemNo,
+        itemName:     item?.displayName ?? fromSearch?.displayName ?? itemNo,
+        quantity:     qty,
+        uom,
+        unitPrice:    item?.unitPrice ?? fromSearch?.unitPrice ?? 0,
+      })
     }
+    return lines
   }
 
   async function submit() {
+    const basket = buildBasket()
     if (!basket.length) return
     setSaving(true)
     setError('')
@@ -114,32 +159,7 @@ export default function AddLinesClient({
     )
   }
 
-  // ── Én række ──────────────────────────────────────────────────────────────
-  function Row({ item, kind }: { item: Item; kind: 'std' | 'fav' | 'venmark' }) {
-    const inBasket = basket.find((l) => l.bcItemNumber === item.number)
-    return (
-      <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-        <div className="min-w-0 flex-1 flex items-center gap-2">
-          {kind === 'std'     && <span className="text-amber-500 text-base leading-none shrink-0">✪</span>}
-          {kind === 'venmark' && <span className="text-blue-500 text-base leading-none shrink-0">⭐</span>}
-          <span className="font-mono text-xs text-gray-400">{item.number}</span>
-          <span className="text-gray-800 truncate">{item.displayName}</span>
-        </div>
-        <div className="ml-3 shrink-0 flex items-center gap-2">
-          {item.unitPrice > 0 && (
-            <span className="text-xs text-gray-400">{fmt.format(item.unitPrice)}</span>
-          )}
-          {inBasket && <span className="text-xs text-blue-600 font-medium">+{inBasket.quantity}</span>}
-          <button
-            onClick={() => addToBasket(item)}
-            className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white hover:bg-blue-700"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-      </div>
-    )
-  }
+  const basketLines = buildBasket()
 
   return (
     <div className="space-y-4">
@@ -169,11 +189,10 @@ export default function AddLinesClient({
         />
       </div>
 
-      {/* Søgeresultater */}
       {results.length > 0 && (
         <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-50">
           {results.map((item) => {
-            const inBasket = basket.find((l) => l.bcItemNumber === item.number)
+            const qty = getQty(item.number)
             return (
               <div key={item.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
                 <div className="min-w-0 flex-1">
@@ -182,11 +201,13 @@ export default function AddLinesClient({
                 </div>
                 <div className="ml-3 shrink-0 flex items-center gap-2">
                   {item.unitPrice > 0 && (
-                    <span className="text-xs text-gray-400">{fmt.format(item.unitPrice)}</span>
+                    <span className="text-xs text-gray-400">
+                      {new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(item.unitPrice)}
+                    </span>
                   )}
-                  {inBasket && <span className="text-xs text-blue-600 font-medium">+{inBasket.quantity}</span>}
+                  {qty > 0 && <span className="text-xs text-blue-600 font-medium">+{qty}</span>}
                   <button
-                    onClick={() => addToBasket(item)}
+                    onClick={() => addSearchResult(item)}
                     className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white hover:bg-blue-700"
                   >
                     <Plus size={14} />
@@ -197,72 +218,93 @@ export default function AddLinesClient({
           })}
         </div>
       )}
-
       {loading && <p className="text-center text-sm text-gray-400">Søger...</p>}
 
-      {/* STD-favoritter — allerøverst */}
-      {stdFavorites.length > 0 && (
-        <div className="space-y-1">
-          <div className="px-3 py-1.5 bg-amber-100 border-y-2 border-amber-300 text-xs font-bold uppercase tracking-wide text-amber-900 flex items-center gap-1.5 rounded-t-xl">
-            <span className="text-base leading-none">✪</span> STD — varer du altid skal have
-          </div>
-          <div className="rounded-b-xl bg-amber-50/40 ring-1 ring-amber-100 divide-y divide-amber-100">
-            {stdFavorites.map((item) => <Row key={`std-${item.number}`} item={item} kind="std" />)}
-          </div>
-        </div>
-      )}
+      <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+        {/* STD-favoritter */}
+        {stdFavorites.length > 0 && (
+          <>
+            <div className="px-3 py-1.5 bg-amber-100 border-y-2 border-amber-300 text-xs font-bold uppercase tracking-wide text-amber-900 flex items-center gap-1.5">
+              <span className="text-base leading-none">✪</span> STD — varer du altid skal have
+            </div>
+            <div className="divide-y divide-amber-100 bg-amber-50/40">
+              {stdFavorites.map((item) => (
+                <OrderRow
+                  key={`std-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isFavorite={favSet.has(item.number)}
+                  selectedUom={uomMap.get(item.number)}
+                  onUomChange={code => setLineUom(item, code)}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
-      {/* Almindelige favoritter */}
-      {favorites.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5 px-1">
-            <Heart size={12} className="text-red-400" /> Dine favoritter
-          </p>
-          <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-50">
-            {favorites.map((item) => <Row key={`fav-${item.number}`} item={item} kind="fav" />)}
-          </div>
-        </div>
-      )}
+        {/* Almindelige favoritter */}
+        {favorites.length > 0 && (
+          <>
+            <div className="px-3 py-1.5 bg-rose-100 border-y-2 border-rose-300 text-xs font-bold uppercase tracking-wide text-rose-900 flex items-center gap-1.5">
+              <Heart size={13} className="text-rose-600 fill-rose-600" /> Dine favoritter
+            </div>
+            <div className="divide-y divide-blue-200">
+              {favorites.map((item) => (
+                <OrderRow
+                  key={`fav-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isFavorite={favSet.has(item.number)}
+                  selectedUom={uomMap.get(item.number)}
+                  onUomChange={code => setLineUom(item, code)}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
-      {/* Venmark anbefaler */}
-      {venmarkItems.length > 0 && (
-        <div className="space-y-1">
-          <div className="px-3 py-1.5 bg-blue-50 border-y border-blue-100 text-xs font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1.5 rounded-t-xl">
-            <span className="text-base leading-none">⭐</span> Venmark anbefaler
-          </div>
-          <div className="rounded-b-xl bg-white ring-1 ring-blue-100 divide-y divide-gray-50">
-            {venmarkItems.map((item) => <Row key={`ven-${item.number}`} item={item} kind="venmark" />)}
-          </div>
-        </div>
-      )}
+        {/* Venmark anbefaler */}
+        {venmarkItems.length > 0 && (
+          <>
+            <div className="px-3 py-1 bg-blue-50 border-y border-blue-100 text-[10px] font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1">
+              <span className="text-[11px]">⭐</span> Venmark anbefaler
+            </div>
+            <div className="divide-y divide-blue-200">
+              {venmarkItems.map(({ item, note }) => (
+                <OrderRow
+                  key={`ven-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isVenmark={true} venmarkNote={note}
+                  isFavorite={favSet.has(item.number)}
+                  selectedUom={uomMap.get(item.number)}
+                  onUomChange={code => setLineUom(item, code)}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
-      {/* Kurv */}
-      {basket.length > 0 && (
-        <div className="space-y-2">
+        {stdFavorites.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && (
+          <p className="text-center text-sm text-gray-400 py-8">Ingen varer at vise — alt fra dine favoritter er allerede på ordren.</p>
+        )}
+      </div>
+
+      {/* Kurv-oversigt + submit */}
+      {basketLines.length > 0 && (
+        <div className="space-y-2 sticky bottom-2">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Tilføjes</p>
           <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-50">
-            {basket.map((line) => (
+            {basketLines.map((line) => (
               <div key={line.bcItemNumber} className="flex items-center justify-between px-4 py-2 text-sm">
                 <div className="min-w-0 flex-1">
                   <span className="mr-2 font-mono text-xs text-gray-400">{line.bcItemNumber}</span>
                   <span className="text-gray-800">{line.itemName}</span>
                 </div>
                 <div className="ml-3 shrink-0 flex items-center gap-1">
-                  <button onClick={() => setQty(line.bcItemNumber, line.quantity - 1)} className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
-                    <Minus size={11} />
-                  </button>
-                  <input
-                    type="number"
-                    value={line.quantity}
-                    min={1}
-                    onChange={(e) => setQty(line.bcItemNumber, Number(e.target.value))}
-                    className="w-12 text-center text-sm border border-gray-200 rounded-lg py-0.5"
-                  />
-                  <button onClick={() => setQty(line.bcItemNumber, line.quantity + 1)} className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
-                    <Plus size={11} />
-                  </button>
-                  <span className="ml-1 text-xs text-gray-400 w-6">{line.uom}</span>
-                  <button onClick={() => setQty(line.bcItemNumber, 0)} className="ml-1 text-gray-300 hover:text-red-400">
+                  <span className="text-xs text-gray-700 font-medium">{line.quantity}</span>
+                  <span className="ml-1 text-xs text-gray-400 w-8">{line.uom}</span>
+                  <button onClick={() => setQtyMap(prev => { const n = new Map(prev); n.delete(line.bcItemNumber); return n })} className="ml-1 text-gray-300 hover:text-red-400">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -277,7 +319,7 @@ export default function AddLinesClient({
             disabled={saving}
             className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {saving ? 'Tilføjer...' : `Tilføj ${basket.length} ${basket.length === 1 ? 'vare' : 'varer'} til ordren`}
+            {saving ? 'Tilføjer...' : `Tilføj ${basketLines.length} ${basketLines.length === 1 ? 'vare' : 'varer'} til ordren`}
           </button>
         </div>
       )}

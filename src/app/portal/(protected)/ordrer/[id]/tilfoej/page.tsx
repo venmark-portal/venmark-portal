@@ -4,9 +4,10 @@ import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import {
   getPortalPrices, getItemsByNumbers, getCustomerFavorites,
-  getItemCutoffs, getWebshopVisibleItemNos,
+  getItemCutoffs, getWebshopVisibleItemNos, getItemsAttributeValues, getItemsUoMs,
+  getItemAvailabilities,
 } from '@/lib/businesscentral'
-import type { BCPortalPrice } from '@/lib/businesscentral'
+import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import AddLinesClient from './AddLinesClient'
 
 export const dynamic = 'force-dynamic'
@@ -46,13 +47,14 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
   const today8601 = new Date().toISOString().split('T')[0]
 
   // ── Hent samme data som bestil-siden parallelt ──
-  const [portalPrices, blockedRows, bcStandardLines, dbFavRows, itemCutoffs, webshopVisible] = await Promise.all([
+  const [portalPrices, blockedRows, bcStandardLines, dbFavRows, itemCutoffs, webshopVisible, itemAvailabilities] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId } }),
     getCustomerFavorites(customerNo).catch(() => []),
     prisma.favorite.findMany({ where: { customerId } }),
     getItemCutoffs().catch(() => new Map()),
     getWebshopVisibleItemNos().catch(() => null),
+    getItemAvailabilities().catch(() => new Map()),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -81,49 +83,87 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
     .map(([itemNo]) => itemNo)
     .filter(n => !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n))
 
-  // Saml alle numre vi skal hente varekort for (minus dem der allerede er på ordren)
-  const allNumbers = Array.from(new Set([...stdFavNos, ...customerFavNos, ...venmarkNosAll]))
+  const allFavNos = [...stdFavNos, ...customerFavNos]
+  const allNumbers = Array.from(new Set([...allFavNos, ...venmarkNosAll]))
     .filter(n => !existingNos.has(n))
 
+  // ── Hent varekortdetaljer + attributter + enheder fra BC parallelt (samme som bestil) ─────
   const bcItems = await getItemsByNumbers(allNumbers)
-  const itemMap = new Map(
-    bcItems.map((item) => [
-      item.number,
-      {
-        number:                item.number,
-        displayName:           item.displayName,
-        baseUnitOfMeasureCode: item.baseUnitOfMeasureCode,
-        unitPrice:             startPrice(item.number, portalPrices, today8601) ?? item.unitPrice,
-      },
-    ]),
-  )
+  const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
+  const [attrMap, uomMap] = await Promise.all([
+    getItemsAttributeValues(itemRefs),
+    getItemsUoMs(itemRefs),
+  ])
 
-  type Item = {
-    number:                string
-    displayName:           string
-    baseUnitOfMeasureCode: string
-    unitPrice:             number
-  }
+  const itemMap = new Map(
+    bcItems.map((item) => {
+      const attrs  = attrMap.get(item.number) ?? []
+      const bcUoms = uomMap.get(item.number) ?? []
+
+      const uomByCode = new Map<string, BCItemUoM>()
+      uomByCode.set(item.baseUnitOfMeasureCode, {
+        code: item.baseUnitOfMeasureCode,
+        displayName: item.baseUnitOfMeasureCode,
+        qtyPerUnitOfMeasure: 1,
+        baseUnitOfMeasure: true,
+      })
+      for (const u of bcUoms) uomByCode.set(u.code, u)
+      for (const p of portalPrices) {
+        if (p.itemNo === item.number && p.unitOfMeasure && !uomByCode.has(p.unitOfMeasure)) {
+          uomByCode.set(p.unitOfMeasure, {
+            code: p.unitOfMeasure,
+            displayName: p.unitOfMeasure,
+            qtyPerUnitOfMeasure: 1,
+            baseUnitOfMeasure: false,
+          })
+        }
+      }
+      const uoms: BCItemUoM[] = Array.from(uomByCode.values())
+
+      return [
+        item.number,
+        {
+          ...item,
+          unitPrice:  startPrice(item.number, portalPrices, today8601) ?? item.unitPrice,
+          attributes: attrs,
+          uoms,
+          pictureId:  item.picture?.id ?? null,
+        },
+      ]
+    }),
+  )
 
   // STD-sektion (alle items, uanset pris)
   const stdFavorites = stdFavNos
     .filter(n => !existingNos.has(n))
     .map(n => itemMap.get(n))
-    .filter((i): i is Item => i != null)
+    .filter((i): i is NonNullable<ReturnType<typeof itemMap.get>> => i != null)
 
   // Kundens egne favoritter — filtrér varer uden pris bort
   const stdNoSet = new Set(stdFavNos)
   const favorites = customerFavNos
     .filter(n => !existingNos.has(n) && !stdNoSet.has(n))
     .map(n => itemMap.get(n))
-    .filter((i): i is Item => i != null && (i.unitPrice ?? 0) > 0)
+    .filter((i): i is NonNullable<ReturnType<typeof itemMap.get>> =>
+      i != null && (i.unitPrice ?? 0) > 0)
 
   // Venmark anbefaler — udeluk dem der allerede er STD eller favorit
   const customerFavSet = new Set(customerFavNos)
   const venmarkItems = venmarkNosAll
     .filter(n => !existingNos.has(n) && !stdNoSet.has(n) && !customerFavSet.has(n))
     .map(n => itemMap.get(n))
-    .filter((i): i is Item => i != null)
+    .filter((i): i is NonNullable<ReturnType<typeof itemMap.get>> => i != null)
+    .map(item => ({ item, note: '' }))
+
+  // Trappepriser til klient (samme som bestil)
+  const priceTiers = portalPrices.map((p) => ({
+    itemNo:          p.itemNo,
+    minimumQuantity: p.minimumQuantity,
+    unitPrice:       p.unitPrice,
+    unitOfMeasure:   p.unitOfMeasure,
+    startingDate:    p.startingDate,
+    endingDate:      p.endingDate,
+  }))
 
   const deliveryLabel = new Date(order.deliveryDate).toLocaleDateString('da-DK', {
     weekday: 'long', day: 'numeric', month: 'short',
@@ -135,9 +175,12 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
       bcOrderNumber={order.bcOrderNumber ?? undefined}
       deliveryLabel={deliveryLabel}
       deadline={order.deadline.toISOString()}
-      stdFavorites={stdFavorites}
-      favorites={favorites}
-      venmarkItems={venmarkItems}
+      stdFavorites={stdFavorites as any}
+      favorites={favorites as any}
+      venmarkItems={venmarkItems as any}
+      priceTiers={priceTiers}
+      initialFavNos={allFavNos}
+      itemAvailabilities={Object.fromEntries(itemAvailabilities)}
     />
   )
 }

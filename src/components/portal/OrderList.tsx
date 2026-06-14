@@ -11,14 +11,14 @@ import ItemSearchModal from './ItemSearchModal'
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
 
-type EnrichedItem = BCItem & {
+export type EnrichedItem = BCItem & {
   unitPrice:   number
   attributes?: BCItemAttributeValue[]
   uoms?:       BCItemUoM[]
   pictureId?:  string | null
 }
 
-interface PriceTier {
+export interface PriceTier {
   itemNo:          string
   minimumQuantity: number
   unitPrice:       number
@@ -532,7 +532,7 @@ function ItemDetailModal({ item, onClose }: { item: EnrichedItem; onClose: () =>
 
 // ─── Én kompakt vare-række ────────────────────────────────────────────────────
 
-function OrderRow({
+export function OrderRow({
   item, quantity, onQty, priceTiers = [],
   isPromo = false, promoNote = '',
   isVenmark = false, venmarkNote = '',
@@ -1640,8 +1640,8 @@ export default function OrderList({
         {/* Kundens egne favoritter — næst øverst (Standard Favorite = false) */}
         {!isCatalogMode && customerFavSection.length > 0 && (
           <>
-            <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1">
-              <Heart size={10} className="text-red-400" /> Dine favoritter
+            <div className="px-3 py-1.5 bg-rose-100 border-y-2 border-rose-300 text-xs font-bold uppercase tracking-wide text-rose-900 flex items-center gap-1.5">
+              <Heart size={13} className="text-rose-600 fill-rose-600" /> Dine favoritter
             </div>
             <div className="divide-y divide-blue-200">
               {customerFavSection.map((item) => (
