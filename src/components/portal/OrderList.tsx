@@ -808,7 +808,12 @@ function DeliveryPicker({
   const deadline = (d: Date) => method ? getDeadlineForMethodDelivery(d, method, calendarDays) : getDeadlineForDelivery(d)
 
   // Hurtige 3 knapper (første 3 gyldige dage)
-  const quickDays = deliveryDays.slice(0, 3).filter(d => now <= deadline(d))
+  // VIGTIGT: bevar original-index i deliveryDays — selectedDay state forventer det,
+  // ellers peger valg-handleren på en filtreret-bort dato (typisk en forpasset deadline)
+  const quickDays = deliveryDays
+    .map((d, i) => ({ d, i }))
+    .slice(0, 3)
+    .filter(({ d }) => now <= deadline(d))
 
   // Resterende dage (fra indeks 3 og frem), kun ikke-forpassede
   const moreDays = deliveryDays
@@ -862,14 +867,14 @@ function DeliveryPicker({
 
       {/* Hurtige knapper + "Mere"-knap på samme linje */}
       <div className="flex flex-wrap gap-2">
-        {quickDays.map((day, i) => {
+        {quickDays.map(({ d: day, i: dlIdx }) => {
           const dl         = deadline(day)
           const notable    = deadlineIsNotable(day, dl)
-          const isSelected = i === selectedDay
+          const isSelected = dlIdx === selectedDay
           return (
             <button
-              key={i}
-              onClick={() => { onSelect(i); setShowMore(false) }}
+              key={dlIdx}
+              onClick={() => { onSelect(dlIdx); setShowMore(false) }}
               className={`flex shrink-0 flex-col items-center rounded-xl px-4 py-2 text-sm font-medium transition ${
                 isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
@@ -986,12 +991,12 @@ export default function OrderList({
   const firstValid = deliveryDays.findIndex(d => new Date() <= deadlineFn(d))
   const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
 
-  // Nulstil selectedDay til første gyldige dag når leveringsdaglisten ændres (metode-skift)
+  // Nulstil selectedDay til første gyldige dag når leveringsdage eller metode ændres
   useEffect(() => {
     const now = new Date()
     const fv = deliveryDays.findIndex(d => now <= (selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod, calendarDays) : getDeadlineForDelivery(d)))
     setSelectedDay(Math.max(0, fv))
-  }, [deliveryDays]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deliveryDays, selectedMethodCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Beregn ugedag for valgt leveringsdato (1=man ... 5=fre)
   const deliveryWeekday = deliveryDays[Math.max(0, firstValid)]
@@ -1379,7 +1384,7 @@ export default function OrderList({
             {shipmentMethods.filter(m => m.portalVisible).map(m => (
               <button
                 key={m.code}
-                onClick={() => { setSelectedMethodCode(m.code); setSelectedDay(0) }}
+                onClick={() => setSelectedMethodCode(m.code)}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   selectedMethodCode === m.code
                     ? 'bg-blue-600 text-white shadow-sm'
