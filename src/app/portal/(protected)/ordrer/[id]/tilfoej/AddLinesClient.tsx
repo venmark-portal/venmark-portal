@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Minus, Plus, Trash2, ArrowLeft, CheckCircle2, Heart } from 'lucide-react'
+import { Search, Trash2, ArrowLeft, CheckCircle2, Heart } from 'lucide-react'
 import { OrderRow } from '@/components/portal/OrderList'
 import type { EnrichedItem, PriceTier } from '@/components/portal/OrderList'
+import ItemSearchModal from '@/components/portal/ItemSearchModal'
 
 interface BasketLine {
   bcItemNumber: string
@@ -31,18 +32,19 @@ export default function AddLinesClient({
   orderId, bcOrderNumber, deliveryLabel,
   stdFavorites = [], favorites = [], venmarkItems = [],
   priceTiers = [], initialFavNos = [],
+  itemAvailabilities = {},
 }: Props) {
   const router = useRouter()
-  const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
 
   // Lokal kurv per varenr
   const [qtyMap,    setQtyMap]    = useState<Map<string, number>>(new Map())
   const [uomMap,    setUomMap]    = useState<Map<string, string>>(new Map())
-  const [saving,    setSaving]    = useState(false)
-  const [done,      setDone]      = useState(false)
-  const [error,     setError]     = useState('')
+  // Items tilføjet via søgning (ikke i de tre faste sektioner) — gemmes for at kunne bygge kurv
+  const [searchedItems, setSearchedItems] = useState<Map<string, EnrichedItem>>(new Map())
+  const [showSearch, setShowSearch] = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [done,       setDone]       = useState(false)
+  const [error,      setError]      = useState('')
 
   const favSet = new Set(initialFavNos)
 
@@ -70,56 +72,48 @@ export default function AddLinesClient({
     })
   }
 
-  // Søgeresultat → tilføj qty=1
-  function addSearchResult(item: { number: string; displayName: string; baseUnitOfMeasureCode?: string; unitPrice?: number }) {
-    const itemNo = item.number
-    setQtyMap(prev => {
+  function addSearchedItems(items: { item: EnrichedItem; quantity: number }[]) {
+    setSearchedItems(prev => {
       const next = new Map(prev)
-      next.set(itemNo, (next.get(itemNo) ?? 0) + 1)
+      for (const { item } of items) next.set(item.number, item)
       return next
     })
-    if (!uomMap.has(itemNo)) {
-      setUomMap(prev => {
-        const next = new Map(prev)
-        next.set(itemNo, item.baseUnitOfMeasureCode ?? 'KG')
-        return next
-      })
-    }
-  }
-
-  async function search(q: string) {
-    setQuery(q)
-    if (q.trim().length < 2) { setResults([]); return }
-    setLoading(true)
-    try {
-      const res  = await fetch(`/api/products?search=${encodeURIComponent(q)}&top=20`)
-      const data = await res.json()
-      setResults(data.value ?? [])
-    } finally {
-      setLoading(false)
-    }
+    setQtyMap(prev => {
+      const next = new Map(prev)
+      for (const { item, quantity } of items) {
+        next.set(item.number, (next.get(item.number) ?? 0) + quantity)
+      }
+      return next
+    })
+    setUomMap(prev => {
+      const next = new Map(prev)
+      for (const { item } of items) {
+        if (!next.has(item.number)) next.set(item.number, item.baseUnitOfMeasureCode)
+      }
+      return next
+    })
+    setShowSearch(false)
   }
 
   // Saml kurven til submit
   function buildBasket(): BasketLine[] {
-    // Index alle items vi har EnrichedItem-data på
     const itemIndex = new Map<string, EnrichedItem>()
-    for (const i of stdFavorites) itemIndex.set(i.number, i)
-    for (const i of favorites)    itemIndex.set(i.number, i)
-    for (const v of venmarkItems) itemIndex.set(v.item.number, v.item)
+    for (const i of stdFavorites)   itemIndex.set(i.number, i)
+    for (const i of favorites)      itemIndex.set(i.number, i)
+    for (const v of venmarkItems)   itemIndex.set(v.item.number, v.item)
+    for (const [n, i] of searchedItems) itemIndex.set(n, i)
 
     const lines: BasketLine[] = []
     for (const [itemNo, qty] of qtyMap) {
       if (qty <= 0) continue
       const item = itemIndex.get(itemNo)
-      const fromSearch = results.find(r => r.number === itemNo)
-      const uom = uomMap.get(itemNo) ?? (item?.baseUnitOfMeasureCode ?? fromSearch?.baseUnitOfMeasureCode ?? 'KG')
+      const uom  = uomMap.get(itemNo) ?? item?.baseUnitOfMeasureCode ?? 'KG'
       lines.push({
         bcItemNumber: itemNo,
-        itemName:     item?.displayName ?? fromSearch?.displayName ?? itemNo,
+        itemName:     item?.displayName ?? itemNo,
         quantity:     qty,
         uom,
-        unitPrice:    item?.unitPrice ?? fromSearch?.unitPrice ?? 0,
+        unitPrice:    item?.unitPrice ?? 0,
       })
     }
     return lines
@@ -160,6 +154,11 @@ export default function AddLinesClient({
   }
 
   const basketLines = buildBasket()
+  // Søgte items vist som en ekstra sektion så brugeren kan justere antal/enhed
+  const searchedOnly = Array.from(searchedItems.values())
+    .filter(i => !stdFavorites.some(s => s.number === i.number)
+              && !favorites.some(f => f.number === i.number)
+              && !venmarkItems.some(v => v.item.number === i.number))
 
   return (
     <div className="space-y-4">
@@ -177,50 +176,39 @@ export default function AddLinesClient({
         </div>
       </div>
 
-      {/* Søg */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => search(e.target.value)}
-          placeholder="Søg på varenummer eller navn..."
-          className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {results.length > 0 && (
-        <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-50">
-          {results.map((item) => {
-            const qty = getQty(item.number)
-            return (
-              <div key={item.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                <div className="min-w-0 flex-1">
-                  <span className="mr-2 font-mono text-xs text-gray-400">{item.number}</span>
-                  <span className="text-gray-800">{item.displayName}</span>
-                </div>
-                <div className="ml-3 shrink-0 flex items-center gap-2">
-                  {item.unitPrice > 0 && (
-                    <span className="text-xs text-gray-400">
-                      {new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(item.unitPrice)}
-                    </span>
-                  )}
-                  {qty > 0 && <span className="text-xs text-blue-600 font-medium">+{qty}</span>}
-                  <button
-                    onClick={() => addSearchResult(item)}
-                    className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {loading && <p className="text-center text-sm text-gray-400">Søger...</p>}
-
       <div className="rounded-2xl bg-white shadow-sm overflow-hidden">
+        {/* Søg og tilføj vare */}
+        <div className="border-b border-dashed border-gray-200">
+          <button
+            onClick={() => setShowSearch(true)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition"
+          >
+            <Search size={15} />
+            Søg og tilføj vare
+          </button>
+        </div>
+
+        {/* Tilføjet via søgning */}
+        {searchedOnly.length > 0 && (
+          <>
+            <div className="px-3 py-1.5 bg-gray-100 border-y border-gray-200 text-xs font-bold uppercase tracking-wide text-gray-700 flex items-center gap-1.5">
+              <Search size={12} /> Tilføjet via søgning
+            </div>
+            <div className="divide-y divide-blue-200">
+              {searchedOnly.map((item) => (
+                <OrderRow
+                  key={`s-${item.number}`}
+                  item={item} quantity={getQty(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isFavorite={favSet.has(item.number)}
+                  selectedUom={uomMap.get(item.number)}
+                  onUomChange={code => setLineUom(item, code)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         {/* STD-favoritter */}
         {stdFavorites.length > 0 && (
           <>
@@ -285,8 +273,8 @@ export default function AddLinesClient({
           </>
         )}
 
-        {stdFavorites.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && (
-          <p className="text-center text-sm text-gray-400 py-8">Ingen varer at vise — alt fra dine favoritter er allerede på ordren.</p>
+        {stdFavorites.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && searchedOnly.length === 0 && (
+          <p className="text-center text-sm text-gray-400 py-8">Søg ovenfor for at tilføje varer til ordren.</p>
         )}
       </div>
 
@@ -304,7 +292,10 @@ export default function AddLinesClient({
                 <div className="ml-3 shrink-0 flex items-center gap-1">
                   <span className="text-xs text-gray-700 font-medium">{line.quantity}</span>
                   <span className="ml-1 text-xs text-gray-400 w-8">{line.uom}</span>
-                  <button onClick={() => setQtyMap(prev => { const n = new Map(prev); n.delete(line.bcItemNumber); return n })} className="ml-1 text-gray-300 hover:text-red-400">
+                  <button
+                    onClick={() => setQtyMap(prev => { const n = new Map(prev); n.delete(line.bcItemNumber); return n })}
+                    className="ml-1 text-gray-300 hover:text-red-400"
+                  >
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -322,6 +313,16 @@ export default function AddLinesClient({
             {saving ? 'Tilføjer...' : `Tilføj ${basketLines.length} ${basketLines.length === 1 ? 'vare' : 'varer'} til ordren`}
           </button>
         </div>
+      )}
+
+      {/* Søgning/katalog modal — samme komponent som bestil-siden */}
+      {showSearch && (
+        <ItemSearchModal
+          onAddItems={addSearchedItems}
+          onClose={() => setShowSearch(false)}
+          favNos={favSet}
+          itemAvailabilities={itemAvailabilities}
+        />
       )}
     </div>
   )
