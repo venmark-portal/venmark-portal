@@ -12,7 +12,7 @@ interface LineItem {
   unitPrice:    number
 }
 
-interface FavoriteItem {
+interface Item {
   number:                string
   displayName:           string
   baseUnitOfMeasureCode: string
@@ -24,18 +24,25 @@ interface Props {
   bcOrderNumber?:  string
   deliveryLabel:   string
   deadline:        string
-  favorites?:      FavoriteItem[]
+  stdFavorites?:   Item[]
+  favorites?:      Item[]
+  venmarkItems?:   Item[]
 }
 
-export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, deadline, favorites = [] }: Props) {
+const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' })
+
+export default function AddLinesClient({
+  orderId, bcOrderNumber, deliveryLabel,
+  stdFavorites = [], favorites = [], venmarkItems = [],
+}: Props) {
   const router = useRouter()
-  const [query,    setQuery]    = useState('')
-  const [results,  setResults]  = useState<any[]>([])
-  const [loading,  setLoading]  = useState(false)
-  const [basket,   setBasket]   = useState<LineItem[]>([])
-  const [saving,   setSaving]   = useState(false)
-  const [done,     setDone]     = useState(false)
-  const [error,    setError]    = useState('')
+  const [query,   setQuery]   = useState('')
+  const [results, setResults] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [basket,  setBasket]  = useState<LineItem[]>([])
+  const [saving,  setSaving]  = useState(false)
+  const [done,    setDone]    = useState(false)
+  const [error,   setError]   = useState('')
 
   async function search(q: string) {
     setQuery(q)
@@ -107,6 +114,33 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
     )
   }
 
+  // ── Én række ──────────────────────────────────────────────────────────────
+  function Row({ item, kind }: { item: Item; kind: 'std' | 'fav' | 'venmark' }) {
+    const inBasket = basket.find((l) => l.bcItemNumber === item.number)
+    return (
+      <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+        <div className="min-w-0 flex-1 flex items-center gap-2">
+          {kind === 'std'     && <span className="text-amber-500 text-base leading-none shrink-0">✪</span>}
+          {kind === 'venmark' && <span className="text-blue-500 text-base leading-none shrink-0">⭐</span>}
+          <span className="font-mono text-xs text-gray-400">{item.number}</span>
+          <span className="text-gray-800 truncate">{item.displayName}</span>
+        </div>
+        <div className="ml-3 shrink-0 flex items-center gap-2">
+          {item.unitPrice > 0 && (
+            <span className="text-xs text-gray-400">{fmt.format(item.unitPrice)}</span>
+          )}
+          {inBasket && <span className="text-xs text-blue-600 font-medium">+{inBasket.quantity}</span>}
+          <button
+            onClick={() => addToBasket(item)}
+            className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white hover:bg-blue-700"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -122,44 +156,6 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
           </p>
         </div>
       </div>
-
-      {/* Favoritter */}
-      {favorites.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
-            <Heart size={12} className="text-red-400" /> Dine favoritter
-          </p>
-          <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-50">
-            {favorites.map((item) => {
-              const inBasket = basket.find((l) => l.bcItemNumber === item.number)
-              return (
-                <div key={item.number} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <span className="mr-2 font-mono text-xs text-gray-400">{item.number}</span>
-                    <span className="text-gray-800">{item.displayName}</span>
-                  </div>
-                  <div className="ml-3 shrink-0 flex items-center gap-2">
-                    {item.unitPrice > 0 && (
-                      <span className="text-xs text-gray-400">
-                        {new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(item.unitPrice)}
-                      </span>
-                    )}
-                    {inBasket ? (
-                      <span className="text-xs text-blue-600 font-medium">+{inBasket.quantity}</span>
-                    ) : null}
-                    <button
-                      onClick={() => addToBasket(item)}
-                      className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Søg */}
       <div className="relative">
@@ -186,13 +182,9 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
                 </div>
                 <div className="ml-3 shrink-0 flex items-center gap-2">
                   {item.unitPrice > 0 && (
-                    <span className="text-xs text-gray-400">
-                      {new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(item.unitPrice)}
-                    </span>
+                    <span className="text-xs text-gray-400">{fmt.format(item.unitPrice)}</span>
                   )}
-                  {inBasket ? (
-                    <span className="text-xs text-blue-600 font-medium">+{inBasket.quantity}</span>
-                  ) : null}
+                  {inBasket && <span className="text-xs text-blue-600 font-medium">+{inBasket.quantity}</span>}
                   <button
                     onClick={() => addToBasket(item)}
                     className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-600 text-white hover:bg-blue-700"
@@ -207,6 +199,42 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
       )}
 
       {loading && <p className="text-center text-sm text-gray-400">Søger...</p>}
+
+      {/* STD-favoritter — allerøverst */}
+      {stdFavorites.length > 0 && (
+        <div className="space-y-1">
+          <div className="px-3 py-1.5 bg-amber-100 border-y-2 border-amber-300 text-xs font-bold uppercase tracking-wide text-amber-900 flex items-center gap-1.5 rounded-t-xl">
+            <span className="text-base leading-none">✪</span> STD — varer du altid skal have
+          </div>
+          <div className="rounded-b-xl bg-amber-50/40 ring-1 ring-amber-100 divide-y divide-amber-100">
+            {stdFavorites.map((item) => <Row key={`std-${item.number}`} item={item} kind="std" />)}
+          </div>
+        </div>
+      )}
+
+      {/* Almindelige favoritter */}
+      {favorites.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5 px-1">
+            <Heart size={12} className="text-red-400" /> Dine favoritter
+          </p>
+          <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-50">
+            {favorites.map((item) => <Row key={`fav-${item.number}`} item={item} kind="fav" />)}
+          </div>
+        </div>
+      )}
+
+      {/* Venmark anbefaler */}
+      {venmarkItems.length > 0 && (
+        <div className="space-y-1">
+          <div className="px-3 py-1.5 bg-blue-50 border-y border-blue-100 text-xs font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1.5 rounded-t-xl">
+            <span className="text-base leading-none">⭐</span> Venmark anbefaler
+          </div>
+          <div className="rounded-b-xl bg-white ring-1 ring-blue-100 divide-y divide-gray-50">
+            {venmarkItems.map((item) => <Row key={`ven-${item.number}`} item={item} kind="venmark" />)}
+          </div>
+        </div>
+      )}
 
       {/* Kurv */}
       {basket.length > 0 && (
@@ -241,6 +269,8 @@ export default function AddLinesClient({ orderId, bcOrderNumber, deliveryLabel, 
               </div>
             ))}
           </div>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
 
           <button
             onClick={submit}

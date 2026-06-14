@@ -1611,10 +1611,10 @@ export default function OrderList({
         {/* STD-favoritter — allerøverst (Standard Favorite = true på BC) */}
         {!isCatalogMode && stdFavSection.length > 0 && (
           <>
-            <div className="px-3 py-1 bg-amber-50 border-y border-amber-100 text-[10px] font-semibold uppercase tracking-wide text-amber-700 flex items-center gap-1">
-              <span className="text-[11px]">✪</span> STD — varer du altid skal have
+            <div className="px-3 py-1.5 bg-amber-100 border-y-2 border-amber-300 text-xs font-bold uppercase tracking-wide text-amber-900 flex items-center gap-1.5">
+              <span className="text-base leading-none">✪</span> STD — varer du altid skal have
             </div>
-            <div className="divide-y divide-blue-200">
+            <div className="divide-y divide-amber-100 bg-amber-50/40">
               {stdFavSection.map((item) => (
                 <OrderRow
                   key={`std-${item.number}`}

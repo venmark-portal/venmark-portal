@@ -78,8 +78,14 @@ export default async function BestilPage() {
   // Portalen læser KUN fra BC tabel 50157. Portal DB bruges kun til optimistiske writes (❤️-klik).
   // Fallback til portal DB hvis BC er utilgængeligt (bcStandardLines er tom pga. catch(() => [])).
   // STD-favoritter (Standard Favorite = true) vises øverst som egen sektion.
-  const filterableFav = (n: string) =>
-    !blockedSet.has(n) && !n.toUpperCase().startsWith('X') && visFilter(n)
+  //
+  // Filtreringsregel:
+  //   STD: vises uanset rangliste/pris (kun blokerede + X-prefiks udelukkes)
+  //   Almindelig favorit: udelukkes hvis ikke på rangliste (visFilter) eller uden pris
+  const hardFilterFav = (n: string) =>
+    !blockedSet.has(n) && !n.toUpperCase().startsWith('X')
+  const regularFavFilter = (n: string) =>
+    hardFilterFav(n) && visFilter(n)
 
   const bcStdLines      = bcStandardLines.filter(l => l.standardFavorite)
   const bcRegularLines  = bcStandardLines.filter(l => !l.standardFavorite)
@@ -88,11 +94,11 @@ export default async function BestilPage() {
   const dbFavNos        = new Set(dbFavRows.map(f => f.bcItemNumber))
 
   // STD-favoritter findes kun i BC (portal DB har ikke STD-flaget endnu)
-  const stdFavNos       = Array.from(bcStdNos).filter(filterableFav)
+  const stdFavNos       = Array.from(bcStdNos).filter(hardFilterFav)
   // Almindelige favoritter: BC først, ellers DB (uden dem der er STD)
   const customerFavSrc  = bcRegularNos.size > 0 || bcStdNos.size > 0 ? bcRegularNos : dbFavNos
   const customerFavNos  = Array.from(customerFavSrc)
-    .filter(n => !bcStdNos.has(n) && filterableFav(n))
+    .filter(n => !bcStdNos.has(n) && regularFavFilter(n))
 
   // Bagudkompatibilitet — allFavNos bruges flere steder til "denne vare er en favorit" (uden STD-skel)
   const allFavNos       = [...stdFavNos, ...customerFavNos]
@@ -173,9 +179,10 @@ export default async function BestilPage() {
     .filter(Boolean) as NonNullable<ReturnType<typeof itemMap.get>>[]
 
   // Kundens egne favoritter — kun dem der IKKE er STD (de er allerede i stdFavorites)
+  // Filtrér også varer uden pris bort (STD vises uanset; almindelige favoritter skjules)
   const favorites = customerFavNos
     .map((n) => itemMap.get(n))
-    .filter(Boolean) as NonNullable<ReturnType<typeof itemMap.get>>[]
+    .filter((i): i is NonNullable<ReturnType<typeof itemMap.get>> => i != null && (i.unitPrice ?? 0) > 0)
 
   // Venmark-anbefalede (SaelgForH) — kun dem der IKKE allerede er STD eller kundens favorit.
   // Sikrer at hver vare kun vises én gang på siden, i sin højest-prioriterede sektion.
