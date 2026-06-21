@@ -5,6 +5,13 @@
 // Adgang: /fragt/{token}?date=YYYY-MM-DD
 // Token-validation sker mod BC (slår VM Freight Carrier op).
 // Hvis token er ugyldig/udløbet/deaktiveret: 404.
+//
+// Datagrundlag (jf. FRAGT-PORTAL-API-KONTRAKT.md):
+//  - Dag-grundlag = postingDate for BÅDE ordrer og leveringer.
+//  - Look-back/historik kræver at vi fletter åbne ordrer (deliveryOrders) MED
+//    bogførte leveringer (deliveryShipments). De er komplementære (ordrer bærer
+//    kun udestående mængde, leveringer bærer leveret mængde) → læg vægtene sammen,
+//    ingen dedup.
 
 import { notFound } from 'next/navigation'
 import { getAccessToken } from '@/lib/businesscentral'
@@ -22,19 +29,20 @@ interface Carrier {
   email: string
 }
 
-interface DeliveryOrder {
+// Forenet rækketype efter fletning af ordrer + leveringer.
+interface Row {
   id: string
+  kind: 'order' | 'shipment'
   number: string
   customerName: string
   shipToName: string
   shipToAddress: string
   shipToCity: string
   shipToPostCode: string
-  shipToPhone: string
-  shipmentDate: string
   shipmentMethodCode: string
-  status: string
   totalNetWeightKg: number
+  totalBoxes: number
+  freightText: string
 }
 
 interface ShipmentMethod {
@@ -88,16 +96,49 @@ async function lookupCarrier(token: string, bearer: string): Promise<Carrier | n
   // GUID skal være lowercase med eller uden bindestreger — BC accepterer guid'xxxx'
   const cleanToken = token.toLowerCase().replace(/[{}]/g, '')
   const filter = encodeURIComponent(`token eq ${cleanToken}`)
+  // portalFreightCarriers returnerer kun aktive, ikke-udløbne tokens → 0 rækker = 404.
   const data = await bcGet<{ value: Carrier[] }>(`/portalFreightCarriers?$filter=${filter}`, bearer)
   return data.value[0] ?? null
 }
 
-async function fetchDeliveryOrders(carrier: Carrier, date: string, bearer: string): Promise<DeliveryOrder[]> {
-  const shipFilter = buildShipMethodFilter(carrier.codeFilter)
-  if (!shipFilter) return []
-  const filter = encodeURIComponent(`shipmentDate eq ${date} and (${shipFilter})`)
-  const data = await bcGet<{ value: DeliveryOrder[] }>(`/deliveryOrders?$filter=${filter}&$top=500`, bearer)
-  return data.value
+// Åbne ordrer (udestående del). Dag-grundlag = postingDate.
+async function fetchDeliveryOrders(carrier: Carrier, date: string, bearer: string, shipFilter: string): Promise<Row[]> {
+  const filter = encodeURIComponent(`postingDate eq ${date} and (${shipFilter})`)
+  const data = await bcGet<{ value: any[] }>(`/deliveryOrders?$filter=${filter}&$top=500`, bearer)
+  return (data.value ?? []).map((o): Row => ({
+    id: o.id,
+    kind: 'order',
+    number: o.number,
+    customerName: o.customerName ?? '',
+    shipToName: o.shipToName ?? '',
+    shipToAddress: o.shipToAddress ?? '',
+    shipToCity: o.shipToCity ?? '',
+    shipToPostCode: o.shipToPostCode ?? '',
+    shipmentMethodCode: o.shipmentMethodCode ?? '',
+    totalNetWeightKg: o.totalNetWeightKg ?? 0,
+    totalBoxes: 0,
+    freightText: '',
+  }))
+}
+
+// Bogførte leveringer (leveret del — look-back/historik). Dag-grundlag = postingDate.
+async function fetchDeliveryShipments(date: string, bearer: string, shipFilter: string): Promise<Row[]> {
+  const filter = encodeURIComponent(`postingDate eq ${date} and (${shipFilter})`)
+  const data = await bcGet<{ value: any[] }>(`/deliveryShipments?$filter=${filter}&$top=500`, bearer)
+  return (data.value ?? []).map((s): Row => ({
+    id: s.id,
+    kind: 'shipment',
+    number: s.number,
+    customerName: s.customerName ?? '',
+    shipToName: s.shipToName ?? '',
+    shipToAddress: s.shipToAddress ?? '',
+    shipToCity: s.shipToCity ?? '',
+    shipToPostCode: s.shipToPostCode ?? '',
+    shipmentMethodCode: s.shipmentMethodCode ?? '',
+    totalNetWeightKg: s.totalNetWeightKg ?? 0,
+    totalBoxes: s.totalBoxes ?? 0,
+    freightText: s.freightText ?? '',
+  }))
 }
 
 async function fetchShipmentMethods(bearer: string): Promise<Map<string, string>> {
@@ -109,31 +150,31 @@ async function fetchShipmentMethods(bearer: string): Promise<Map<string, string>
   return map
 }
 
-interface GroupedOrders {
+interface GroupedRows {
   code: string
   cutoff: string
-  orders: DeliveryOrder[]
+  rows: Row[]
   totalKg: number
+  totalBoxes: number
 }
 
-function groupByCode(orders: DeliveryOrder[], cutoffs: Map<string, string>): GroupedOrders[] {
-  const groups = new Map<string, DeliveryOrder[]>()
-  for (const o of orders) {
-    const k = o.shipmentMethodCode.toUpperCase()
+function groupByCode(rows: Row[], cutoffs: Map<string, string>): GroupedRows[] {
+  const groups = new Map<string, Row[]>()
+  for (const r of rows) {
+    const k = r.shipmentMethodCode.toUpperCase()
     if (!groups.has(k)) groups.set(k, [])
-    groups.get(k)!.push(o)
+    groups.get(k)!.push(r)
   }
-  const result: GroupedOrders[] = []
+  const result: GroupedRows[] = []
   for (const [code, list] of groups) {
     const cutoff = cutoffs.get(code) ?? ''
-    list.sort((a, b) => {
-      // sort by cutoff time (group-level) — within group, sort by order number
-      return a.number.localeCompare(b.number)
-    })
-    const totalKg = list.reduce((s, o) => s + (o.totalNetWeightKg ?? 0), 0)
-    result.push({ code, cutoff, orders: list, totalKg })
+    // Leveringer først (de er "afsluttede"), derefter åbne ordrer; ellers efter nummer.
+    list.sort((a, b) => a.number.localeCompare(b.number))
+    const totalKg = list.reduce((s, r) => s + (r.totalNetWeightKg ?? 0), 0)
+    const totalBoxes = list.reduce((s, r) => s + (r.totalBoxes ?? 0), 0)
+    result.push({ code, cutoff, rows: list, totalKg, totalBoxes })
   }
-  // Sort groups by cutoff time ascending (earliest first)
+  // Sortér grupper efter cutoff-tid stigende (tidligst først)
   result.sort((a, b) => a.cutoff.localeCompare(b.cutoff))
   return result
 }
@@ -146,6 +187,11 @@ function fmtCutoff(c: string): string {
 
 function fmtKg(n: number): string {
   return n.toFixed(1).replace('.', ',') + ' kg'
+}
+
+function fmtBoxes(n: number): string {
+  if (!n) return ''
+  return String(Math.round(n))
 }
 
 function addDays(date: string, n: number): string {
@@ -174,21 +220,31 @@ export default async function FragtPage({ params, searchParams }: Props) {
 
   if (!carrier) notFound()
 
-  let orders: DeliveryOrder[] = []
+  const shipFilter = buildShipMethodFilter(carrier.codeFilter)
+
+  let rows: Row[] = []
   let cutoffs = new Map<string, string>()
   let fetchError: string | null = null
-  try {
-    [orders, cutoffs] = await Promise.all([
-      fetchDeliveryOrders(carrier, date, bearer),
-      fetchShipmentMethods(bearer),
-    ])
-  } catch (e: any) {
-    fetchError = String(e.message ?? e)
+  if (shipFilter) {
+    try {
+      const [orders, shipments, cuts] = await Promise.all([
+        fetchDeliveryOrders(carrier, date, bearer, shipFilter),
+        fetchDeliveryShipments(date, bearer, shipFilter),
+        fetchShipmentMethods(bearer),
+      ])
+      cutoffs = cuts
+      // Flet: åbne ordrer (udestående) + bogførte leveringer (leveret). Komplementære,
+      // ingen dedup. Skjul fuldt leverede ordrer (0 kg) — de bæres af leveringsrækken.
+      rows = [...orders.filter(o => o.totalNetWeightKg > 0), ...shipments]
+    } catch (e: any) {
+      fetchError = String(e.message ?? e)
+    }
   }
 
-  const groups = groupByCode(orders, cutoffs)
+  const groups = groupByCode(rows, cutoffs)
   const dayTotal = groups.reduce((s, g) => s + g.totalKg, 0)
-  const dayTotalCount = groups.reduce((s, g) => s + g.orders.length, 0)
+  const dayTotalBoxes = groups.reduce((s, g) => s + g.totalBoxes, 0)
+  const dayTotalCount = groups.reduce((s, g) => s + g.rows.length, 0)
 
   const prevDate = addDays(date, -1)
   const nextDate = addDays(date, +1)
@@ -266,30 +322,38 @@ export default async function FragtPage({ params, searchParams }: Props) {
                 {g.cutoff && <span className="ml-3 text-sm text-gray-600 font-normal">Cutoff: {fmtCutoff(g.cutoff)}</span>}
               </div>
               <div className="text-sm">
-                <span className="text-gray-600 mr-2">{g.orders.length} ordrer</span>
+                <span className="text-gray-600 mr-2">{g.rows.length} leverancer</span>
+                {g.totalBoxes > 0 && <span className="text-gray-600 mr-2">{fmtBoxes(g.totalBoxes)} kasser</span>}
                 <span className="font-semibold">Sum: {fmtKg(g.totalKg)}</span>
               </div>
             </div>
             <table className="w-full border-x border-b">
               <thead className="bg-gray-50 text-xs uppercase text-gray-600">
                 <tr>
-                  <th className="text-left px-3 py-2">Ordrenr</th>
+                  <th className="text-left px-3 py-2">Bilag</th>
                   <th className="text-left px-3 py-2">Kunde</th>
                   <th className="text-left px-3 py-2">Til adresse</th>
                   <th className="text-left px-3 py-2">By</th>
+                  <th className="text-right px-3 py-2">Kasser</th>
                   <th className="text-right px-3 py-2">Kg</th>
+                  <th className="text-left px-3 py-2">Fragttekst</th>
                 </tr>
               </thead>
               <tbody>
-                {g.orders.map(o => {
-                  const isFocus = focus && o.number === focus
+                {g.rows.map(r => {
+                  const isFocus = focus && r.number === focus
                   return (
-                    <tr key={o.id} className={`border-t ${isFocus ? 'bg-yellow-50' : ''}`}>
-                      <td className="px-3 py-2 font-mono text-sm">{o.number}</td>
-                      <td className="px-3 py-2">{o.shipToName || o.customerName}</td>
-                      <td className="px-3 py-2">{o.shipToAddress}</td>
-                      <td className="px-3 py-2">{o.shipToPostCode} {o.shipToCity}</td>
-                      <td className="px-3 py-2 text-right font-mono">{fmtKg(o.totalNetWeightKg ?? 0)}</td>
+                    <tr key={r.id} className={`border-t ${isFocus ? 'bg-yellow-50' : r.kind === 'shipment' ? 'bg-amber-50/40' : ''}`}>
+                      <td className="px-3 py-2 font-mono text-sm">
+                        {r.number}
+                        {r.kind === 'shipment' && <span className="ml-2 text-xs text-gray-500">(leveret)</span>}
+                      </td>
+                      <td className="px-3 py-2">{r.shipToName || r.customerName}</td>
+                      <td className="px-3 py-2">{r.shipToAddress}</td>
+                      <td className="px-3 py-2">{r.shipToPostCode} {r.shipToCity}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmtBoxes(r.totalBoxes)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmtKg(r.totalNetWeightKg ?? 0)}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-red-600">{r.freightText}</td>
                     </tr>
                   )
                 })}
@@ -303,14 +367,16 @@ export default async function FragtPage({ params, searchParams }: Props) {
           <div className="mt-8 pt-4 border-t-2 border-gray-900 flex items-baseline justify-between">
             <div className="font-bold text-lg">Dag total</div>
             <div className="text-lg">
-              <span className="text-gray-600 mr-3">{dayTotalCount} ordrer</span>
+              <span className="text-gray-600 mr-3">{dayTotalCount} leverancer</span>
+              {dayTotalBoxes > 0 && <span className="text-gray-600 mr-3">{fmtBoxes(dayTotalBoxes)} kasser</span>}
               <span className="font-bold text-xl">{fmtKg(dayTotal)}</span>
             </div>
           </div>
         )}
 
         <footer className="mt-12 pt-4 border-t text-xs text-gray-500 print:hidden">
-          Listen opdateres når Venmark tilføjer ordrer i Business Central. Refresh siden for nyeste data.
+          Listen viser åbne ordrer + bogførte leveringer for dagen og opdateres løbende.
+          Refresh siden for nyeste data.
         </footer>
       </div>
     </div>
