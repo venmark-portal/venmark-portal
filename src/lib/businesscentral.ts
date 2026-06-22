@@ -1169,6 +1169,7 @@ export async function createBCSalesOrder(
   lines: Array<{ itemNumber: string; quantity: number; uomCode: string }>,
   poNumber?: string,
   driverNote?: string,
+  orderNote?: string,
 ): Promise<BCCreateOrderResult> {
   const token      = await getAccessToken()
   const portalBase = bcPortalBaseUrl()
@@ -1184,6 +1185,11 @@ export async function createBCSalesOrder(
   }
   if (driverNote?.trim()) {
     orderBody.portalDriverNote = driverNote.trim()
+  }
+  // "Besked til Venmark" → BC-salgshovedets "Quick Order Note" (orderNote i portal-API'et,
+  // page 50391). Skrives på selve ordren, så sælger ser den direkte i BC (ud over besked-systemet).
+  if (orderNote?.trim()) {
+    orderBody.orderNote = orderNote.trim()
   }
 
   const orderRes = await fetch(`${portalBase}/portalSalesOrders`, {
