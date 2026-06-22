@@ -36,9 +36,13 @@ export default async function BestilPage() {
 
   const today     = new Date()
   const today8601 = today.toISOString().split('T')[0]
+  const toDate90  = new Date(today); toDate90.setDate(today.getDate() + 90)
+  const toDate90str = toDate90.toISOString().split('T')[0]
 
   // ── Hent alt parallelt ────────────────────────────────────────────────────────
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes] = await Promise.all([
+  // Kalenderen hentes nu HER (afhænger kun af datoer) i stedet for et separat,
+  // sekventielt kald senere — sparer én BC-runde-tur i page-load.
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -60,6 +64,7 @@ export default async function BestilPage() {
     getPortalShipmentMethods().catch(() => []),
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
     getCustomerPortalShipmentMethods(customerNo).catch(() => []),
+    getPortalCalendarDays(today8601, toDate90str).catch(() => []),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -227,21 +232,13 @@ export default async function BestilPage() {
   }))
 
   // ── Leveringsdatoer + kundespecifikke metoder ────────────────────────────────
-  const toDate90 = new Date(today); toDate90.setDate(today.getDate() + 90)
-  const calendarDays = await getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => [])
+  // (calendarDays hentes nu parallelt øverst sammen med resten.)
 
   // Kundespecifikke metoder fra BC-undertabellen (rækkefølge bevares)
   // Fallback: kundens standard-leveringsmetode fra kundekort
   const allowedMethods = customerAllowedCodes.length > 0
     ? portalShipmentMethods.filter(m => customerAllowedCodes.includes(m.code))
     : portalShipmentMethods.filter(m => m.code === customerShipMethodCode)
-
-  console.log('[DEBUG bestil] customerNo:', customerNo)
-  console.log('[DEBUG bestil] customerShipMethodCode:', customerShipMethodCode)
-  console.log('[DEBUG bestil] customerAllowedCodes:', customerAllowedCodes)
-  console.log('[DEBUG bestil] portalShipmentMethods count:', portalShipmentMethods.length)
-  console.log('[DEBUG bestil] portalShipmentMethods:', JSON.stringify(portalShipmentMethods.map(m => ({ code: m.code, portalVisible: m.portalVisible }))))
-  console.log('[DEBUG bestil] allowedMethods:', JSON.stringify(allowedMethods.map(m => ({ code: m.code, portalVisible: m.portalVisible }))))
 
   const customerMethod = allowedMethods[0] ?? portalShipmentMethods.find(m => m.code === customerShipMethodCode)
   const rawDeliveryDays = customerMethod

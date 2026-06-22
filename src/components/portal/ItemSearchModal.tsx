@@ -464,6 +464,7 @@ export default function ItemSearchModal({
                     <button
                       onClick={() => setQty(item.number, Math.max(0, qty - 1))}
                       disabled={qty === 0 || status.blocked}
+                      tabIndex={-1}
                       className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
                       <Minus size={12} />
@@ -475,29 +476,25 @@ export default function ItemSearchModal({
                       value={qty || ''}
                       placeholder="0"
                       disabled={status.blocked}
+                      data-modal-qty-input="true"
                       onChange={(e) => setQty(item.number, Math.max(0, parseFloat(e.target.value) || 0))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-modal-qty-input]'))
+                          const idx = inputs.indexOf(e.currentTarget)
+                          if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
+                        }
+                      }}
                       className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40"
                     />
                     <button
                       onClick={() => setQty(item.number, qty + 1)}
                       disabled={status.blocked}
+                      tabIndex={-1}
                       className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
                       <Plus size={12} />
-                    </button>
-                    <button
-                      onClick={() => setQty(item.number, qty + 10)}
-                      disabled={status.blocked}
-                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
-                    >
-                      +10
-                    </button>
-                    <button
-                      onClick={() => setQty(item.number, qty + 50)}
-                      disabled={status.blocked}
-                      className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
-                    >
-                      +50
                     </button>
                   </div>
                 )}

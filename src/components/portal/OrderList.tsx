@@ -439,6 +439,7 @@ function ItemThumbnail({ item, onClick }: { item: EnrichedItem; onClick?: () => 
   return (
     <button
       onClick={onClick}
+      tabIndex={-1}
       className="shrink-0 h-10 w-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center hover:border-blue-300 transition"
       title={item.displayName}
       type="button"
@@ -647,6 +648,7 @@ export function OrderRow({
           <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 flex-wrap leading-tight">
             <button
               onClick={onOpenDetail}
+              tabIndex={-1}
               className="font-mono hover:text-blue-500 transition-colors text-left sm:pointer-events-none"
               type="button"
             >
@@ -723,10 +725,11 @@ export function OrderRow({
             <span className="w-6 text-[11px] text-gray-400 text-right">{item.baseUnitOfMeasureCode}</span>
           )}
 
-          {/* Minus / antal-felt / Plus / +10 / +50 */}
+          {/* Minus / antal-felt / Plus */}
           <button
             onClick={() => onQty(Math.max(0, quantity - 1))}
             disabled={quantity === 0 || isBlocked}
+            tabIndex={-1}
             className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
             <Minus size={12} />
@@ -753,23 +756,10 @@ export function OrderRow({
           <button
             onClick={() => onQty(quantity + 1)}
             disabled={isBlocked}
+            tabIndex={-1}
             className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
             <Plus size={12} />
-          </button>
-          <button
-            onClick={() => onQty(quantity + 10)}
-            disabled={isBlocked}
-            className="h-7 px-1.5 flex items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
-          >
-            +10
-          </button>
-          <button
-            onClick={() => onQty(quantity + 50)}
-            disabled={isBlocked}
-            className="hidden sm:flex h-7 px-1.5 items-center justify-center rounded-full border border-gray-200 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
-          >
-            +50
           </button>
         </div>
 
@@ -777,6 +767,7 @@ export function OrderRow({
         {onToggleFav && (
           <button
             onClick={onToggleFav}
+            tabIndex={-1}
             className={`shrink-0 p-1 rounded-full transition-colors ${
               isFavorite ? 'text-red-400 hover:text-red-300' : 'text-gray-200 hover:text-red-300'
             }`}

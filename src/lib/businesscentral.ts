@@ -1122,23 +1122,27 @@ export async function getItemsByNumbers(numbers: string[]): Promise<BCItem[]> {
 
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-  // BC OData OR-filter har URL-grænse — hent i batches af 15
+  // BC OData OR-filter har URL-grænse — hent i batches af 15, men PARALLELT
+  // (før: sekventielt → ~10 runde-ture ved 150 varer; nu én runde-tur-tid).
   const BATCH = 15
-  const results: BCItem[] = []
+  const batches: string[][] = []
+  for (let i = 0; i < numbers.length; i += BATCH)
+    batches.push(numbers.slice(i, i + BATCH))
 
-  for (let i = 0; i < numbers.length; i += BATCH) {
-    const batch  = numbers.slice(i, i + BATCH)
-    const filter = batch.map((n) => `number eq '${n}'`).join(' or ')
-    const res = await fetch(
-      `${base}/items?$filter=${encodeURIComponent(filter)}&$select=id,number,displayName,baseUnitOfMeasureCode,itemCategoryCode,unitPrice,inventory&$expand=picture`,
-      { headers, next: { revalidate: 300 } } as any,
-    )
-    if (!res.ok) continue
-    const data = await res.json()
-    results.push(...(data.value ?? []))
-  }
+  const perBatch = await Promise.all(
+    batches.map(async (batch) => {
+      const filter = batch.map((n) => `number eq '${n}'`).join(' or ')
+      const res = await fetch(
+        `${base}/items?$filter=${encodeURIComponent(filter)}&$select=id,number,displayName,baseUnitOfMeasureCode,itemCategoryCode,unitPrice,inventory&$expand=picture`,
+        { headers, next: { revalidate: 300 } } as any,
+      )
+      if (!res.ok) return [] as BCItem[]
+      const data = await res.json()
+      return (data.value ?? []) as BCItem[]
+    }),
+  )
 
-  return results
+  return perBatch.flat()
 }
 
 // ─── Opret salgsordre i BC ───────────────────────────────────────────────────
@@ -1430,21 +1434,30 @@ export async function getItemsUoMs(
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-    // Hent alle UoMs i batches af 15 varenumre via custom portal API (page 50358)
+    // Hent alle UoMs i batches af 15 varenumre via custom portal API (page 50358).
+    // Batches kører PARALLELT (før: sekventielt → ~10 runde-ture; nu én runde-tur-tid).
     const BATCH = 15
-    const allRows: any[] = []
-    for (let i = 0; i < items.length; i += BATCH) {
-      const nos    = items.slice(i, i + BATCH).map(it => `itemNo eq '${it.number}'`).join(' or ')
-      const filter = encodeURIComponent(nos)
-      let url: string | null = `${base}/itemUnitsOfMeasure?$filter=${filter}&$top=1000`
-      while (url) {
-        const res = await fetch(url, { headers, next: { revalidate: 60 } } as any)
-        if (!res.ok) break
-        const data = await res.json()
-        allRows.push(...(data.value ?? []))
-        url = data['@odata.nextLink'] ?? null
-      }
-    }
+    const batches: Array<Array<{ id: string; number: string }>> = []
+    for (let i = 0; i < items.length; i += BATCH)
+      batches.push(items.slice(i, i + BATCH))
+
+    const perBatch = await Promise.all(
+      batches.map(async (chunk) => {
+        const nos    = chunk.map(it => `itemNo eq '${it.number}'`).join(' or ')
+        const filter = encodeURIComponent(nos)
+        const rows: any[] = []
+        let url: string | null = `${base}/itemUnitsOfMeasure?$filter=${filter}&$top=1000`
+        while (url) {
+          const res = await fetch(url, { headers, next: { revalidate: 60 } } as any)
+          if (!res.ok) break
+          const data = await res.json()
+          rows.push(...(data.value ?? []))
+          url = data['@odata.nextLink'] ?? null
+        }
+        return rows
+      }),
+    )
+    const allRows: any[] = perBatch.flat()
 
     // Grupper pr. varenummer — baseUnitOfMeasure bestemmes af items[].baseUnitOfMeasureCode
     const baseUomByNo = new Map(items.map(it => {
