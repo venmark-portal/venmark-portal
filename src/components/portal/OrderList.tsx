@@ -91,8 +91,27 @@ type CatNode = { code: string; displayName: string; sortNo: number; presentation
 function buildCatTree(cats: BCItemCategory[]): CatNode[] {
   // Filtrer på visibleInWebshop — kun hvis mindst én kategori er markeret synlig.
   // Hvis ingen er sat (Evexo default = false), vises alle.
+  // En kategori vises hvis DEN SELV eller en FORÆLDER er markeret synlig →
+  // markér en hovedkategori (fx FROST) og dens underkategorier (FROST1,
+  // ROGNFROST) kommer automatisk med, så drill-down på portalen virker.
   const anyVisible = cats.some(c => c.visibleInWebshop === true)
-  const visible = anyVisible ? cats.filter(c => c.visibleInWebshop === true) : cats
+  let visible: BCItemCategory[]
+  if (anyVisible) {
+    const allByCode = new Map(cats.map(c => [c.code, c]))
+    const isVisibleSelfOrAncestor = (c: BCItemCategory): boolean => {
+      const seen = new Set<string>()
+      let cur: BCItemCategory | undefined = c
+      while (cur && !seen.has(cur.code)) {
+        if (cur.visibleInWebshop === true) return true
+        seen.add(cur.code)
+        cur = cur.parentCategory ? allByCode.get(cur.parentCategory) : undefined
+      }
+      return false
+    }
+    visible = cats.filter(isVisibleSelfOrAncestor)
+  } else {
+    visible = cats
+  }
   const byCode  = new Map<string, CatNode>()
   for (const c of visible) {
     byCode.set(c.code, { code: c.code, displayName: c.displayName, sortNo: c.sortNo ?? 0, presentationOrder: c.presentationOrder ?? 0, children: [] })
