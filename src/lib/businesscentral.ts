@@ -265,17 +265,6 @@ export interface BCItemCategory {
   visibleInWebshop:  boolean  // Evexo-felt — false = skjul i portal
 }
 
-/**
- * Gør en rå BC-kategori-kode pæn til visning.
- * Eksempler: "FARS-PLUK" → "Fars Pluk", "FARSPROD" → "Farsprod", "FERSKLAKS" → "Fersklaks"
- */
-function prettifyCode(code: string): string {
-  return code
-    .split(/[-_\s]+/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ')
-}
-
 export async function getItemCategories(): Promise<BCItemCategory[]> {
   const token   = await getAccessToken()
   const base    = bcBaseUrl()
@@ -310,7 +299,7 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
     for (const cat of (catData.value ?? [])) {
       if (!cat.code) continue
       metaMap.set(cat.code, {
-        displayName:       cat.displayName || prettifyCode(cat.code),
+        displayName:       cat.displayName || cat.code,
         parentCategory:    cat.parentCategory ?? '',
         presentationOrder: cat.presentationOrder ?? 0,
         sortNo:            cat.sortNo ?? 0,
@@ -333,7 +322,7 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
     const meta = metaMap.get(code)
     return {
       code,
-      displayName:       meta?.displayName       ?? prettifyCode(code),
+      displayName:       meta?.displayName       ?? code,
       parentCategory:    meta?.parentCategory     ?? '',
       presentationOrder: meta?.presentationOrder  ?? 0,
       sortNo:            meta?.sortNo             ?? 0,
