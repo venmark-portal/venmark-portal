@@ -1754,6 +1754,117 @@ export async function getItemAvailabilities(): Promise<Map<string, BCItemAvailab
   } catch { return new Map() }
 }
 
+// ─── Salgsliste summeret (admin) ─────────────────────────────────────────────
+
+export interface SalgslisteCustomer {
+  customerNo:   string
+  customerName: string
+  qty:          number
+}
+
+export interface SalgslisteRow {
+  itemNo:       string
+  description:  string
+  uom:          string
+  salg:         number
+  lager:        number
+  iProduktion:  number
+  iKoeb:        number
+  customers:    SalgslisteCustomer[]
+}
+
+/**
+ * Bygger den summerede salgsliste til admin: pr. vare + enhed med salg (for valgt
+ * dato, alle kunder) + lager / i produktion / i køb, samt kundesalg-drill-down.
+ * Spejler BC "VM Sales Summary Mgt".BuildSummary — X-varer udeladt, og varer med
+ * forsyning men uden salg får en base-enhed-række (salg = 0).
+ */
+export async function getSalgsliste(salesDate: string): Promise<SalgslisteRow[]> {
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+
+    // 1) Forsyning pr. vare (lager / i produktion / i køb) — alle varer
+    type Supply = { description: string; baseUoM: string; lager: number; iProduktion: number; iKoeb: number }
+    const supply = new Map<string, Supply>()
+    let aurl: string | null = `${base}/itemAvailabilities?$top=1000`
+    while (aurl) {
+      const res: Response = await fetch(aurl, { headers, cache: 'no-store' } as any)
+      if (!res.ok) break
+      const data = await res.json()
+      for (const it of (data.value ?? [])) {
+        if (!it.itemNo || String(it.itemNo).startsWith('X')) continue
+        supply.set(it.itemNo, {
+          description: it.description        ?? '',
+          baseUoM:     it.baseUnitOfMeasure  ?? '',
+          lager:       it.lager              ?? 0,
+          iProduktion: it.iProduktion        ?? 0,
+          iKoeb:       it.iKoeb              ?? 0,
+        })
+      }
+      aurl = data['@odata.nextLink'] ?? null
+    }
+
+    // 2) Åbne salgsordrelinjer for datoen → summér pr. vare + enhed + kunde
+    const rows = new Map<string, SalgslisteRow>()   // key = itemNo|uom
+    const filter = encodeURIComponent(`type eq 'Item' and shipmentDate eq ${salesDate}`)
+    let surl: string | null = `${base}/portalSalesLines?$filter=${filter}&$top=1000`
+    while (surl) {
+      const res: Response = await fetch(surl, { headers, cache: 'no-store' } as any)
+      if (!res.ok) break
+      const data = await res.json()
+      for (const l of (data.value ?? [])) {
+        const itemNo = l.lineObjectNumber ?? ''
+        if (!itemNo || String(itemNo).startsWith('X')) continue
+        const uom = l.unitOfMeasureCode ?? ''
+        const key = `${itemNo}|${uom}`
+        let row = rows.get(key)
+        if (!row) {
+          const s = supply.get(itemNo)
+          row = {
+            itemNo,
+            description: l.description || s?.description || '',
+            uom,
+            salg:        0,
+            lager:       s?.lager       ?? 0,
+            iProduktion: s?.iProduktion ?? 0,
+            iKoeb:       s?.iKoeb       ?? 0,
+            customers:   [],
+          }
+          rows.set(key, row)
+        }
+        const qty = l.quantity ?? 0
+        row.salg += qty
+        const cNo = l.sellToCustomerNo ?? ''
+        let c = row.customers.find(x => x.customerNo === cNo)
+        if (!c) { c = { customerNo: cNo, customerName: l.sellToCustomerName || cNo, qty: 0 }; row.customers.push(c) }
+        c.qty += qty
+      }
+      surl = data['@odata.nextLink'] ?? null
+    }
+
+    // 3) Varer med forsyning men uden salg → base-enhed-række (salg = 0)
+    const salesItemNos = new Set<string>()
+    for (const r of rows.values()) salesItemNos.add(r.itemNo)
+    for (const [itemNo, s] of supply) {
+      if ((s.lager === 0 && s.iProduktion === 0 && s.iKoeb === 0) || salesItemNos.has(itemNo)) continue
+      rows.set(`${itemNo}|${s.baseUoM}`, {
+        itemNo, description: s.description, uom: s.baseUoM,
+        salg: 0, lager: s.lager, iProduktion: s.iProduktion, iKoeb: s.iKoeb, customers: [],
+      })
+    }
+
+    const out = Array.from(rows.values())
+    out.sort((a, b) => a.itemNo.localeCompare(b.itemNo, 'da'))
+    for (const r of out) r.customers.sort((a, b) => b.qty - a.qty)
+    return out
+  } catch { return [] }
+}
+
 // ─── Hent forsendelsesmetoder fra BC (Shipment Method) ───────────────────────
 
 export async function getShipmentMethods(): Promise<{ code: string; description: string }[]> {
