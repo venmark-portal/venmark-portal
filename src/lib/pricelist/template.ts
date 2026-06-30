@@ -94,6 +94,7 @@ function renderItemRow(item: PriceListItem): string {
   return `
     <tr>
       <td class="itemno">${esc(item.no)}</td>
+      <td class="danishtext">${esc(item.danishText ?? "")}</td>
       ${statusCell}
       <td class="description">${esc(item.description)}</td>
       <td class="unit">${esc(item.unit)}</td>
@@ -120,6 +121,7 @@ function renderSection(section: PriceListSection, language: string): string {
         <thead>
           <tr>
             <th class="itemno"></th>
+            <th class="danishtext"></th>
             <th class="status"></th>
             <th class="description"></th>
             <th class="unit">${headers.unit}</th>
@@ -278,13 +280,17 @@ export function renderPriceListHtml(data: PriceListData): string {
     font-family: "Courier New", monospace;
     color: #555;
   }
+  td.danishtext, th.danishtext {
+    width: 32mm;
+    color: #333;
+  }
   td.status, th.status {
     width: 22mm;
     font-style: italic;
     color: #b85c00;
   }
   td.description, th.description {
-    width: 70mm;
+    width: 52mm;
   }
   td.unit, th.unit {
     width: 12mm;

@@ -22,6 +22,7 @@ export interface PriceTier {
 
 export interface PriceListItem {
   no: string;               // Varenr. (fx "10677")
+  danishText?: string;      // DanishTextOnPriceList (50051) — vises mellem varenr og beskrivelse
   description: string;      // Oversat beskrivelse
   statusNote: string;       // Oversat statustekst (Frost, Udsolgt, etc.)
   unit: string;             // Basisenhed (KG, STK osv.)
