@@ -944,6 +944,49 @@ export async function getPostedInvoices(
   }
 }
 
+// ─── Bestil på vegne af / flere butikker ────────────────────────────────────
+
+export interface BCPortalOrderAccess {
+  customerNo:   string
+  customerName: string
+  priceGroup:   string
+  postingGroup: string
+}
+
+/**
+ * Henter de butikker (debitorer) som en logget-ind kunde (parent/kædekontor) må
+ * bestille til / se historik for. Kilde: BC custom API page 50331 (portalOrderAccesses),
+ * kun ikke-spærrede rækker. Tom liste → kunden bestiller kun til sig selv.
+ * Se .MD filer/BESTIL-PAA-VEGNE-AF.md for kontrakten.
+ */
+export async function getPortalOrderAccesses(
+  parentCustomerNo: string,
+): Promise<BCPortalOrderAccess[]> {
+  if (!parentCustomerNo) return []
+  try {
+    const token = await getAccessToken()
+    const base  = bcPortalBaseUrl()
+    const filter = encodeURIComponent(`parentCustomerNo eq '${parentCustomerNo}'`)
+    const res = await fetch(
+      `${base}/portalOrderAccesses?$filter=${filter}&$select=customerNo,customerName,priceGroup,postingGroup&$top=200`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        cache: 'no-store',
+      },
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((a: any) => ({
+      customerNo:   a.customerNo   ?? '',
+      customerName: a.customerName ?? '',
+      priceGroup:   a.priceGroup   ?? '',
+      postingGroup: a.postingGroup ?? '',
+    })).filter((a: BCPortalOrderAccess) => a.customerNo)
+  } catch {
+    return []
+  }
+}
+
 export interface BCInvoiceLine {
   id:                 string
   documentNumber:     string

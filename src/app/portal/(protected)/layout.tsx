@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import PortalNav from '@/components/portal/PortalNav'
 import SessionProvider from '@/components/portal/SessionProvider'
+import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
 import TicketNotifier from '@/components/portal/TicketNotifier'
 import PushSubscribeButton from '@/components/portal/PushSubscribeButton'
 
@@ -105,6 +106,9 @@ export default async function PortalLayout({
             <span className="text-sm text-gray-500">{session.user?.name}</span>
           </div>
         </header>
+
+        {/* Kunde-vælger — kun synlig for kunder med flere butikker */}
+        <CustomerSwitcher />
 
         {/* Banner (vises på alle sider hvis aktiveret) */}
         {settings.bannerEnabled && settings.bannerText && (

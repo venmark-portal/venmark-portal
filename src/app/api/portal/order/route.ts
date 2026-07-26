@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getDeadlineForDelivery, getDeadlineForMethodDelivery } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
 import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays } from '@/lib/businesscentral'
+import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -13,6 +14,14 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = (session.user as any)?.id as string
+
+  // "Bestil på vegne af": ordren oprettes på den AKTIVE kunde (valgt butik).
+  // Gen-validér ALTID server-side mod BC-adgangslisten — stol aldrig på sessionen alene.
+  const parentNo         = getParentCustomerNo(session)
+  const activeCustomerNo = getActiveCustomerNo(session)
+  if (!(await isCustomerAllowed(parentNo, activeCustomerNo))) {
+    return NextResponse.json({ error: 'Ingen adgang til den valgte butik' }, { status: 403 })
+  }
 
   try {
     const body = await req.json()
@@ -115,7 +124,7 @@ export async function POST(req: NextRequest) {
     // Send direkte til BC — linjer oprettes med shipQuantity=0 (afventer godkendelse)
     try {
       const bc = await createBCSalesOrder(
-        customer.bcCustomerNumber,
+        activeCustomerNo,   // Sell-to = valgt butik (bestil på vegne af)
         deliveryDate,
         order.id,
         order.lines.map((l) => ({
