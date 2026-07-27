@@ -1351,6 +1351,59 @@ export async function addLinesToBCOrder(
 
 // ─── Hent linjestatus fra Sales-warehouse-facade API ─────────────────────────
 
+// ─── Åbne salgsordrer pr. kunde (til "Mine ordrer" — inkl. BC-oprettede) ─────
+
+export interface BCCustomerOrder {
+  id:                    string
+  number:                string
+  customerNumber:        string
+  customerName:          string
+  requestedDeliveryDate: string
+  orderDate:             string
+  status:                string
+  amountIncludingTax:    number
+  externalDocumentNumber: string
+  orderNote:             string
+}
+
+/**
+ * Henter ALLE åbne salgsordrer (Document Type = Order) for ét debitornr. via
+ * custom API page 50391 (portalSalesOrders). Dækker både portal-oprettede OG
+ * ordrer tastet direkte i BC. Bogførte/leverede ordrer forsvinder fra Sales Header
+ * og vises i stedet under Fakturaer.
+ */
+export async function getCustomerOrders(customerNo: string): Promise<BCCustomerOrder[]> {
+  if (!customerNo) return []
+  try {
+    const token  = await getAccessToken()
+    const base   = bcPortalBaseUrl()
+    const filter = encodeURIComponent(`customerNumber eq '${customerNo}'`)
+    const res = await fetch(
+      `${base}/portalSalesOrders?$filter=${filter}&$orderby=requestedDeliveryDate desc&$top=200`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        cache: 'no-store',
+      },
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? []).map((o: any) => ({
+      id:                     o.id,
+      number:                 o.number ?? '',
+      customerNumber:         o.customerNumber ?? customerNo,
+      customerName:           o.customerName ?? '',
+      requestedDeliveryDate:  (!o.requestedDeliveryDate || o.requestedDeliveryDate === '0001-01-01') ? '' : o.requestedDeliveryDate,
+      orderDate:              (!o.orderDate || o.orderDate === '0001-01-01') ? '' : o.orderDate,
+      status:                 String(o.status ?? ''),
+      amountIncludingTax:     o.amountIncludingTax ?? 0,
+      externalDocumentNumber: o.externalDocumentNumber ?? '',
+      orderNote:              o.orderNote ?? '',
+    })) as BCCustomerOrder[]
+  } catch {
+    return []
+  }
+}
+
 export interface BCPortalLine {
   id:                 string
   documentNo:         string
