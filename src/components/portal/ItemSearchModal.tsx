@@ -57,10 +57,14 @@ function computeStatus(
 
   if (avail.strengtLager) {
     const disp = avail.disponibelt
-    if (disp <= 0) {
+    // Kommende afgang/købsordre dækker leveringen hvis leveringsdatoen er på/efter
+    // afgangsdatoen (torsdags-afgang → fredags-levering). Se OrderList.getItemAvailStatus.
+    const coveredByAfgang = !!avail.naesteLevering && deliveryStr >= avail.naesteLevering
+    if (disp <= 0 && !coveredByAfgang) {
       const label = avail.naesteLevering ? `Tilgængelig til afgang ${formatDate(avail.naesteLevering)}` : 'Ingen lager – kontakt os'
       return { blocked: true, blockLabel: label, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
     }
+    if (disp <= 0) return { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
     return { blocked: false, blockLabel: '', disponibeltLabel: '>50', disponibeltColor: null, aabnTilLabel }
   }

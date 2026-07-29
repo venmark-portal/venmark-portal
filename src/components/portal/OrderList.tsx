@@ -178,6 +178,17 @@ function formatTilgaengeligFra(dateStr: string): string {
   return `Tilgængelig ${d}/${m}`
 }
 
+// Kun dag/dato — uden "Tilgængelig"-præfiks (til "Tilgængelig til afgang <dag>")
+function formatAfgangDag(dateStr: string): string {
+  const target = new Date(dateStr + 'T00:00:00')
+  const nowDay = new Date(new Date().toDateString())
+  const diffDays = Math.round((new Date(target.toDateString()).getTime() - nowDay.getTime()) / 86400000)
+  if (diffDays <= 6) return DA_WEEKDAYS[target.getDay()]
+  const d = String(target.getDate()).padStart(2, '0')
+  const m = String(target.getMonth() + 1).padStart(2, '0')
+  return `${d}/${m}`
+}
+
 interface ItemAvailStatus {
   blocked: boolean
   blockLabel: string
@@ -224,11 +235,20 @@ function getItemAvailStatus(
   // Strengt lager — total pipeline (alle datoer)
   if (avail.strengtLager) {
     const disp = avail.disponibelt
-    if (disp <= 0) {
+    // En kommende afgang/købsordre (naesteLevering) dækker leveringen, hvis den valgte
+    // leveringsdato er PÅ ELLER EFTER afgangsdatoen. Så er en "streng vare" tilgængelig,
+    // selv om det nuværende lager (disponibelt) er 0 — fx torsdags-afgang → fredags-levering.
+    // (Samme >=-tærskel som tilgaengeligFra ovenfor; før blev leveringsdatoen slet ikke brugt her.)
+    const coveredByAfgang = !!avail.naesteLevering && deliveryStr >= avail.naesteLevering
+    if (disp <= 0 && !coveredByAfgang) {
       const dateLabel = avail.naesteLevering
-        ? `Tilgængelig til afgang ${formatTilgaengeligFra(avail.naesteLevering)}`
+        ? `Tilgængelig til afgang ${formatAfgangDag(avail.naesteLevering)}`
         : 'Ingen lager – kontakt os'
       return { blocked: true, blockLabel: dateLabel, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
+    }
+    if (disp <= 0) {
+      // Lager 0, men kommende afgang dækker den valgte leveringsdato → tilgængelig (ingen KG-tal kendt)
+      return { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel }
     }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange', aabnTilLabel }
     return { blocked: false, blockLabel: '', disponibeltLabel: '>50', disponibeltColor: null, aabnTilLabel }
