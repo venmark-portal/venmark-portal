@@ -672,7 +672,7 @@ export function OrderRow({
         <div className="min-w-0 flex-1">
           {/* Dansk tekst over varenavn */}
           {infoNote && (
-            <p className="text-[10px] font-bold text-green-800 leading-tight mb-0.5 uppercase tracking-wide">{infoNote}</p>
+            <p className="text-[10px] font-bold text-red-600 leading-tight mb-0.5 uppercase tracking-wide">{infoNote}</p>
           )}
           {/* Linje 1: navn + attributter */}
           <div className="flex items-start gap-1 min-w-0 flex-wrap">
