@@ -225,7 +225,7 @@ function getItemAvailStatus(
   let aabnTilLabel: string | null = null
   if (avail.aabnTil) {
     const p = parseAabnTil(avail.aabnTil)
-    if (p) aabnTilLabel = `Afg.frist: kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
+    if (p) aabnTilLabel = `Bestil inden ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
   }
 
   if (avail.tilgaengeligFra && deliveryStr < avail.tilgaengeligFra) {
@@ -656,7 +656,7 @@ export function OrderRow({
         </div>
       )}
       {!blockedLabel && aabnTilLabel && (
-        <div className="mb-1 flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 w-fit">
+        <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
           <Clock size={9} />
           {aabnTilLabel}
         </div>
