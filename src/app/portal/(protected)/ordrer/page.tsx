@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { Package, Store, ChevronRight } from 'lucide-react'
+import { Package, Store, Globe, Building2 } from 'lucide-react'
 import {
   getCustomerOrders,
   getPortalLineStatuses,
@@ -10,6 +10,7 @@ import {
   BCCustomerOrder,
 } from '@/lib/businesscentral'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
+import { prisma } from '@/lib/prisma'
 import OrderLineStatus from '@/components/portal/OrderLineStatus'
 
 export const dynamic = 'force-dynamic'
@@ -55,13 +56,26 @@ export default async function MyOrdersPage() {
   // Hent portallinjer for alle ordrer parallelt (fulde linjer inkl. status)
   const allOrders = perCustomer.flatMap(pc => pc.orders)
   const lineMap = new Map<string, BCPortalLine[]>()
-  await Promise.all(
-    allOrders.map(async (o) => {
-      if (!o.number) return
-      const lines = await getPortalLineStatuses(o.number)
-      if (lines) lineMap.set(o.number, lines)
-    }),
-  )
+
+  // Afgør oprindelse: ordrer oprettet via portalen har en række i portal-DB'en med
+  // samme bcOrderNumber. Alt andet er tastet direkte i BC → mærkes "Tastet i BC".
+  const bcNumbers = allOrders.map(o => o.number).filter(Boolean)
+  const [, portalRows] = await Promise.all([
+    Promise.all(
+      allOrders.map(async (o) => {
+        if (!o.number) return
+        const lines = await getPortalLineStatuses(o.number)
+        if (lines) lineMap.set(o.number, lines)
+      }),
+    ),
+    bcNumbers.length
+      ? prisma.order.findMany({
+          where:  { bcOrderNumber: { in: bcNumbers } },
+          select: { bcOrderNumber: true },
+        })
+      : Promise.resolve([] as { bcOrderNumber: string | null }[]),
+  ])
+  const portalOrigin = new Set(portalRows.map(r => r.bcOrderNumber).filter(Boolean) as string[])
 
   // Kun grupper med ordrer; login-kunden først, derefter butikker alfabetisk
   const groups = perCustomer
@@ -127,6 +141,7 @@ export default async function MyOrdersPage() {
                       key={order.id || order.number}
                       order={order}
                       lines={lineMap.get(order.number) ?? null}
+                      fromBc={!portalOrigin.has(order.number)}
                     />
                   ))}
                 </div>
@@ -139,7 +154,7 @@ export default async function MyOrdersPage() {
   )
 }
 
-function OrderCard({ order, lines }: { order: BCCustomerOrder; lines: BCPortalLine[] | null }) {
+function OrderCard({ order, lines, fromBc }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean }) {
   const st = STATUS[order.status] ?? { label: order.status || 'Åben', cls: 'bg-gray-100 text-gray-600' }
 
   return (
@@ -157,6 +172,18 @@ function OrderCard({ order, lines }: { order: BCCustomerOrder; lines: BCPortalLi
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${st.cls}`}>
               {st.label}
             </span>
+            {/* Oprindelse — tydeligt om ordren er tastet i BC eller bestilt online */}
+            {fromBc ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                <Building2 size={10} />
+                Tastet i BC
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                <Globe size={10} />
+                Bestilt online
+              </span>
+            )}
             {order.number && (
               <span className="rounded bg-gray-50 px-1.5 py-0.5 font-mono text-xs text-gray-500">
                 #{order.number}
