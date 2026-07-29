@@ -14,12 +14,14 @@ import OrderLineStatus from '@/components/portal/OrderLineStatus'
 
 export const dynamic = 'force-dynamic'
 
-// BC Sales Header Status → badge
+// BC standard salesOrder.status → badge (fallback viser rå værdi)
 const STATUS: Record<string, { label: string; cls: string }> = {
-  Open:                { label: 'Åben',           cls: 'bg-amber-100 text-amber-700' },
-  Released:            { label: 'Frigivet',       cls: 'bg-green-100 text-green-700' },
-  'Pending Approval':  { label: 'Afventer godk.', cls: 'bg-blue-100  text-blue-700'  },
-  'Pending Prepayment':{ label: 'Afventer betaling', cls: 'bg-blue-100 text-blue-700' },
+  Draft:              { label: 'Kladde',          cls: 'bg-gray-100  text-gray-600'  },
+  InReview:           { label: 'Til gennemsyn',   cls: 'bg-blue-100  text-blue-700'  },
+  Open:               { label: 'Åben',            cls: 'bg-amber-100 text-amber-700' },
+  Released:           { label: 'Frigivet',        cls: 'bg-green-100 text-green-700' },
+  PendingApproval:    { label: 'Afventer godk.',  cls: 'bg-blue-100  text-blue-700'  },
+  PendingPrepayment:  { label: 'Afventer betaling', cls: 'bg-blue-100 text-blue-700' },
 }
 
 const fmt = new Intl.NumberFormat('da-DK', {

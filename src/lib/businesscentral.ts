@@ -1367,19 +1367,23 @@ export interface BCCustomerOrder {
 }
 
 /**
- * Henter ALLE åbne salgsordrer (Document Type = Order) for ét debitornr. via
- * custom API page 50391 (portalSalesOrders). Dækker både portal-oprettede OG
- * ordrer tastet direkte i BC. Bogførte/leverede ordrer forsvinder fra Sales Header
- * og vises i stedet under Fakturaer.
+ * Henter ALLE åbne salgsordrer for ét debitornr. via BC's STANDARD v2.0 salesOrders
+ * API (Document Type = Order). Dækker både portal-oprettede OG ordrer tastet direkte
+ * i BC. Bevidst IKKE den custom portalSalesOrders-side (50391) — den bruges til at
+ * OPRETTE ordrer, og læse/skrive må ikke entangles. Bogførte/leverede ordrer forsvinder
+ * fra Sales Header og vises i stedet under Fakturaer.
  */
 export async function getCustomerOrders(customerNo: string): Promise<BCCustomerOrder[]> {
   if (!customerNo) return []
   try {
     const token  = await getAccessToken()
-    const base   = bcPortalBaseUrl()
+    const base   = bcBaseUrl()
     const filter = encodeURIComponent(`customerNumber eq '${customerNo}'`)
+    const select = encodeURIComponent(
+      'id,number,customerNumber,customerName,requestedDeliveryDate,orderDate,status,totalAmountIncludingTax,externalDocumentNumber',
+    )
     const res = await fetch(
-      `${base}/portalSalesOrders?$filter=${filter}&$orderby=requestedDeliveryDate desc&$top=200`,
+      `${base}/salesOrders?$filter=${filter}&$select=${select}&$orderby=requestedDeliveryDate desc&$top=200`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         cache: 'no-store',
@@ -1395,9 +1399,9 @@ export async function getCustomerOrders(customerNo: string): Promise<BCCustomerO
       requestedDeliveryDate:  (!o.requestedDeliveryDate || o.requestedDeliveryDate === '0001-01-01') ? '' : o.requestedDeliveryDate,
       orderDate:              (!o.orderDate || o.orderDate === '0001-01-01') ? '' : o.orderDate,
       status:                 String(o.status ?? ''),
-      amountIncludingTax:     o.amountIncludingTax ?? 0,
+      amountIncludingTax:     o.totalAmountIncludingTax ?? 0,
       externalDocumentNumber: o.externalDocumentNumber ?? '',
-      orderNote:              o.orderNote ?? '',
+      orderNote:              '',
     })) as BCCustomerOrder[]
   } catch {
     return []
