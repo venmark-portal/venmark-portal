@@ -6,6 +6,7 @@ import {
   getPortalPrices, getItemsByNumbers, getCustomerFavorites,
   getItemCutoffs, getWebshopVisibleItemNos, getItemsAttributeValues, getItemsUoMs,
   getItemAvailabilities,
+  getCustomerLocationCode,
 } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import AddLinesClient from './AddLinesClient'
@@ -46,6 +47,9 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
 
   const today8601 = new Date().toISOString().split('T')[0]
 
+  // Kundens lokation → portal-disponibelt pr. den lokation vi sender fra.
+  const custLocation = await getCustomerLocationCode(customerNo).catch(() => '')
+
   // ── Hent samme data som bestil-siden parallelt ──
   const [portalPrices, blockedRows, bcStandardLines, dbFavRows, itemCutoffs, webshopVisible, itemAvailabilities] = await Promise.all([
     getPortalPrices(customerNo, priceGrp),
@@ -54,7 +58,7 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
     prisma.favorite.findMany({ where: { customerId } }),
     getItemCutoffs().catch(() => new Map()),
     getWebshopVisibleItemNos().catch(() => null),
-    getItemAvailabilities().catch(() => new Map()),
+    getItemAvailabilities(custLocation).catch(() => new Map()),
   ])
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))

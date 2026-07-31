@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems, getCustomerLocationCode } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
@@ -39,6 +39,10 @@ export default async function BestilPage() {
   const toDate90  = new Date(today); toDate90.setDate(today.getDate() + 90)
   const toDate90str = toDate90.toISOString().split('T')[0]
 
+  // Kundens (aktiv kunde = evt. valgt butik) lokation → portal-disponibelt beregnes
+  // pr. den lokation vi sender fra (fx København-kunder → KBH-lager). Tom = alle lokationer.
+  const custLocation = await getCustomerLocationCode(customerNo).catch(() => '')
+
   // ── Hent alt parallelt ────────────────────────────────────────────────────────
   // Kalenderen hentes nu HER (afhænger kun af datoer) i stedet for et separat,
   // sekventielt kald senere — sparer én BC-runde-tur i page-load.
@@ -60,7 +64,7 @@ export default async function BestilPage() {
     getItemCutoffs().catch(() => new Map()),
     getItemCategories().catch(() => []),
     getWebshopVisibleItemNos().catch(() => null),
-    getItemAvailabilities().catch(() => new Map()),
+    getItemAvailabilities(custLocation).catch(() => new Map()),
     getPortalShipmentMethods().catch(() => []),
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
     getCustomerPortalShipmentMethods(customerNo).catch(() => []),

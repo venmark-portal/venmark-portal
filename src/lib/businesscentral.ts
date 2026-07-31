@@ -1818,7 +1818,7 @@ export interface BCItemAvailability {
  * Returnerer Map fra itemNo → tilgængeligheds-data for alle varer.
  * Bruges af bestillingssiden til at blokere/advare afhængigt af varetype.
  */
-export async function getItemAvailabilities(): Promise<Map<string, BCItemAvailability>> {
+export async function getItemAvailabilities(locationCode?: string): Promise<Map<string, BCItemAvailability>> {
   try {
     const token   = await getAccessToken()
     const tenant  = process.env.BC_TENANT_ID
@@ -1827,8 +1827,14 @@ export async function getItemAvailabilities(): Promise<Map<string, BCItemAvailab
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
+    // Kundens lokation → disponibelt/lager/køb beregnes pr. den lokation (BC page 50373).
+    // Tom lokation = alle lokationer (uændret).
+    const locFilter = locationCode
+      ? `&$filter=${encodeURIComponent(`locationFilter eq '${locationCode.replace(/'/g, "''")}'`)}`
+      : ''
+
     const result = new Map<string, BCItemAvailability>()
-    let url: string | null = `${base}/itemAvailabilities?$top=1000`
+    let url: string | null = `${base}/itemAvailabilities?$top=1000${locFilter}`
     while (url) {
       const res: Response = await fetch(url, { headers, cache: 'no-store' } as any)
       if (!res.ok) break
@@ -2093,6 +2099,26 @@ export async function getCustomerShipmentMethodCode(customerNo: string): Promise
     if (!res.ok) return ''
     const data = await res.json()
     return (data.value?.[0]?.shipmentMethod?.code ?? '').trim()
+  } catch { return '' }
+}
+
+/**
+ * Kundens BC-lokation (Location Code). Bruges til at vise portal-disponibelt pr. den
+ * lokation vi sender fra (fx København-kunder → KBH-lager). Tom = alle lokationer.
+ */
+export async function getCustomerLocationCode(customerNo: string): Promise<string> {
+  if (!customerNo) return ''
+  try {
+    const token  = await getAccessToken()
+    const base   = bcBaseUrl()
+    const filter = encodeURIComponent(`number eq '${customerNo}'`)
+    const res    = await fetch(`${base}/customers?$filter=${filter}&$select=number,locationCode&$top=1`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return ''
+    const data = await res.json()
+    return (data.value?.[0]?.locationCode ?? '').trim()
   } catch { return '' }
 }
 
