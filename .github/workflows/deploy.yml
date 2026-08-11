@@ -31,6 +31,9 @@ jobs:
               npm install --omit=dev
             fi
             set -a && source .env.local && set +a
+            # Idempotent skema-selvhelbredelse: sikrer nye kolonner findes FØR prisma generate,
+            # så den genererede klient aldrig SELECTer en kolonne DB'en mangler (ville vælte logins).
+            echo 'ALTER TABLE "Customer" ADD COLUMN IF NOT EXISTS "bcChainPriceGroup" TEXT;' | npx prisma db execute --schema prisma/schema.prisma --stdin
             npx prisma generate
             npm run build
             pm2 restart venmark
@@ -49,6 +52,8 @@ jobs:
             git pull origin staging
             npm install --omit=dev
             set -a && source .env.local && set +a
+            # Idempotent skema-selvhelbredelse (se prod-trin).
+            echo 'ALTER TABLE "Customer" ADD COLUMN IF NOT EXISTS "bcChainPriceGroup" TEXT;' | npx prisma db execute --schema prisma/schema.prisma --stdin
             npx prisma generate
             npm run build
             pm2 restart venmark-test || pm2 start /var/www/venmark-test/ecosystem.config.js

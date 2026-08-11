@@ -384,6 +384,26 @@ export interface BCPortalPrice {
   startingDate:    string | null
   endingDate:      string | null
   portalFavorite:  boolean
+  // Kilde-prioritet der SPEJLER BC's runtime-prisberegning (GetBestSalesPrice /
+  // CalculatePrice): kunde-specifik vinder > KÆDE-prisgruppe (override, uanset højere/
+  // lavere) > normal prisgruppe / alle kunder (laveste). Lavere tal = højere prioritet.
+  //   0 = Customer (kunde-specifik)   1 = kæde-prisgruppe   2 = normal gruppe / alle kunder
+  sourcePriority:  number
+}
+
+/**
+ * Vælg den vindende pris blandt et sæt allerede-filtrerede (dato/antal-gyldige) tiers,
+ * så visningen matcher BC's runtime: brug KUN tiers fra den højest-prioriterede kilde der
+ * har en gyldig linje (kunde > kæde > normal/alle), og tag laveste pris blandt dem
+ * (trappe/dubletter). Returnerer null hvis listen er tom.
+ */
+export function pickPriceBySource(
+  tiers: { unitPrice: number; sourcePriority?: number }[],
+): number | null {
+  if (!tiers.length) return null
+  const minPrio = Math.min(...tiers.map(t => t.sourcePriority ?? 2))
+  const top = tiers.filter(t => (t.sourcePriority ?? 2) === minPrio)
+  return Math.min(...top.map(t => t.unitPrice))
 }
 
 /**
@@ -394,8 +414,9 @@ export interface BCPortalPrice {
 export async function getPortalPrices(
   customerNo: string,
   priceGroup?: string,
+  chainGroup?: string,
 ): Promise<BCPortalPrice[]> {
-  if (!customerNo && !priceGroup) return []
+  if (!customerNo && !priceGroup && !chainGroup) return []
   try {
     const token   = await getAccessToken()
     const tenant  = process.env.BC_TENANT_ID
@@ -444,6 +465,13 @@ export async function getPortalPrices(
       const f = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${priceGroup}'`)
       fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=${PAGE_SIZE}`))
     }
+    // Kæde-prisgruppe (samme sourceType som normal gruppe, men egen kode). Kun hvis den
+    // adskiller sig fra kundens normale gruppe. Kæde-linjer får sourcePriority 1 nedenfor
+    // via sammenligning af sourceNo, så de OVERRIDER den normale gruppe i visningen.
+    if (chainGroup && chainGroup !== priceGroup) {
+      const f = encodeURIComponent(`sourceType eq 'Customer Price Group' and sourceNo eq '${chainGroup}'`)
+      fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${f}&$top=${PAGE_SIZE}`))
+    }
     // All Customers priser
     const fAll = encodeURIComponent(`sourceType eq 'All Customers'`)
     fetchJobs.push(fetchAllPages(`${base}/portalPrices?$filter=${fAll}&$top=${PAGE_SIZE}`))
@@ -456,20 +484,29 @@ export async function getPortalPrices(
     const seen = new Set<string>()
     return allItems
       .filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true })
-      .map((p: any) => ({
-        id:              p.id,
-        priceListCode:   p.priceListCode ?? '',
-        sourceType:      p.sourceType ?? '',
-        sourceNo:        p.sourceNo ?? '',
-        itemNo:          p.itemNo,
-        unitOfMeasure:   p.unitOfMeasure ?? '',
-        minimumQuantity: p.minimumQuantity ?? 0,
-        unitPrice:       p.unitPrice,
-        // BC bruger "0001-01-01" som "ingen dato sat" — normaliser til null
-        startingDate:    (!p.startingDate || p.startingDate === '0001-01-01') ? null : p.startingDate,
-        endingDate:      (!p.endingDate   || p.endingDate   === '0001-01-01') ? null : p.endingDate,
-        portalFavorite:  p.portalFavorite ?? false,
-      }))
+      .map((p: any) => {
+        const sourceType = p.sourceType ?? ''
+        const sourceNo   = p.sourceNo ?? ''
+        // Prioritet spejler BC-runtime: kunde 0 > kæde 1 > normal gruppe/alle 2.
+        let sourcePriority = 2
+        if (sourceType === 'Customer') sourcePriority = 0
+        else if (chainGroup && sourceType === 'Customer Price Group' && sourceNo === chainGroup) sourcePriority = 1
+        return {
+          id:              p.id,
+          priceListCode:   p.priceListCode ?? '',
+          sourceType,
+          sourceNo,
+          itemNo:          p.itemNo,
+          unitOfMeasure:   p.unitOfMeasure ?? '',
+          minimumQuantity: p.minimumQuantity ?? 0,
+          unitPrice:       p.unitPrice,
+          // BC bruger "0001-01-01" som "ingen dato sat" — normaliser til null
+          startingDate:    (!p.startingDate || p.startingDate === '0001-01-01') ? null : p.startingDate,
+          endingDate:      (!p.endingDate   || p.endingDate   === '0001-01-01') ? null : p.endingDate,
+          portalFavorite:  p.portalFavorite ?? false,
+          sourcePriority,
+        }
+      })
   } catch { return [] }
 }
 
@@ -947,10 +984,11 @@ export async function getPostedInvoices(
 // ─── Bestil på vegne af / flere butikker ────────────────────────────────────
 
 export interface BCPortalOrderAccess {
-  customerNo:   string
-  customerName: string
-  priceGroup:   string
-  postingGroup: string
+  customerNo:      string
+  customerName:    string
+  priceGroup:      string
+  chainPriceGroup: string
+  postingGroup:    string
 }
 
 /**
@@ -968,7 +1006,7 @@ export async function getPortalOrderAccesses(
     const base  = bcPortalBaseUrl()
     const filter = encodeURIComponent(`parentCustomerNo eq '${parentCustomerNo}'`)
     const res = await fetch(
-      `${base}/portalOrderAccesses?$filter=${filter}&$select=customerNo,customerName,priceGroup,postingGroup&$top=200`,
+      `${base}/portalOrderAccesses?$filter=${filter}&$select=customerNo,customerName,priceGroup,chainPriceGroup,postingGroup&$top=200`,
       {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         cache: 'no-store',
@@ -977,10 +1015,11 @@ export async function getPortalOrderAccesses(
     if (!res.ok) return []
     const data = await res.json()
     return (data.value ?? []).map((a: any) => ({
-      customerNo:   a.customerNo   ?? '',
-      customerName: a.customerName ?? '',
-      priceGroup:   a.priceGroup   ?? '',
-      postingGroup: a.postingGroup ?? '',
+      customerNo:      a.customerNo      ?? '',
+      customerName:    a.customerName    ?? '',
+      priceGroup:      a.priceGroup      ?? '',
+      chainPriceGroup: a.chainPriceGroup ?? '',
+      postingGroup:    a.postingGroup    ?? '',
     })).filter((a: BCPortalOrderAccess) => a.customerNo)
   } catch {
     return []

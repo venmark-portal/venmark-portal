@@ -31,6 +31,7 @@ export const authOptions: NextAuthOptions = {
               role:                 'customer' as const,
               bcCustomerNumber:     customer.bcCustomerNumber,
               bcPriceGroup:         customer.bcPriceGroup ?? '',
+              bcChainPriceGroup:    (customer as any).bcChainPriceGroup ?? '',
               requirePoNumber:      customer.requirePoNumber,
               bcDebitorBookingGroup: customer.bcDebitorBookingGroup ?? '',
               isContact:            false,
@@ -42,6 +43,7 @@ export const authOptions: NextAuthOptions = {
         // Bruger $queryRaw pga. ContactUser er ny model og prisma generate er ikke kørt
         const contactRows = await prisma.$queryRaw<any[]>`
           SELECT cu.*, c.id as customerId_ref, c."bcCustomerNumber", c."bcPriceGroup",
+                 c."bcChainPriceGroup",
                  c."requirePoNumber", c."bcDebitorBookingGroup", c."isActive" as "customerIsActive",
                  c."bcBlocked" as "customerBcBlocked"
           FROM "ContactUser" cu
@@ -60,6 +62,7 @@ export const authOptions: NextAuthOptions = {
               role:                 'customer' as const,
               bcCustomerNumber:     contactRow.bcCustomerNumber,
               bcPriceGroup:         contactRow.bcPriceGroup ?? '',
+              bcChainPriceGroup:    contactRow.bcChainPriceGroup ?? '',
               requirePoNumber:      Boolean(contactRow.requirePoNumber),
               bcDebitorBookingGroup: contactRow.bcDebitorBookingGroup ?? '',
               isContact:            true,
@@ -129,6 +132,7 @@ export const authOptions: NextAuthOptions = {
         token.role                  = (user as any).role
         token.bcCustomerNumber      = (user as any).bcCustomerNumber
         token.bcPriceGroup          = (user as any).bcPriceGroup
+        ;(token as any).bcChainPriceGroup = (user as any).bcChainPriceGroup ?? ''
         token.requirePoNumber       = (user as any).requirePoNumber ?? false
         token.bcDebitorBookingGroup = (user as any).bcDebitorBookingGroup ?? ''
         token.isContact             = (user as any).isContact ?? false
@@ -138,6 +142,7 @@ export const authOptions: NextAuthOptions = {
         ;(token as any).activeCustomerNumber = (user as any).bcCustomerNumber
         ;(token as any).activeCustomerName   = (user as any).name ?? ''
         ;(token as any).activePriceGroup     = (user as any).bcPriceGroup ?? ''
+        ;(token as any).activeChainPriceGroup = (user as any).bcChainPriceGroup ?? ''
         ;(token as any).activePostingGroup   = (user as any).bcDebitorBookingGroup ?? ''
       }
 
@@ -153,6 +158,7 @@ export const authOptions: NextAuthOptions = {
           ;(token as any).activeCustomerNumber = parent
           ;(token as any).activeCustomerName   = (token.name as string) ?? ''
           ;(token as any).activePriceGroup     = token.bcPriceGroup ?? ''
+          ;(token as any).activeChainPriceGroup = (token as any).bcChainPriceGroup ?? ''
           ;(token as any).activePostingGroup   = token.bcDebitorBookingGroup ?? ''
         } else {
           const list  = await getPortalOrderAccesses(parent)
@@ -161,6 +167,7 @@ export const authOptions: NextAuthOptions = {
             ;(token as any).activeCustomerNumber = match.customerNo
             ;(token as any).activeCustomerName   = match.customerName
             ;(token as any).activePriceGroup     = match.priceGroup
+            ;(token as any).activeChainPriceGroup = match.chainPriceGroup ?? ''
             ;(token as any).activePostingGroup   = match.postingGroup
           }
           // Ingen match → ignorér (behold nuværende aktiv kunde)
@@ -184,6 +191,7 @@ export const authOptions: NextAuthOptions = {
         // den valgte butik — uden at røre 17 kald-steder. Ved "sig selv" = parent.
         ;(session.user as any).bcCustomerNumber      = (token as any).activeCustomerNumber   ?? token.bcCustomerNumber
         ;(session.user as any).bcPriceGroup          = (token as any).activePriceGroup       ?? token.bcPriceGroup
+        ;(session.user as any).bcChainPriceGroup     = (token as any).activeChainPriceGroup  ?? (token as any).bcChainPriceGroup ?? ''
         ;(session.user as any).bcDebitorBookingGroup = (token as any).activePostingGroup     ?? token.bcDebitorBookingGroup ?? ''
 
         // Aliaser til kunde-vælgeren

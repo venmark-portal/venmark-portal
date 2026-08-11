@@ -16,6 +16,7 @@ model Customer {
   name             String
   bcCustomerNumber  String   @unique
   bcPriceGroup      String?
+  bcChainPriceGroup String?  // Kæde-prisgruppe — OVERRIDER normal prisgruppe pr. vare (BC felt 50014)
   bcStandardSalesCode String?  // Standard Sales Code i BC — bruges til favoritliste
   phone            String?
   address          String?

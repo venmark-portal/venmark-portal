@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
     city,
     zipCode,
     priceGroup,
+    chainPriceGroup,
     debitorGroup,
     requirePoNumber = false,
     portalAktiv = true,
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
             city                  = ${city ?? null},
             "zipCode"             = ${zipCode ?? null},
             "bcPriceGroup"        = ${priceGroup ?? existing.bcPriceGroup},
+            "bcChainPriceGroup"   = ${chainPriceGroup ?? (existing as any).bcChainPriceGroup},
             "bcDebitorBookingGroup" = ${debitorGroup ?? (existing as any).bcDebitorBookingGroup},
             "requirePoNumber"     = ${requirePoNumber},
             "isActive"            = ${portalAktiv},
@@ -130,6 +132,7 @@ export async function POST(req: NextRequest) {
             address     = ${address ?? null},
             city        = ${city ?? null},
             "zipCode"   = ${zipCode ?? null},
+            "bcChainPriceGroup" = ${chainPriceGroup ?? null},
             "bcBlocked" = ${blocked}
         WHERE id = ${customerId}
       `

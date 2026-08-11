@@ -25,6 +25,9 @@ export interface PriceTier {
   unitOfMeasure:   string
   startingDate:    string | null
   endingDate:      string | null
+  // Kilde-prioritet: 0 = kunde-specifik, 1 = kæde-prisgruppe, 2 = normal gruppe/alle kunder.
+  // Lavere tal vinder (kæde OVERRIDER normal gruppe, også når højere). Se resolvePrice.
+  sourcePriority?: number
 }
 
 interface OrderLine {
@@ -297,6 +300,16 @@ function getItemAvailStatus(
  * 1. Prøver direkte prislinjer for den valgte UoM (f.eks. KRT 10 KG)
  * 2. Falder tilbage på base-enhedspriser (KG) og ganger med qtyPerUom
  */
+// Vælg pris fra den HØJEST-prioriterede kilde der har en gyldig linje (kunde 0 > kæde 1 >
+// normal gruppe/alle 2), og laveste pris blandt dem (trappe/dubletter). Så kæde-prisen
+// OVERRIDER den normale gruppe — også når den er højere. Spejler BC-runtime + server-siden
+// (businesscentral.pickPriceBySource). Kalderne sikrer at listen ikke er tom.
+function pickBySource(tiers: PriceTier[]): number {
+  const minPrio = Math.min(...tiers.map(t => t.sourcePriority ?? 2))
+  const top = tiers.filter(t => (t.sourcePriority ?? 2) === minPrio)
+  return Math.min(...top.map(t => t.unitPrice))
+}
+
 function resolvePrice(
   itemNo: string, qty: number, tiers: PriceTier[], fallback: number,
   uomCode?: string, qtyPerUom = 1, baseUomCode?: string,
@@ -319,14 +332,14 @@ function resolvePrice(
 
   // ── 1. Direkte priser for den valgte enhed ──────────────────────────────────
   const directTiers = validTiers.filter(t => t.minimumQuantity <= qty)
-  if (directTiers.length) return Math.min(...directTiers.map(t => t.unitPrice))
+  if (directTiers.length) return pickBySource(directTiers)
 
   // ── 2. qty=0 eller under mindste minimum: vis prisen for mindste minimum ──
   // (så kunden ser den "fra-pris" varen kan opnås til, ikke 999 system-pris)
   if (validTiers.length) {
     const lowestMin = Math.min(...validTiers.map(t => t.minimumQuantity))
     const tiersAtLowestMin = validTiers.filter(t => t.minimumQuantity === lowestMin)
-    return Math.min(...tiersAtLowestMin.map(t => t.unitPrice))
+    return pickBySource(tiersAtLowestMin)
   }
 
   // ── 3. Fallback: base-enhedspriser × konverteringsfaktor ───────────────────
@@ -339,7 +352,7 @@ function resolvePrice(
       (!t.startingDate || t.startingDate <= today) &&
       (!t.endingDate   || t.endingDate.startsWith('0001') || t.endingDate   >= today),
     )
-    if (baseTiers.length) return Math.min(...baseTiers.map(t => t.unitPrice)) * qtyPerUom
+    if (baseTiers.length) return pickBySource(baseTiers) * qtyPerUom
   }
 
   return isBaseUnit ? fallback : fallback * qtyPerUom
@@ -375,7 +388,9 @@ function buildDisplayTiers(
     let lastBestPrice = Infinity
     for (const minQty of breakpoints) {
       const effectiveQty = minQty * divideBreakpoints
-      const bestPrice = Math.min(...valid.filter(v => v.minimumQuantity <= effectiveQty).map(v => v.unitPrice)) * multiply
+      // Kilde-prioriteret (kæde OVERRIDER gruppen) i stedet for rå laveste-pris — samme
+      // regel som resolvePrice, så den viste trappe matcher den beregnede pris.
+      const bestPrice = pickBySource(valid.filter(v => v.minimumQuantity <= effectiveQty)) * multiply
       if (bestPrice < lastBestPrice) {
         result.push({ minimumQuantity: minQty, unitPrice: bestPrice })
         lastBestPrice = bestPrice

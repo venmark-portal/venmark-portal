@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import {
-  getPortalPrices, getItemsByNumbers, getCustomerFavorites,
+  getPortalPrices, pickPriceBySource, getItemsByNumbers, getCustomerFavorites,
   getItemCutoffs, getWebshopVisibleItemNos, getItemsAttributeValues, getItemsUoMs,
   getItemAvailabilities,
   getCustomerLocationCode,
@@ -21,8 +21,8 @@ function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): num
       (!p.startingDate || p.startingDate <= today) &&
       (!p.endingDate   || p.endingDate.startsWith('0001') || p.endingDate   >= today),
   )
-  if (!applicable.length) return null
-  return Math.min(...applicable.map(p => p.unitPrice))
+  // Kilde-prioriteret (kunde > kæde > gruppe/alle) — kæde OVERRIDER gruppen. Spejler BC.
+  return pickPriceBySource(applicable)
 }
 
 export default async function TilfoejVarePage({ params }: { params: { id: string } }) {
@@ -30,8 +30,9 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
   if (!session?.user) redirect('/portal/login')
 
   const customerId = (session.user as any).id
-  const customerNo = (session.user as any)?.bcCustomerNumber as string ?? ''
-  const priceGrp   = (session.user as any)?.bcPriceGroup     as string ?? ''
+  const customerNo = (session.user as any)?.bcCustomerNumber  as string ?? ''
+  const priceGrp   = (session.user as any)?.bcPriceGroup      as string ?? ''
+  const chainGrp   = (session.user as any)?.bcChainPriceGroup as string ?? ''
 
   const order = await prisma.order.findUnique({
     where: { id: params.id },
@@ -52,7 +53,7 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
 
   // ── Hent samme data som bestil-siden parallelt ──
   const [portalPrices, blockedRows, bcStandardLines, dbFavRows, itemCutoffs, webshopVisible, itemAvailabilities] = await Promise.all([
-    getPortalPrices(customerNo, priceGrp),
+    getPortalPrices(customerNo, priceGrp, chainGrp),
     prisma.blockedItem.findMany({ where: { customerId } }),
     getCustomerFavorites(customerNo).catch(() => []),
     prisma.favorite.findMany({ where: { customerId } }),
@@ -167,6 +168,7 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
     unitOfMeasure:   p.unitOfMeasure,
     startingDate:    p.startingDate,
     endingDate:      p.endingDate,
+    sourcePriority:  p.sourcePriority,
   }))
 
   const deliveryLabel = new Date(order.deliveryDate).toLocaleDateString('da-DK', {

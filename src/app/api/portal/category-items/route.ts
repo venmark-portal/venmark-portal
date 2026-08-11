@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import {
   getPortalPrices,
+  pickPriceBySource,
   getItemNumbersByCategory,
   getItemsByNumbers,
   getItemsAttributeValues,
@@ -19,8 +20,9 @@ function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): num
       (!p.startingDate || p.startingDate <= today) &&
       (!p.endingDate   || p.endingDate.startsWith('0001') || p.endingDate   >= today),
   )
-  if (!applicable.length) return null
-  return Math.min(...applicable.map(p => p.unitPrice))
+  // Kilde-prioritet (kunde > kæde > gruppe/alle) i stedet for rå laveste-pris, så kæde-
+  // prisen OVERRIDER gruppen også når den er højere — spejler BC-runtime.
+  return pickPriceBySource(applicable)
 }
 
 // GET /api/portal/category-items?category=FERSK
@@ -28,9 +30,10 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
 
-  const customerNo = (session?.user as any)?.bcCustomerNumber as string ?? ''
-  const priceGrp   = (session?.user as any)?.bcPriceGroup     as string ?? ''
-  const userId     = (session?.user as any)?.id               as string
+  const customerNo = (session?.user as any)?.bcCustomerNumber  as string ?? ''
+  const priceGrp   = (session?.user as any)?.bcPriceGroup      as string ?? ''
+  const chainGrp   = (session?.user as any)?.bcChainPriceGroup as string ?? ''
+  const userId     = (session?.user as any)?.id                as string
 
   const category = req.nextUrl.searchParams.get('category') ?? ''
   if (!category) return NextResponse.json({ error: 'category mangler' }, { status: 400 })
@@ -39,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   // Hent priser + varenumre i kategori + blokerede + rangering parallelt
   const [portalPrices, categoryNos, blockedRows, webshopVisible] = await Promise.all([
-    getPortalPrices(customerNo, priceGrp),
+    getPortalPrices(customerNo, priceGrp, chainGrp),
     getItemNumbersByCategory(category),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     getWebshopVisibleItemNos().catch(() => null),
@@ -105,6 +108,7 @@ export async function GET(req: NextRequest) {
       unitOfMeasure:   p.unitOfMeasure,
       startingDate:    p.startingDate,
       endingDate:      p.endingDate,
+      sourcePriority:  p.sourcePriority,
     }))
 
   return NextResponse.json({ items, priceTiers })

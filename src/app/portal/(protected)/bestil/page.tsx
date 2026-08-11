@@ -1,14 +1,15 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems, getCustomerLocationCode } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems, getCustomerLocationCode } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
-/** Finder visningspris for qty=1 — laveste pris på tværs af alle gældende priskilder. */
+/** Visningspris for qty=1 — kilde-prioriteret (kunde > kæde > gruppe/alle), så kæde-prisen
+ *  OVERRIDER gruppen (også når højere) i stedet for rå laveste-pris. Spejler BC-runtime. */
 function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): number | null {
   const applicable = prices.filter(
     (p) =>
@@ -17,16 +18,16 @@ function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): num
       (!p.startingDate || p.startingDate <= today) &&
       (!p.endingDate   || p.endingDate.startsWith('0001') || p.endingDate   >= today),
   )
-  if (!applicable.length) return null
-  return Math.min(...applicable.map(p => p.unitPrice))
+  return pickPriceBySource(applicable)
 }
 
 
 export default async function BestilPage() {
   const session    = await getServerSession(authOptions)
   const userId     = (session?.user as any)?.id               as string
-  const customerNo = (session?.user as any)?.bcCustomerNumber as string ?? ''
-  const priceGrp   = (session?.user as any)?.bcPriceGroup     as string ?? ''
+  const customerNo = (session?.user as any)?.bcCustomerNumber  as string ?? ''
+  const priceGrp   = (session?.user as any)?.bcPriceGroup      as string ?? ''
+  const chainGrp   = (session?.user as any)?.bcChainPriceGroup as string ?? ''
   const requirePoNumber = (session?.user as any)?.requirePoNumber as boolean ?? false
 
   // Grupper der altid kræver PO-nummer
@@ -47,7 +48,7 @@ export default async function BestilPage() {
   // Kalenderen hentes nu HER (afhænger kun af datoer) i stedet for et separat,
   // sekventielt kald senere — sparer én BC-runde-tur i page-load.
   const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await Promise.all([
-    getPortalPrices(customerNo, priceGrp),
+    getPortalPrices(customerNo, priceGrp, chainGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
       where: {
@@ -233,6 +234,7 @@ export default async function BestilPage() {
     unitOfMeasure:   p.unitOfMeasure,
     startingDate:    p.startingDate,
     endingDate:      p.endingDate,
+    sourcePriority:  p.sourcePriority,
   }))
 
   // ── Leveringsdatoer + kundespecifikke metoder ────────────────────────────────
