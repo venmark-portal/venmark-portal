@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Disponibel-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --ground:#f3f6f4; --paper:#ffffff; --paper-2:#f8faf9;
+    --ink:#15322e; --ink-soft:#516662; --ink-faint:#7d8f8b;
+    --line:#dbe4e0; --line-soft:#e8efec;
+    --accent:#0d6d62; --accent-2:#0a544b; --accent-wash:#e2efec;
+    --brass:#9c6420; --brass-wash:#f4ead8;
+    --ok:#2c7a4c; --ok-bg:#e6f1ea; --ok-line:#bcd8c6;
+    --wait:#8f6410; --wait-bg:#f7edd6; --wait-line:#e6d4a8;
+    --stop:#a5382f; --stop-bg:#f6e3df; --stop-line:#e6c1b8;
+    --shadow:0 1px 2px rgba(20,50,46,.04),0 6px 24px rgba(20,50,46,.06);
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:"SFMono-Regular","Cascadia Code","JetBrains Mono",ui-monospace,"Segoe UI Mono",Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0d1a18; --paper:#132220; --paper-2:#0f1c1a;
+      --ink:#e7efeb; --ink-soft:#a2b6b0; --ink-faint:#728681;
+      --line:#243530; --line-soft:#1c2a27;
+      --accent:#46b4a4; --accent-2:#5cc4b4; --accent-wash:#15302c;
+      --brass:#cf9a5c; --brass-wash:#2a2216;
+      --ok:#5cb47c; --ok-bg:#152a20; --ok-line:#274a37;
+      --wait:#d3a648; --wait-bg:#2a2413; --wait-line:#4d431f;
+      --stop:#dc7a6f; --stop-bg:#2c1a17; --stop-line:#4d2b26;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0d1a18; --paper:#132220; --paper-2:#0f1c1a;
+    --ink:#e7efeb; --ink-soft:#a2b6b0; --ink-faint:#728681;
+    --line:#243530; --line-soft:#1c2a27;
+    --accent:#46b4a4; --accent-2:#5cc4b4; --accent-wash:#15302c;
+    --brass:#cf9a5c; --brass-wash:#2a2216;
+    --ok:#5cb47c; --ok-bg:#152a20; --ok-line:#274a37;
+    --wait:#d3a648; --wait-bg:#2a2413; --wait-line:#4d431f;
+    --stop:#dc7a6f; --stop-bg:#2c1a17; --stop-line:#4d2b26;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:16.5px; line-height:1.62;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+
+  .wrap{max-width:1180px; margin:0 auto; padding:0 24px}
+  .layout{display:grid; grid-template-columns:1fr; gap:0}
+  @media (min-width:960px){
+    .layout{grid-template-columns:232px minmax(0,1fr); gap:56px; align-items:start}
+  }
+
+  /* ── Masthead ─────────────────────────────────── */
+  header.mast{
+    border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(120% 140% at 88% -20%, var(--accent-wash) 0%, transparent 55%),
+      var(--paper);
+  }
+  .mast-inner{padding:52px 0 40px}
+  .kicker{
+    font-family:var(--serif); font-style:italic; font-size:1.02rem;
+    color:var(--brass); margin:0 0 10px;
+  }
+  h1.title{
+    font-family:var(--serif); font-weight:600; letter-spacing:-.01em;
+    font-size:clamp(2.3rem,5.4vw,3.5rem); line-height:1.02; margin:0;
+    text-wrap:balance; color:var(--ink);
+  }
+  .lede{
+    margin:18px 0 0; max-width:62ch; font-size:1.12rem; color:var(--ink-soft);
+    line-height:1.55;
+  }
+  .mast-meta{
+    display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:24px;
+    font-family:var(--mono); font-size:.74rem; letter-spacing:.02em;
+  }
+  .tag{
+    padding:5px 11px; border:1px solid var(--line); border-radius:999px;
+    color:var(--ink-soft); background:var(--paper-2);
+  }
+  .tag.on{border-color:var(--accent); color:var(--accent); background:var(--accent-wash)}
+
+  /* ── Table of contents ────────────────────────── */
+  nav.toc{position:relative}
+  @media (min-width:960px){
+    nav.toc{position:sticky; top:0; padding-top:40px; max-height:100vh; overflow:auto}
+  }
+  .toc-label{
+    font-family:var(--mono); font-size:.68rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-faint); margin:0 0 12px; padding-left:14px;
+  }
+  .toc ol{list-style:none; margin:0; padding:0; counter-reset:toc}
+  .toc li{counter-increment:toc}
+  .toc a{
+    display:flex; gap:10px; padding:6px 14px; text-decoration:none;
+    color:var(--ink-soft); font-size:.92rem; border-left:2px solid var(--line-soft);
+    transition:color .15s, border-color .15s;
+  }
+  .toc a::before{content:counter(toc,decimal-leading-zero); color:var(--ink-faint); font-family:var(--mono); font-size:.76rem; padding-top:2px}
+  .toc a:hover{color:var(--accent); border-left-color:var(--accent)}
+  .toc a:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+
+  /* ── Article ──────────────────────────────────── */
+  main{padding:44px 0 90px; min-width:0}
+  section.blk{margin:0 0 60px; scroll-margin-top:24px}
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:9px;
+    font-family:var(--mono); font-size:.7rem; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--brass); margin:0 0 14px;
+  }
+  .eyebrow::before{content:""; width:22px; height:1px; background:var(--brass)}
+  h2{
+    font-family:var(--serif); font-weight:600; letter-spacing:-.01em;
+    font-size:clamp(1.6rem,3.2vw,2.05rem); line-height:1.12; margin:0 0 16px;
+    text-wrap:balance;
+  }
+  h3{
+    font-family:var(--sans); font-weight:680; font-size:1.12rem;
+    margin:34px 0 10px; letter-spacing:-.005em;
+  }
+  p{margin:0 0 15px; max-width:66ch}
+  main a{color:var(--accent); text-underline-offset:2px}
+  strong{font-weight:660; color:var(--ink)}
+  .k{
+    font-family:var(--mono); font-size:.86em; background:var(--accent-wash);
+    color:var(--accent-2); padding:1px 6px; border-radius:5px; white-space:nowrap;
+    border:1px solid color-mix(in srgb,var(--accent) 22%, transparent);
+  }
+  ul.clean{margin:0 0 15px; padding:0 0 0 2px; list-style:none; max-width:66ch}
+  ul.clean li{position:relative; padding:3px 0 3px 24px}
+  ul.clean li::before{
+    content:""; position:absolute; left:2px; top:.72em; width:7px; height:7px;
+    border:1.5px solid var(--accent); border-radius:2px; transform:rotate(45deg);
+  }
+
+  /* ── Cards / callouts ─────────────────────────── */
+  .card{
+    background:var(--paper); border:1px solid var(--line); border-radius:14px;
+    padding:22px 24px; margin:22px 0; box-shadow:var(--shadow);
+  }
+  .note{
+    border-left:3px solid var(--accent); background:var(--paper-2);
+    border-radius:0 12px 12px 0; padding:16px 20px; margin:20px 0;
+  }
+  .note.warn{border-left-color:var(--stop); background:var(--stop-bg)}
+  .note.warn .note-h{color:var(--stop)}
+  .note-h{
+    font-family:var(--mono); font-size:.7rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--accent); margin:0 0 6px; font-weight:600;
+  }
+  .note p{margin:0; max-width:64ch}
+  .note p + p{margin-top:9px}
+
+  /* ── Formula block ────────────────────────────── */
+  .formula{
+    font-family:var(--mono); font-size:.9rem; line-height:1.75;
+    background:var(--paper-2); border:1px solid var(--line); border-radius:12px;
+    padding:18px 20px; margin:18px 0; overflow-x:auto; color:var(--ink);
+  }
+  .formula .op{color:var(--brass)}
+  .formula .cm{color:var(--ink-faint); font-style:italic}
+  .formula b{color:var(--accent-2); font-weight:600}
+
+  /* ── Status pills ─────────────────────────────── */
+  .pill{
+    display:inline-flex; align-items:center; gap:7px; font-weight:640; font-size:.86rem;
+    padding:4px 12px; border-radius:999px; border:1px solid; white-space:nowrap;
+    font-family:var(--sans);
+  }
+  .pill::before{content:""; width:8px; height:8px; border-radius:50%}
+  .pill.ok{color:var(--ok); background:var(--ok-bg); border-color:var(--ok-line)}
+  .pill.ok::before{background:var(--ok)}
+  .pill.wait{color:var(--wait); background:var(--wait-bg); border-color:var(--wait-line)}
+  .pill.wait::before{background:var(--wait)}
+  .pill.stop{color:var(--stop); background:var(--stop-bg); border-color:var(--stop-line)}
+  .pill.stop::before{background:var(--stop)}
+
+  .statusgrid{display:grid; gap:14px; margin:22px 0}
+  @media (min-width:620px){.statusgrid{grid-template-columns:repeat(3,1fr)}}
+  .statuscard{border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:var(--paper)}
+  .statuscard.ok{border-top:3px solid var(--ok)}
+  .statuscard.wait{border-top:3px solid var(--wait)}
+  .statuscard.stop{border-top:3px solid var(--stop)}
+  .statuscard p{font-size:.92rem; margin:10px 0 0; color:var(--ink-soft)}
+
+  /* ── Tables ───────────────────────────────────── */
+  .tablewrap{overflow-x:auto; margin:20px 0; border:1px solid var(--line); border-radius:12px; background:var(--paper)}
+  table{border-collapse:collapse; width:100%; font-size:.9rem; min-width:640px}
+  caption{caption-side:top; text-align:left; font-family:var(--mono); font-size:.68rem;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); padding:14px 18px 2px}
+  th,td{text-align:left; padding:11px 16px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+  thead th{
+    font-family:var(--mono); font-weight:600; font-size:.7rem; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--ink-soft); background:var(--paper-2);
+    position:sticky; top:0; border-bottom:1px solid var(--line);
+  }
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:var(--paper-2)}
+  td .fld{font-family:var(--mono); font-size:.84rem; color:var(--accent-2); font-weight:600; white-space:nowrap}
+  td .loc{font-family:var(--mono); font-size:.74rem; color:var(--ink-faint)}
+  .grouprow td{background:var(--accent-wash); font-family:var(--mono); font-size:.72rem;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--accent-2); font-weight:600}
+
+  /* ── Example ladder ───────────────────────────── */
+  .ex{display:grid; gap:12px; margin:20px 0}
+  @media (min-width:720px){.ex{grid-template-columns:1fr 1fr}}
+  .exc{border:1px solid var(--line); border-radius:12px; padding:18px 20px; background:var(--paper)}
+  .exc h4{margin:0 0 4px; font-size:1rem; font-family:var(--sans)}
+  .exc .sub{font-family:var(--mono); font-size:.74rem; color:var(--ink-faint); margin:0 0 12px}
+  .exline{display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px dashed var(--line); font-size:.9rem}
+  .exline:first-of-type{border-top:none}
+  .exline .d{color:var(--ink-soft)}
+
+  footer{border-top:1px solid var(--line); padding:30px 0 60px; color:var(--ink-faint); font-size:.86rem}
+  footer .wrap{display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:baseline}
+  .mono{font-family:var(--mono); font-size:.78rem}
+
+  hr.rule{border:none; border-top:1px solid var(--line); margin:40px 0}
+</style>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Venmark Fisk · Business Central</p>
+    <h1 class="title">Disponibel-håndbogen</h1>
+    <p class="lede">Hvad lager- og disponibel-tallene betyder, hvilke felter der styrer dem, hvor du finder felterne — og hvordan prislinjerne er sat op. Skrevet til sælgere, disponenter og administratorer.</p>
+    <div class="mast-meta">
+      <span class="tag on">Disponibel-motor</span>
+      <span class="tag on">Produktions-model</span>
+      <span class="tag on">Bestillings-gate</span>
+      <span class="tag on">Felt-katalog</span>
+      <span class="tag on">Prislinjer</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#kerne">Kerneprincippet</a></li>
+      <li><a href="#total">De to disponibel-tal</a></li>
+      <li><a href="#motor">Sådan beregnes disponibel</a></li>
+      <li><a href="#produktion">Produktions-modellen</a></li>
+      <li><a href="#gate">Godkendt · Afventer · Afvist</a></li>
+      <li><a href="#katalog">Felt-katalog: lager</a></li>
+      <li><a href="#priser">Prislinje-opsætningen</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <!-- 1 ─────────────────────────────────────── -->
+    <section class="blk" id="kerne">
+      <p class="eyebrow">Udgangspunktet</p>
+      <h2>Disponibel = det vi kan levere</h2>
+      <p><strong>Disponibelt</strong> er ikke det samme som lager. Lager er hvad der fysisk står på hylden lige nu. Disponibelt er systemets bud på <em>hvor meget vi reelt kan levere</em> til en given dato, når man tæller det vi har, det der er på vej ind, det der bliver produceret — og trækker det andre allerede har købt fra.</p>
+      <p>Hele modellen bygger på tre lag, som resten af håndbogen folder ud:</p>
+      <ul class="clean">
+        <li><strong>Nær-tid</strong> — lager + åbne montageordrer + åbne indkøbsordrer − efterspørgsel. Det konkrete du har og har på vej.</li>
+        <li><strong>Råvare-kapacitet</strong> — for producerede varer: hvor mange vi kan lave af den ledige råvare (delt mellem de færdigvarer der bruger den).</li>
+        <li><strong>Tid</strong> — råvare-kapacitet tæller først med når der er tid nok til at skaffe råvare og producere inden leveringsdatoen.</li>
+      </ul>
+      <div class="note">
+        <p class="note-h">Kort sagt</p>
+        <p>Et lavt eller negativt disponibelt betyder ikke altid “udsolgt”. Det betyder “ikke på lager nu”. Om varen kan sælges afhænger af <strong>leveringsdatoen</strong> og af varens produktions- og råvare-opsætning — se afsnit 4 og 5.</p>
+      </div>
+    </section>
+
+    <!-- 2 ─────────────────────────────────────── -->
+    <section class="blk" id="total">
+      <p class="eyebrow">Vigtigst at vide først</p>
+      <h2>Der er to “disponibel”-tal — stol kun på det ene</h2>
+      <p>På varekort, faktabokse og lister støder du på flere felter med ordet “disponibel”. De kommer fra to helt forskellige kilder, og kun det ene er beregnet af Venmarks motor.</p>
+
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Felt</th><th>Kilde</th><th>Stol på det?</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="fld">Disponibelt</span> / <span class="fld">Disponibel (SL)</span><div class="loc">salgslinje · hurtig indtastning</div></td>
+              <td>Venmarks egen disponibel-motor (lager + produktion + råvare-deling).</td>
+              <td><span class="pill ok">Ja</span></td>
+            </tr>
+            <tr>
+              <td><span class="fld">Total disponibel</span> / <span class="fld">Disponibel i dag</span><div class="loc">fakta-boks · vareliste</div></td>
+              <td>Gamle Evexo-felter (<span class="k">TotalAvailable</span> / <span class="k">TotalAvailableToday</span>) som <strong>intet i systemet skriver til</strong>.</td>
+              <td><span class="pill stop">Nej</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note warn">
+        <p class="note-h">Advarsel</p>
+        <p>Fakta-boksens <strong>“Total disponibel”</strong> og <strong>“Disponibel i dag”</strong> er nedarvet fra Evexo og bliver ikke opdateret af nogen beregning i systemet. De står typisk stille/tomme og passer sjældent med det reelle billede. <strong>Brug dem ikke til at beslutte om der er dækning.</strong> Det tal du kan stole på hedder <strong>Disponibelt</strong> (eller Disponibel SL) og kommer fra motoren.</p>
+      </div>
+    </section>
+
+    <!-- 3 ─────────────────────────────────────── -->
+    <section class="blk" id="motor">
+      <p class="eyebrow">Motoren</p>
+      <h2>Sådan beregnes disponibel</h2>
+      <p>Disponibelt regnes altid frem til en <strong>horisont</strong> (en dato). På en salgslinje er horisonten linjens <em>effektive dato</em> (typisk afsendelsesdatoen); i lister og hurtig indtastning er horisonten <em>i dag</em>. Alt der lander på eller før horisonten tæller med.</p>
+
+      <h3>Nær-tid (grundtallet)</h3>
+      <p>Første led er det konkrete forsyningsbillede minus efterspørgsel:</p>
+      <div class="formula">
+<span class="cm">// nær-tid, alt ≤ horisont</span><br>
+<b>Nær-tid</b> <span class="op">=</span> Lager <span class="op">+</span> Indkøbsordrer <span class="op">+</span> Montageordrer <span class="op">−</span> Montage-forbrug<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="op">+</span> Familie-udbytte <span class="op">−</span> Efterspørgsel (åbne salgsordrer)
+      </div>
+      <ul class="clean">
+        <li><strong>Montageordrer</strong> tæller med — også familie-produktion, hvor børnenes forventede udbytte (<span class="k">Exp. Yield Kg</span>) lægges på den rigtige færdigvare.</li>
+        <li><strong>Efterspørgsel</strong> = alle åbne salgsordrelinjer (returlinjer trækker op). Linjens egen mængde tælles ikke imod sig selv.</li>
+      </ul>
+
+      <h3>Råvare-kapacitet (kun producerede varer)</h3>
+      <p>For en færdigvare med stykliste lægges der oveni, hvor mange styk vi kan <em>lave</em> af den ledige råvare:</p>
+      <div class="formula">
+<b>Disponibel</b> <span class="op">=</span> Nær-tid <span class="op">+</span> Σ ( fri råvare-pulje <span class="op">÷</span> styklistefaktor )
+      </div>
+      <p>Den <strong>frie råvare-pulje</strong> er råvarens eget udbud minus alt det udækkede behov, som <em>alle</em> de færdigvarer der deler råvaren lægger på den. Puljen er delt — den fordeles ikke; disponenten flytter selv på tallene så det passer. Bruges en råvare til flere færdigvarer, kan hver færdigvare have sin egen <strong>prioritet</strong> (primær råvare bærer det fulde behov; sekundær råvare bærer kun det overløb den primære ikke dækker).</p>
+
+      <div class="note">
+        <p class="note-h">Alternativer, ikke og/og</p>
+        <p>Bruges to råvarer til samme færdigvare, behandles de som <strong>alternativer</strong> (enten/eller) — kapaciteten fra begge lægges sammen. Det passer når varen kan laves af den ene <em>eller</em> den anden. Kræver en vare reelt begge råvarer samtidig, håndteres det manuelt (tomme styklister).</p>
+      </div>
+    </section>
+
+    <!-- 4 ─────────────────────────────────────── -->
+    <section class="blk" id="produktion">
+      <p class="eyebrow">Produktions-modellen</p>
+      <h2>Produktionstid, råvare-lead og knap råvare</h2>
+      <p>Uden tid i regnestykket ville en færdigvare se “disponibel” ud, så snart der var råvare — også selvom den tager en uge at producere. Tre felter styrer det. <strong>Modellen er opt-in:</strong> så længe <span class="k">Produktionsdage = 0</span> opfører alt sig præcis som før.</p>
+
+      <div class="tablewrap">
+        <table>
+          <caption>De tre felter — findes på Venmark Vareliste (Lager/Web) og på varekortet</caption>
+          <thead><tr><th>Felt</th><th>Sættes på</th><th>Betydning</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="fld">Produktionsdage</span></td>
+              <td>Færdigvaren</td>
+              <td>Arbejdsdage fra råvare til færdig vare. <strong>0 = øjeblikkelig</strong> (uændret). &gt;0 slår modellen til.</td>
+            </tr>
+            <tr>
+              <td><span class="fld">Råvare-lead (dage)</span></td>
+              <td>Råvaren</td>
+              <td>Arbejdsdage for at <em>skaffe</em> råvaren. 0 = ingen skaffe-tid. Lægges oveni produktionstiden.</td>
+            </tr>
+            <tr>
+              <td><span class="fld">Knap råvare</span></td>
+              <td>Råvaren</td>
+              <td>Kryds = knap (fx auktions-/vildfisk) → begrænset af den frie pulje. Blank = fri (kan skaffes).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>To gates der arbejder sammen</h3>
+      <p>En producereret vare kan leveres til en dato, hvis begge gates er opfyldt:</p>
+      <div class="formula">
+<b>Tidligst leverbar</b> <span class="op">=</span> i dag <span class="op">+</span> råvare-lead <span class="op">+</span> produktionsdage &nbsp;<span class="cm">(arbejdsdage)</span><br><br>
+<span class="cm">1. Timing-gate (altid):</span> leveringsdato <span class="op">≥</span> tidligst leverbar<br>
+<span class="cm">2. Mængde-gate (kun knap råvare):</span> nok i den frie pulje
+      </div>
+      <ul class="clean">
+        <li><strong>Fri råvare</strong> (de fleste — fx laks): kun timing-gaten. Er der tid, er mængden i praksis ubegrænset — vi skaffer bare mere råvare.</li>
+        <li><strong>Knap råvare</strong> (auktions-/vildfisk): timing-gaten <em>og</em> den frie pulje er loftet.</li>
+      </ul>
+
+      <div class="ex">
+        <div class="exc">
+          <h4>Varmrøget laks</h4>
+          <p class="sub">fri råvare · produktionsdage 2</p>
+          <div class="exline"><span class="d">Levering i dag</span><span class="pill stop">Afvist</span></div>
+          <div class="exline"><span class="d">Levering om 4 dage</span><span class="pill ok">Godkendt</span></div>
+          <div class="exline"><span class="d">Disponibel-kolonnen i dag</span><span>kun nær-tid</span></div>
+        </div>
+        <div class="exc">
+          <h4>Fersk filet</h4>
+          <p class="sub">fri råvare · produktionsdage 0</p>
+          <div class="exline"><span class="d">Levering i dag</span><span class="pill ok">Godkendt</span></div>
+          <div class="exline"><span class="d">Råvare-kapacitet</span><span>tæller straks</span></div>
+          <div class="exline"><span class="d">Disponibel-kolonnen</span><span>som før</span></div>
+        </div>
+      </div>
+
+      <div class="note">
+        <p class="note-h">Hvorfor disponibel-kolonnen “falder”</p>
+        <p>Sætter du produktionsdage på en vare, viser <strong>Disponibelt</strong>-kolonnen for den vare kun <em>nær-tid</em> (lager + montage) ved dagens horisont — ikke den store “kan-laves-af-råvare”-kapacitet. Kapaciteten dukker op igen når leveringsdatoen ligger langt nok ude. Det er meningen: tallet skal vise hvad vi reelt kan levere til datoen.</p>
+      </div>
+    </section>
+
+    <!-- 5 ─────────────────────────────────────── -->
+    <section class="blk" id="gate">
+      <p class="eyebrow">Bestillings-gaten</p>
+      <h2>Godkendt · Afventer · Afvist</h2>
+      <p>Når en salgslinje får antal, sætter systemet en <strong>Portal Line Status</strong>. Den afgør om linjen kan pakkes og sælges.</p>
+
+      <div class="statusgrid">
+        <div class="statuscard ok">
+          <span class="pill ok">Godkendt</span>
+          <p>Dækket — enten fysisk dækning, eller (for producerede varer med fri råvare) tid nok til at levere til leveringsdatoen.</p>
+        </div>
+        <div class="statuscard wait">
+          <span class="pill wait">Afventer</span>
+          <p>Manglen ligger inden for varens buffer-trappe. Kan pakkes, men efter de godkendte pr. vare. Sælgeren har valgt “Måske”.</p>
+        </div>
+        <div class="statuscard stop">
+          <span class="pill stop">Afvist</span>
+          <p>Manglende dækning ud over bufferen. Kan ikke pakkes. Sælgeren skal tage stilling (fx planlægge produktion eller skaffe).</p>
+        </div>
+      </div>
+
+      <h3>Hvad afgør statussen</h3>
+      <ul class="clean">
+        <li><strong>Handelsvarer</strong> (ingen stykliste): hård — dækket → Godkendt, ellers Afvist.</li>
+        <li><strong>Strengt lager</strong> (<span class="k">Portal Strengt Lager</span>): kan kun sælges svarende til lager + fremtidige indkøbsordrer − fremtidige salgsordrer. Manglen vurderes mod <strong>buffer-trappen</strong> (<span class="k">VM Buffer Trappe</span>) → Afventer eller Afvist. En streng vare med 0 disponibelt kan stadig bestilles frem i tiden hvis <span class="k">Leveringstid (genbestilling)</span> er sat.</li>
+        <li><strong>Producerede varer</strong> med fri råvare: godkendes hvis leveringsdatoen når <em>tidligst leverbar</em> (afsnit 4) — selv med 0 på lager.</li>
+      </ul>
+
+      <h3>Effektiv dato og “Hentes kl.”</h3>
+      <p>Horisonten på en salgslinje er linjens <strong>effektive dato</strong> — som regel afsendelsesdatoen. En ordre til <em>i morgen</em> kan trækkes til i dag hvis leveringsmetodens “Hentes kl.” er tidligere end opsætningens “Pak næste dag til kl.”. Effektiv dato kan også overstyres manuelt på linjen.</p>
+
+      <div class="note">
+        <p class="note-h">Sælgeren tvinges til at tage stilling</p>
+        <p>Rammer en linje <span class="pill stop">Afvist</span>, viser systemet en dialog: <strong>Ja</strong> (sæt ind med fuldt antal — logges som oversalg) eller <strong>Måske</strong> (sæt “Afventer” med 0,1 og en note “sælger tjekker”). Det gælder både på salgsordren og i hurtig indtastning. Gentaget oversalg åbner en påmindelse på skærmen.</p>
+      </div>
+    </section>
+
+    <!-- 6 ─────────────────────────────────────── -->
+    <section class="blk" id="katalog">
+      <p class="eyebrow">Felt-katalog</p>
+      <h2>Lager- og disponibel-felter</h2>
+      <p>Felterne nedenfor findes på <strong>Venmark Vareliste</strong>. Slå kolonnerne til med knappen <span class="k">Lager/Web</span> øverst. De tre produktions-felter findes også på varekortet under “Venmark disponibilitet / produktion”.</p>
+
+      <div class="tablewrap">
+        <table>
+          <caption>Venmark Vareliste — knappen “Lager/Web”</caption>
+          <thead><tr><th>Felt</th><th>Betyder</th><th>Rolle for disponibel</th></tr></thead>
+          <tbody>
+            <tr class="grouprow"><td colspan="3">Forsyning &amp; efterspørgsel (nær-tid)</td></tr>
+            <tr><td><span class="fld">Lager</span></td><td>Fysisk beholdning, alle lokationer.</td><td>Grundled i nær-tid.</td></tr>
+            <tr><td><span class="fld">Lager XVEN</span></td><td>Beholdning på XVEN-KØB (indkøbte handelsvarer).</td><td>Del af lageret; egen kolonne til overblik.</td></tr>
+            <tr><td><span class="fld">Antal i IO</span> / <span class="fld">IO antal i dag</span></td><td>På åbne indkøbsordrer (i alt / med modtagelse i dag).</td><td>Tilgang — lægges til nær-tid ≤ horisont.</td></tr>
+            <tr><td><span class="fld">Antal i SO</span> / <span class="fld">SO antal i dag</span></td><td>På åbne salgsordrer.</td><td>Efterspørgsel — trækkes fra.</td></tr>
+            <tr><td><span class="fld">Montageordre i dag</span></td><td>Åben produktion med færdiggørelse i dag.</td><td>Tilgang fra egen produktion.</td></tr>
+            <tr><td><span class="fld">Forventet montage (familie)</span></td><td>Forventet udbytte af varen fra åbne familie-montageordrer.</td><td>Retter familie-produktionens bidrag til den rigtige vare.</td></tr>
+            <tr><td><span class="fld">Antal i transit</span></td><td>Undervejs mellem lokationer.</td><td>Informativt.</td></tr>
+
+            <tr class="grouprow"><td colspan="3">Disponibel-tal</td></tr>
+            <tr><td><span class="fld">Total disponibel</span> / <span class="fld">Disponibel i dag</span></td><td><strong>Gamle Evexo-felter der ikke opdateres.</strong></td><td><span class="pill stop">Brug ikke</span> — se afsnit 2.</td></tr>
+
+            <tr class="grouprow"><td colspan="3">Produktions-model</td></tr>
+            <tr><td><span class="fld">Produktionsdage</span></td><td>Arbejdsdage råvare → færdig (sættes på færdigvaren).</td><td>&gt;0 gater råvare-kapaciteten på leveringsdato.</td></tr>
+            <tr><td><span class="fld">Råvare-lead (dage)</span></td><td>Arbejdsdage for at skaffe råvaren (sættes på råvaren).</td><td>Skubber “tidligst leverbar” frem.</td></tr>
+            <tr><td><span class="fld">Knap råvare</span></td><td>Kryds = knap (pulje-begrænset); blank = fri.</td><td>Afgør om producerede varer er ubegrænsede (fri) eller loftet af puljen.</td></tr>
+
+            <tr class="grouprow"><td colspan="3">Portal / web-logik</td></tr>
+            <tr><td><span class="fld">Strengt lager</span></td><td>Kan kun bestilles svarende til lager + fremtidige IO − fremtidige SO.</td><td>Aktiverer buffer-trappe + genbestillings-vindue.</td></tr>
+            <tr><td><span class="fld">Leveringstid (genbestilling)</span></td><td>Arbejdsdage frem en streng vare kan bestilles til, med 0 disponibelt.</td><td>Åbner bestilling frem i tiden.</td></tr>
+            <tr><td><span class="fld">Tilgængelig fra</span></td><td>Varen kan ikke bestilles på portalen før denne dato.</td><td>Portal-synlighed.</td></tr>
+            <tr><td><span class="fld">Åbn til (kl.)</span></td><td>Bestilbar til dags afgang frem til dette klokkeslæt.</td><td>Daglig bestillingsfrist.</td></tr>
+            <tr><td><span class="fld">Luk dags afgang</span></td><td>Lukker for bestilling til afgang i dag — uanset disponibelt.</td><td>Manuel spærring.</td></tr>
+            <tr><td><span class="fld">Portal statustekst</span></td><td>Fri tekst på prislisten (fx “Frost”, “Bestillingsvare”).</td><td>Kun visning; oversættes automatisk.</td></tr>
+            <tr><td><span class="fld">Rang. prisliste</span></td><td>Værdi 1 skjuler varen på web; 0 = vises.</td><td>Portal-synlighed.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 7 ─────────────────────────────────────── -->
+    <section class="blk" id="priser">
+      <p class="eyebrow">Prislinjer</p>
+      <h2>Sådan er prisopsætningen bygget</h2>
+      <p>Alle priser ligger i tabellen <strong>Salgspriser</strong> (Sales Price), som du redigerer på siden <strong>Venmark Prislistelinjer</strong>. Hver linje har en <strong>Kildetype</strong> der afgør hvem prisen gælder.</p>
+
+      <div class="tablewrap">
+        <table>
+          <caption>Kildetype på en prislinje</caption>
+          <thead><tr><th>Kildetype</th><th>Kilde (kode)</th><th>Gælder</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fld">Kunde</span></td><td>Debitornr.</td><td>Én bestemt kunde. Slår alt.</td></tr>
+            <tr><td><span class="fld">Debitorprisgruppe</span></td><td>Prisgruppekode</td><td>Alle kunder i gruppen.</td></tr>
+            <tr><td><span class="fld">Alle kunder</span></td><td>—</td><td>Standardpris for alle.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Hvilken pris vinder på ordren</h3>
+      <p>Når en vare sættes på en salgslinje, vælger systemet prisen i denne rækkefølge:</p>
+      <div class="formula">
+<b>1. Kunde-specifik</b> <span class="op">›</span> <b>2. Kæde-prisgruppe</b> <span class="op">›</span> <b>3. Normal prisgruppe</b> <span class="op">›</span> <b>4. Alle kunder</b><br>
+<span class="cm">Blandt normal gruppe / alle kunder vinder den LAVESTE pris. Trappepriser (min. antal) respekteres.</span>
+      </div>
+
+      <h3>Kæde-prisgruppen</h3>
+      <p>På debitorkortet kan en kunde få en ekstra <strong>Kæde-prisgruppe</strong> (fx en butik i en kæde). Har kæde-gruppen en pris på en vare, <strong>overrider</strong> den kundens normale prisgruppe — uanset om den er højere eller lavere — og slår tilbudspris. En kunde-specifik pris slår dog stadig kæden.</p>
+      <ul class="clean">
+        <li>Kæde-priser er <strong>manuelle</strong> og indgår <em>ikke</em> i “Beregn priser”.</li>
+        <li>Fordi de er manuelle, er fragten ikke bygget ind. Kæde-gruppens fragt lægges automatisk på <strong>både salgspris og kostpris</strong> (samme beløb → ren avance på fragten).</li>
+      </ul>
+
+      <h3>Sådan beregnes en pris (“Beregn priser”)</h3>
+      <p>For beregnede prisgrupper regnes kost og salgspris frem af varens kostpris og prisgruppens tillæg:</p>
+      <div class="formula">
+<span class="cm">Trin 1 — kostpris på færdigvare (stykliste)</span><br>
+Kostpris1 <span class="op">=</span> Σ(komponent × antal) <span class="op">+</span> løn <span class="op">+</span> emballage <span class="op">+</span> andre omk.<br><br>
+<span class="cm">Trin 2 — salgspris pr. prislinje</span><br>
+Brutto kostpris <span class="op">=</span> (Kostpris1 <span class="op">+</span> Kostpristillæg 1) <span class="op">×</span> Kostpristillæg 2% <span class="op">×</span> Faktor%<br>
+Fragt <span class="op">=</span> Fragttillæg (kr/kg) <span class="op">×</span> varens nettovægt<br>
+<b>Salgspris</b> <span class="op">=</span> (Brutto kostpris <span class="op">+</span> Fragt <span class="op">+</span> Profit kr.) <span class="op">×</span> (1 <span class="op">+</span> Profit% )
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <caption>Prisgruppens knapper (Debitorprisgruppe)</caption>
+          <thead><tr><th>Felt</th><th>Rolle i beregningen</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fld">Kostpristillæg 1 (LCY)</span></td><td>Fast beløb lagt til Kostpris1.</td></tr>
+            <tr><td><span class="fld">Kostpristillæg 2 (%)</span></td><td>Faktor på kostprisen (100 = ingen ændring).</td></tr>
+            <tr><td><span class="fld">Faktor (%)</span></td><td>Endelig faktor på brutto kostpris (100 = ingen ændring).</td></tr>
+            <tr><td><span class="fld">Fragttillæg (kr./kg)</span></td><td>Ganges med varens nettovægt → fragt på kost og pris.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <p class="note-h">Kontraktpris &amp; Beregn priser</p>
+        <p>Er <strong>Kontraktpris</strong> markeret på en linje, rører beregningen ikke salgsprisen — kun brutto kostpris opdateres. Knappen <strong>“Beregn priser”</strong> på Venmark Prislistelinjer kører beregningen på de viste linjer; <strong>“Slet udløbne”</strong> rydder linjer med passeret slutdato. Kolonnerne <em>Ændret af / Ændret den</em> viser hvem der sidst rørte en parameter manuelt (batch tæller ikke med).</p>
+      </div>
+    </section>
+
+    <hr class="rule">
+    <p class="mono" style="color:var(--ink-faint)">Motoren: <span class="k">Portal Raw Avail Mgt</span> (cu 50319) · prisberegning: <span class="k">Venmark Price Calc Mgt</span> (cu 50315) · felter: <span class="k">VM Item Procedure Ext</span> + Vareliste (side 50322) &amp; varekort.</p>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Disponibel-håndbogen · Venmark Fisk</span>
+    <span class="mono">Intern reference · opdateres i takt med systemet</span>
+  </div>
+</footer>
+
+</html>
