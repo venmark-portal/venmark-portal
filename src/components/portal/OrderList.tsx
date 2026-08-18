@@ -59,7 +59,7 @@ interface Props {
   priceTiers?:       PriceTier[]
   initialFavNos?:    string[]
   requirePoNumber?:  boolean
-  itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; itemCategoryCode?: string }>
+  itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; leadDays?: number; itemCategoryCode?: string }>
   allCategories?:    BCItemCategory[]
   itemAvailabilities?: Record<string, BCItemAvailability>
   shipmentMethods?:             BCShipmentMethod[]
@@ -1023,12 +1023,21 @@ export default function OrderList({
     return raw.length > 0 ? raw : initialDeliveryDays
   }, [selectedMethod, calendarDays, initialDeliveryDays])
 
+  // Generelle Lukket-dage (helligdage) — bruges til arbejdsdags-spring i vare-frister
+  const portalHolidays = useMemo(() => {
+    const s = new Set<string>()
+    for (const d of (calendarDays ?? [])) {
+      if ((!d.shipmentMethodCode || d.shipmentMethodCode === '') && d.dayType === 1) s.add(d.date)
+    }
+    return s
+  }, [calendarDays])
+
   // Tjek om en vare kan leveres på den valgte dato
   function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
     if (!deliveryDate) return true
     const cutoff = itemCutoffs.get(itemNo)
     if (!cutoff) return true // ingen speciel frist — standard logik gælder
-    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour)
+    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
     return deliveryDate >= earliest
   }
 
@@ -1097,7 +1106,7 @@ export default function OrderList({
   function isItemAvailable(itemNo: string, deliveryDate: Date): boolean {
     const cutoff = itemCutoffs.get(itemNo)
     if (!cutoff || cutoff.cutoffWeekday === 0) return true // ingen særlig frist
-    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, now)
+    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, now, cutoff.leadDays ?? 0, portalHolidays)
     return deliveryDate >= earliest
   }
 

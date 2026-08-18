@@ -66,21 +66,48 @@ export function nextOccurrenceOfWeekday(weekday: number): Date {
   return result
 }
 
+/** Er datoen en arbejdsdag? (man-fre, ikke en generel Lukket-dag/helligdag) */
+function isWorkingDay(d: Date, holidays: Set<string>): boolean {
+  const wd = d.getDay()
+  if (wd === 0 || wd === 6) return false // lør/søn
+  return !holidays.has(localDateStr(d))
+}
+
+/** Lægger n ARBEJDSDAGE til `from` (from tælles ikke; springer weekender + helligdage over). */
+function addWorkingDays(from: Date, n: number, holidays: Set<string>): Date {
+  const d = new Date(from)
+  d.setHours(0, 0, 0, 0)
+  let added = 0
+  let guard = 0
+  while (added < n && guard < 1000) {
+    d.setDate(d.getDate() + 1)
+    if (isWorkingDay(d, holidays)) added++
+    guard++
+  }
+  return d
+}
+
 /**
  * Beregner tidligste leveringsdato for en vare med ugentlig bestillingsfrist.
  *
- * Eksempel: Laks — cutoffWeekday=2 (tirsdag), cutoffHour=7
- *   → Bestilles tirsdag kl 07:00 til leverandør
- *   → Kan leveres fra mandagen ugen efter
+ * To modeller:
+ *  • leadDays > 0  → levering = bestillingsfrist-dagen + leadDays ARBEJDSDAGE.
+ *      Eksempel: frist onsdag (cutoffWeekday=3) + 5 arbejdsdage = onsdag ugen efter.
+ *      Rykker korrekt hvis der er en helligdag imellem.
+ *  • leadDays = 0  → LEGACY: levering fra mandagen ugen efter (fx laks, cutoffWeekday=2).
  *
  * @param cutoffWeekday  1=man … 5=fre
  * @param cutoffHour     0–23
  * @param now            aktuel tid (default: nu)
+ * @param leadDays       arbejdsdage efter fristen (0 = mandag-gulv)
+ * @param holidays       generelle Lukket-datoer (YYYY-MM-DD) til arbejdsdags-spring
  */
 export function earliestDeliveryForItem(
   cutoffWeekday: number,
   cutoffHour: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  leadDays: number = 0,
+  holidays: Set<string> = new Set(),
 ): Date {
   // Find mandagen i denne uge
   function getMonday(d: Date): Date {
@@ -108,7 +135,14 @@ export function earliestDeliveryForItem(
     relevantCutoff.setDate(thisCutoff.getDate() + 7)
   }
 
-  // Tidligste levering = mandagen UGEN EFTER den relevante cutoff
+  // NY model: leadtid i arbejdsdage EFTER fristen (fx frist onsdag + 5 = onsdag ugen efter).
+  if (leadDays > 0) {
+    const cutoffDay = new Date(relevantCutoff)
+    cutoffDay.setHours(0, 0, 0, 0)
+    return addWorkingDays(cutoffDay, leadDays, holidays)
+  }
+
+  // LEGACY: tidligste levering = mandagen UGEN EFTER den relevante cutoff
   const cutoffMonday = getMonday(relevantCutoff)
   const deliveryMonday = new Date(cutoffMonday)
   deliveryMonday.setDate(cutoffMonday.getDate() + 7)

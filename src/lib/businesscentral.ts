@@ -701,6 +701,7 @@ export async function getStandingOrderLines(customerNo: string): Promise<BCStand
 export interface BCItemPortalData {
   cutoffWeekday:       number
   cutoffHour:          number
+  leadDays:            number   // arbejdsdage EFTER bestillingsfristen (0 = mandag-gulv ugen efter)
   saelgForH:           boolean
   itemCategoryCode:    string
   danskTekstPrisliste: string
@@ -716,7 +717,7 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
 
     // To separate kald — BC OData understøtter ikke OR på tværs af custom felter
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-    const sel     = `$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalSaelgForH,itemCategoryCode,danskTekstPrisliste&$top=1000`
+    const sel     = `$select=itemNo,portalCutoffWeekday,portalCutoffHour,portalLeadDage,portalSaelgForH,itemCategoryCode,danskTekstPrisliste&$top=1000`
     const f1      = encodeURIComponent(`portalSaelgForH eq true`)
     const f2      = encodeURIComponent(`portalCutoffWeekday gt 0`)
 
@@ -748,6 +749,7 @@ export async function getItemCutoffs(): Promise<Map<string, BCItemPortalData>> {
       result.set(item.itemNo, {
         cutoffWeekday:       item.portalCutoffWeekday    ?? 0,
         cutoffHour:          item.portalCutoffHour       ?? 14,
+        leadDays:            item.portalLeadDage         ?? 0,
         saelgForH:           item.portalSaelgForH        === true,
         itemCategoryCode:    item.itemCategoryCode        ?? '',
         danskTekstPrisliste: item.danskTekstPrisliste     ?? '',
