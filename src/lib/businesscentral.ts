@@ -1321,7 +1321,18 @@ export async function createBCSalesOrder(
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
     )
     if (!verifyRes.ok) {
-      verifyError = `GET salesOrderLines fejlede (HTTP ${verifyRes.status}): ${await verifyRes.text()}`
+      const status = verifyRes.status
+      const body   = await verifyRes.text()
+      // 403/5xx på verifikations-GET = tilladelses-/serverfejl ved LÆSNING (fx Atradius-
+      // udvidelsen kræver læse-tilladelse på ATR Setup som portal-brugeren mangler) — det
+      // betyder IKKE at ordren mangler. Lykkedes linje-POST'erne, er ordren oprettet; vi
+      // springer kun selve verifikationen over i stedet for at slå falsk alarm.
+      if ((status === 403 || status >= 500) && lineErrors.length === 0) {
+        verified = true
+        console.warn(`BC verifikations-GET blokeret (HTTP ${status}) — ordre oprettet, verifikation sprunget over: ${body}`)
+      } else {
+        verifyError = `GET salesOrderLines fejlede (HTTP ${status}): ${body}`
+      }
     } else {
       const verifyBody = await verifyRes.json()
       bcLineCount = Array.isArray(verifyBody.value) ? verifyBody.value.length : 0
