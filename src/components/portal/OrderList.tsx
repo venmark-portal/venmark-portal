@@ -1124,7 +1124,12 @@ export default function OrderList({
 
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
-    return getItemAvailStatus(avail, deliveryDate)
+    const s = getItemAvailStatus(avail, deliveryDate)
+    // Har varen et hårdt loft (streng vare fra lager), vis "Maks X" så kunden kender grænsen.
+    const cap = rowMaxQty(itemNo)
+    if (cap != null)
+      return { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
+    return s
   }
 
   function rowInfoNote(itemNo: string): string {
@@ -1139,19 +1144,42 @@ export default function OrderList({
     : 0
   const pastDeadline = deadline ? now > deadline : false
 
+  // ── Antals-loft for strenge varer ────────────────────────────────────────────
+  // En STRENG vare UDEN frist, leveret fra lager med knapt lager (<50 kg), må ikke bestilles
+  // i større mængde end disponibelt. Ubegrænset (returnerer null) når:
+  //   • varen ikke er streng, eller ingen leveringsdato er valgt
+  //   • varen har en bestillingsfrist (frist-vare) → datoen gater, mængden er fri (skaffes frisk)
+  //   • leveringsdatoen er forward-dækket (naesteLevering) → skaffes til den dato
+  //   • rigeligt lager (>50 kg) → ucappet (afslør ikke præcise mængder)
+  // Vil kunden have mere end loftet, opretter de en ny ordre til levering ugen efter.
+  const rowMaxQty = useCallback((itemNo: string): number | null => {
+    const avail = itemAvailabilities[itemNo]
+    if (!avail || !avail.strengtLager || !deliveryDate) return null
+    const cutoff = itemCutoffs.get(itemNo)
+    if (cutoff && cutoff.cutoffWeekday > 0) return null
+    const disp = avail.disponibelt
+    if (disp <= 0) return null
+    const deliveryStr = deliveryDate.toISOString().split('T')[0]
+    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
+    if (disp >= 50) return null
+    return disp
+  }, [itemAvailabilities, itemCutoffs, deliveryDate])
+
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {
     if (!fromStanding) manuallyEdited.current.add(item.number)
+    const cap = rowMaxQty(item.number)
+    const q = (cap != null && qty > cap) ? cap : qty   // håndhæv loftet uanset indgang (tast/plus)
     setLines(prev => {
       const next = new Map(prev)
-      if (qty === 0) next.delete(item.number)
+      if (q === 0) next.delete(item.number)
       else {
         const existing = prev.get(item.number)
-        next.set(item.number, { item, quantity: qty, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+        next.set(item.number, { item, quantity: q, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
       }
       return next
     })
-  }, [])
+  }, [rowMaxQty])
 
   const setLineUom = useCallback((item: EnrichedItem, uomCode: string) => {
     setLineUoms(prev => {

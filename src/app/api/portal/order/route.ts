@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDeadlineForDelivery, getDeadlineForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
-import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs } from '@/lib/businesscentral'
+import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities } from '@/lib/businesscentral'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
 
 export async function POST(req: NextRequest) {
@@ -76,6 +76,33 @@ export async function POST(req: NextRequest) {
     if (tooEarly.length) {
       return NextResponse.json(
         { error: `Bestillingsfrist ikke nået — vælg en senere leveringsdato for: ${tooEarly.join(', ')}` },
+        { status: 422 }
+      )
+    }
+
+    // Antals-loft (server-backstop): en STRENG vare UDEN frist, leveret fra lager, må ikke
+    // bestilles i større mængde end disponibelt. Frist-varer, forward-dækkede datoer og
+    // rigeligt lager (>50) er fri — samme regel som portalens rowMaxQty. Vil kunden have mere,
+    // opretter de en ny ordre til levering ugen efter.
+    const custLoc = await getCustomerLocationCode(activeCustomerNo).catch(() => '')
+    const avails  = await getItemAvailabilities(custLoc).catch(() => new Map())
+    const dStr    = deliveryDate.toISOString().split('T')[0]
+    const overCap: string[] = []
+    for (const l of lines) {
+      const a = avails.get(l.bcItemNumber)
+      if (!a || !a.strengtLager) continue
+      const c = itemCutoffs.get(l.bcItemNumber)
+      if (c && c.cutoffWeekday > 0) continue                          // frist-vare → fri
+      const disp = a.disponibelt
+      if (disp <= 0) continue                                         // blokeret/forward andetsteds
+      if (a.naesteLevering && dStr >= a.naesteLevering) continue      // forward-dækket → fri
+      if (disp >= 50) continue                                        // rigeligt → ucappet
+      if (l.quantity > disp)
+        overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10} kg`)
+    }
+    if (overCap.length) {
+      return NextResponse.json(
+        { error: `For stort antal på strenge varer — ${overCap.join(', ')}. Vil du have mere, opret en ny bestilling til levering ugen efter.` },
         { status: 422 }
       )
     }
