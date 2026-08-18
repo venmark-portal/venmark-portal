@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getDeadlineForDelivery, getDeadlineForMethodDelivery } from '@/lib/dateUtils'
+import { getDeadlineForDelivery, getDeadlineForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
-import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays } from '@/lib/businesscentral'
+import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs } from '@/lib/businesscentral'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
 
 export async function POST(req: NextRequest) {
@@ -33,27 +33,49 @@ export async function POST(req: NextRequest) {
 
     const deliveryDate = new Date(deliveryDateStr)
 
+    // Fælles kalender + leveringsmetoder + varefrister — bruges til BÅDE deadline- og
+    // bestillingsfrist-tjek. (Hentes altid, så frist-håndhævelsen også virker uden metode.)
+    const toDate90 = new Date(); toDate90.setDate(toDate90.getDate() + 90)
+    const today8601 = new Date().toISOString().split('T')[0]
+    const [allMethods, calendarDays, itemCutoffs] = await Promise.all([
+      getPortalShipmentMethods().catch(() => []),
+      getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => []),
+      getItemCutoffs().catch(() => new Map()),
+    ])
+
     // Beregn deadline med leveringsmetode-logik hvis muligt, ellers simpel fallback
-    let deadline: Date
-    if (shipmentMethodCode) {
-      const toDate90 = new Date(); toDate90.setDate(toDate90.getDate() + 90)
-      const today8601 = new Date().toISOString().split('T')[0]
-      const [allMethods, calendarDays] = await Promise.all([
-        getPortalShipmentMethods().catch(() => []),
-        getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => []),
-      ])
-      const method = allMethods.find(m => m.code === shipmentMethodCode)
-      deadline = method
-        ? getDeadlineForMethodDelivery(deliveryDate, method, calendarDays)
-        : getDeadlineForDelivery(deliveryDate)
-    } else {
-      deadline = getDeadlineForDelivery(deliveryDate)
-    }
+    const method = shipmentMethodCode ? allMethods.find(m => m.code === shipmentMethodCode) : undefined
+    const deadline: Date = method
+      ? getDeadlineForMethodDelivery(deliveryDate, method, calendarDays)
+      : getDeadlineForDelivery(deliveryDate)
 
     // Tjek deadline
     if (new Date() > deadline) {
       return NextResponse.json(
         { error: `Deadline for denne dato er passeret (${deadline.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })})` },
+        { status: 422 }
+      )
+    }
+
+    // Bestillingsfrist-håndhævelse (server-backstop for UI): en frist-vare må ALDRIG bestilles
+    // til en for tidlig leveringsdato — samme beregning som portalen viser (earliestDeliveryForItem).
+    const holidaySet = new Set<string>()
+    for (const d of calendarDays) {
+      if ((!d.shipmentMethodCode || d.shipmentMethodCode === '') && d.dayType === 1) holidaySet.add(d.date)
+    }
+    const ddMidnight = new Date(deliveryDate); ddMidnight.setHours(0, 0, 0, 0)
+    const tooEarly: string[] = []
+    for (const l of lines) {
+      const c = itemCutoffs.get(l.bcItemNumber)
+      if (!c || c.cutoffWeekday === 0) continue
+      const earliest = earliestDeliveryForItem(c.cutoffWeekday, c.cutoffHour, new Date(), c.leadDays ?? 0, holidaySet)
+      earliest.setHours(0, 0, 0, 0)
+      if (ddMidnight < earliest)
+        tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${earliest.toLocaleDateString('da-DK')})`)
+    }
+    if (tooEarly.length) {
+      return NextResponse.json(
+        { error: `Bestillingsfrist ikke nået — vælg en senere leveringsdato for: ${tooEarly.join(', ')}` },
         { status: 422 }
       )
     }

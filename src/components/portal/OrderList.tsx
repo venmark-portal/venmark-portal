@@ -655,6 +655,10 @@ export function OrderRow({
   const hasMultipleUoms = uoms.length > 1
 
   const isBlocked = !!blockedLabel
+  // Utilgængelig for den valgte leveringsdato (fx bestillingsfrist ikke nået) spærrer nu
+  // OGSÅ antal-felterne — før blev varen kun nedtonet, så kunden kunne alligevel bestille
+  // en "ugen efter"-vare til i morgen. Serveren afviser desuden ved indsendelse (backstop).
+  const inputsDisabled = isBlocked || !!unavailableLabel
 
   return (
     <div className={`px-2 sm:px-3 py-1.5 sm:py-2 transition-colors ${(unavailableLabel || isBlocked) ? 'opacity-70' : ''} ${quantity > 0 ? 'bg-blue-50/50' : 'hover:bg-gray-50/40'}`}>
@@ -765,7 +769,7 @@ export function OrderRow({
             <select
               value={activeUomCode}
               onChange={e => onUomChange?.(e.target.value)}
-              disabled={isBlocked}
+              disabled={inputsDisabled}
               className="rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer disabled:opacity-40"
               title="Vælg bestillingsenhed"
             >
@@ -795,7 +799,7 @@ export function OrderRow({
             value={quantity || ''}
             placeholder="0"
             data-qty-input="true"
-            disabled={isBlocked}
+            disabled={inputsDisabled}
             onChange={(e) => onQty(Math.max(0, parseFloat(e.target.value) || 0))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -809,7 +813,7 @@ export function OrderRow({
           />
           <button
             onClick={() => onQty(quantity + 1)}
-            disabled={isBlocked}
+            disabled={inputsDisabled}
             tabIndex={-1}
             className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
           >
