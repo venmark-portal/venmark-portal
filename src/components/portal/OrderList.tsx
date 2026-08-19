@@ -1181,8 +1181,7 @@ export default function OrderList({
       const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
       if (dd >= floor) return null
     }
-    if (disp >= 50) return null
-    return disp
+    return disp   // loft = disponibelt (også for rigelige varer — ingen oversalg)
   }, [itemAvailabilities, itemCutoffs, deliveryDate, portalHolidays])
 
   // ── Antal ───────────────────────────────────────────────────────────────────

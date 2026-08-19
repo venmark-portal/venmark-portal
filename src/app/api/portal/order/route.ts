@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
         tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${floor.toLocaleDateString('da-DK')})`)
         continue
       }
-      // 2. Antals-loft: streng vare fra lager (ikke forward, knapt lager) → maks disponibelt
-      if (a.strengtLager && !isForward && disp > 0 && disp < 50 && l.quantity > disp)
-        overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10} kg`)
+      // 2. Antals-loft: streng vare fra lager (ikke forward) → maks disponibelt (uanset størrelse)
+      if (a.strengtLager && !isForward && disp > 0 && l.quantity > disp)
+        overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
     }
     if (tooEarly.length) {
       return NextResponse.json(
