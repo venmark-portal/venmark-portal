@@ -57,48 +57,50 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Bestillingsfrist-håndhævelse (server-backstop for UI): en frist-vare må ALDRIG bestilles
-    // til en for tidlig leveringsdato — samme beregning som portalen viser (earliestDeliveryForItem).
+    // ── Frist- + antals-håndhævelse (server-backstop for UI) ────────────────────────
+    // Matcher portalens fristFloor/rowMaxQty:
+    //   • Frist-vare til FORWARD-dato (≥ gulv) → fri, ubegrænset (skaffes frisk).
+    //   • Frist-vare til NÆR dato UDEN lager → afvis (kan ikke skaffes i tide).
+    //   • Streng vare fra lager (nær dato, knapt <50 kg) → maks disponibelt.
     const holidaySet = new Set<string>()
     for (const d of calendarDays) {
       if ((!d.shipmentMethodCode || d.shipmentMethodCode === '') && d.dayType === 1) holidaySet.add(d.date)
     }
+    const custLoc    = await getCustomerLocationCode(activeCustomerNo).catch(() => '')
+    const avails     = await getItemAvailabilities(custLoc).catch(() => new Map())
     const ddMidnight = new Date(deliveryDate); ddMidnight.setHours(0, 0, 0, 0)
+    const dStr       = deliveryDate.toISOString().split('T')[0]
     const tooEarly: string[] = []
+    const overCap:  string[] = []
     for (const l of lines) {
-      const c = itemCutoffs.get(l.bcItemNumber)
-      if (!c || c.cutoffWeekday === 0) continue
-      const earliest = earliestDeliveryForItem(c.cutoffWeekday, c.cutoffHour, new Date(), c.leadDays ?? 0, holidaySet)
-      earliest.setHours(0, 0, 0, 0)
-      if (ddMidnight < earliest)
-        tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${earliest.toLocaleDateString('da-DK')})`)
+      const a = avails.get(l.bcItemNumber)
+      if (!a) continue   // ingen disponibilitets-data → spring over (fail open; UI gater primært)
+      const c    = itemCutoffs.get(l.bcItemNumber)
+      const disp = a.disponibelt
+
+      // Frist-vares forward-gulv
+      let floor: Date | null = null
+      if (c && c.cutoffWeekday > 0) {
+        floor = earliestDeliveryForItem(c.cutoffWeekday, c.cutoffHour, new Date(), c.leadDays ?? 0, holidaySet)
+        floor.setHours(0, 0, 0, 0)
+      }
+      const isForward = (floor ? ddMidnight >= floor : false)
+        || (!!a.naesteLevering && dStr >= a.naesteLevering)
+
+      // 1. Frist-vare til for tidlig dato UDEN lager → afvis (skaffes tidligst på gulvet)
+      if (floor && ddMidnight < floor && disp <= 0) {
+        tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${floor.toLocaleDateString('da-DK')})`)
+        continue
+      }
+      // 2. Antals-loft: streng vare fra lager (ikke forward, knapt lager) → maks disponibelt
+      if (a.strengtLager && !isForward && disp > 0 && disp < 50 && l.quantity > disp)
+        overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10} kg`)
     }
     if (tooEarly.length) {
       return NextResponse.json(
         { error: `Bestillingsfrist ikke nået — vælg en senere leveringsdato for: ${tooEarly.join(', ')}` },
         { status: 422 }
       )
-    }
-
-    // Antals-loft (server-backstop): en STRENG vare UDEN frist, leveret fra lager, må ikke
-    // bestilles i større mængde end disponibelt. Frist-varer, forward-dækkede datoer og
-    // rigeligt lager (>50) er fri — samme regel som portalens rowMaxQty. Vil kunden have mere,
-    // opretter de en ny ordre til levering ugen efter.
-    const custLoc = await getCustomerLocationCode(activeCustomerNo).catch(() => '')
-    const avails  = await getItemAvailabilities(custLoc).catch(() => new Map())
-    const dStr    = deliveryDate.toISOString().split('T')[0]
-    const overCap: string[] = []
-    for (const l of lines) {
-      const a = avails.get(l.bcItemNumber)
-      if (!a || !a.strengtLager) continue
-      const c = itemCutoffs.get(l.bcItemNumber)
-      if (c && c.cutoffWeekday > 0) continue                          // frist-vare → fri
-      const disp = a.disponibelt
-      if (disp <= 0) continue                                         // blokeret/forward andetsteds
-      if (a.naesteLevering && dStr >= a.naesteLevering) continue      // forward-dækket → fri
-      if (disp >= 50) continue                                        // rigeligt → ucappet
-      if (l.quantity > disp)
-        overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10} kg`)
     }
     if (overCap.length) {
       return NextResponse.json(

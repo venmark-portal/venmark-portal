@@ -1036,13 +1036,25 @@ export default function OrderList({
     return s
   }, [calendarDays])
 
-  // Tjek om en vare kan leveres på den valgte dato
+  // Frist-vares "forward-gulv": tidligste dato varen skaffes frisk (ubegrænset). Null = ingen frist.
+  function fristFloor(itemNo: string): Date | null {
+    const cutoff = itemCutoffs.get(itemNo)
+    if (!cutoff || cutoff.cutoffWeekday === 0) return null
+    const e = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
+    e.setHours(0, 0, 0, 0)
+    return e
+  }
+
+  // Tilgængelig på den valgte dato? En frist-vare er tilgængelig FORWARD (dato ≥ gulv →
+  // ubegrænset, skaffes frisk) ELLER fra LAGER til en nær dato (disponibelt > 0, cappes senere).
   function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
     if (!deliveryDate) return true
-    const cutoff = itemCutoffs.get(itemNo)
-    if (!cutoff) return true // ingen speciel frist — standard logik gælder
-    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
-    return deliveryDate >= earliest
+    const floor = fristFloor(itemNo)
+    if (!floor) return true // ingen frist — standard logik gælder
+    const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
+    if (dd >= floor) return true
+    const avail = itemAvailabilities[itemNo]
+    return !!avail && avail.disponibelt > 0
   }
 
   const deadlineFn = (d: Date) => selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod, calendarDays) : getDeadlineForDelivery(d)
@@ -1108,10 +1120,12 @@ export default function OrderList({
 
   // ── Tjek om en vare er tilgængelig for valgt leveringsdato ──────────────────
   function isItemAvailable(itemNo: string, deliveryDate: Date): boolean {
-    const cutoff = itemCutoffs.get(itemNo)
-    if (!cutoff || cutoff.cutoffWeekday === 0) return true // ingen særlig frist
-    const earliest = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, now, cutoff.leadDays ?? 0, portalHolidays)
-    return deliveryDate >= earliest
+    const floor = fristFloor(itemNo)
+    if (!floor) return true // ingen særlig frist
+    const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
+    if (dd >= floor) return true // forward → tilgængelig (ubegrænset)
+    const avail = itemAvailabilities[itemNo] // nær-dato → kun hvis der er lager på hånden
+    return !!avail && avail.disponibelt > 0
   }
 
   // Navn på ugedag for cutoff (til fejlbesked)
@@ -1155,15 +1169,21 @@ export default function OrderList({
   const rowMaxQty = useCallback((itemNo: string): number | null => {
     const avail = itemAvailabilities[itemNo]
     if (!avail || !avail.strengtLager || !deliveryDate) return null
-    const cutoff = itemCutoffs.get(itemNo)
-    if (cutoff && cutoff.cutoffWeekday > 0) return null
     const disp = avail.disponibelt
     if (disp <= 0) return null
     const deliveryStr = deliveryDate.toISOString().split('T')[0]
-    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
+    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null  // forward (lead) → fri
+    // Frist-vare: FORWARD-dato (≥ gulv) → ubegrænset (skaffes frisk); NÆR-dato → cap ved lager.
+    const cutoff = itemCutoffs.get(itemNo)
+    if (cutoff && cutoff.cutoffWeekday > 0) {
+      const floor = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
+      floor.setHours(0, 0, 0, 0)
+      const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
+      if (dd >= floor) return null
+    }
     if (disp >= 50) return null
     return disp
-  }, [itemAvailabilities, itemCutoffs, deliveryDate])
+  }, [itemAvailabilities, itemCutoffs, deliveryDate, portalHolidays])
 
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {
