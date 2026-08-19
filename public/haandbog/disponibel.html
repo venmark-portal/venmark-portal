@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="da">
 <meta charset="utf-8">
-<title>Disponibel-håndbogen</title>
+<title>Venmark-håndbogen</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{
@@ -230,14 +230,15 @@
 <header class="mast">
   <div class="wrap mast-inner">
     <p class="kicker">Venmark Fisk · Business Central</p>
-    <h1 class="title">Disponibel-håndbogen</h1>
-    <p class="lede">Hvad lager- og disponibel-tallene betyder, hvilke felter der styrer dem, hvor du finder felterne — og hvordan prislinjerne er sat op. Skrevet til sælgere, disponenter og administratorer.</p>
+    <h1 class="title">Venmark-håndbogen</h1>
+    <p class="lede">Hvad lager- og disponibel-tallene betyder, hvilke felter der styrer dem, hvor du finder felterne, hvordan prislinjerne er sat op — og hvordan leveringsformer styrer datoerne på portalen. Skrevet til sælgere, disponenter og administratorer.</p>
     <div class="mast-meta">
       <span class="tag on">Disponibel-motor</span>
       <span class="tag on">Produktions-model</span>
       <span class="tag on">Bestillings-gate</span>
       <span class="tag on">Felt-katalog</span>
       <span class="tag on">Prislinjer</span>
+      <span class="tag on">Leveringsformer</span>
     </div>
   </div>
 </header>
@@ -253,6 +254,7 @@
       <li><a href="#gate">Godkendt · Afventer · Afvist</a></li>
       <li><a href="#katalog">Felt-katalog: lager</a></li>
       <li><a href="#priser">Prislinje-opsætningen</a></li>
+      <li><a href="#leveringsformer">Leveringsformer &amp; datoer</a></li>
     </ol>
   </nav>
 
@@ -542,14 +544,55 @@ Fragt <span class="op">=</span> Fragttillæg (kr/kg) <span class="op">×</span> 
       </div>
     </section>
 
+    <!-- 8 ─────────────────────────────────────── -->
+    <section class="blk" id="leveringsformer">
+      <p class="eyebrow">Portalen</p>
+      <h2>Leveringsformer &amp; leveringsdatoer</h2>
+      <p><strong>Leveringsformen</strong> (Shipment Method) styrer to ting på portalen: <em>hvilke datoer</em> kunden kan vælge, og <em>hvornår fristen</em> for en valgt dato er. Felterne sættes på siden <strong>Leveringsformer</strong> i BC.</p>
+
+      <div class="tablewrap">
+        <table>
+          <caption>Felter på leveringsformen</caption>
+          <thead><tr><th>Felt</th><th>Rolle i logikken</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fld">Man–Søn</span> (flueben)</td><td>Hvilke ugedage formen <strong>leverer</strong>. Bruges når der ikke er en kalenderpost for datoen. <strong>Tomme = ingen dage</strong> (se fælden nederst).</td></tr>
+            <tr><td><span class="fld">Hentes kl.</span></td><td>Den <strong>daglige frist</strong>. Bestilt FØR → afsendes i dag; efter → i morgen. Vises som “bestil inden kl. X”. <strong>Portalen bruger pt. dette felt som ordrefrist.</strong></td></tr>
+            <tr><td><span class="fld">Bestillingsfrist</span></td><td>Nyere, separat frist-felt. <strong>Bruges ikke af portalen endnu</strong> — den skærer stadig ved Hentes kl.</td></tr>
+            <tr><td><span class="fld">Transit</span></td><td>Antal (kalender)dage fra <strong>afsendelse → levering</strong>. 0 = samme dag, 1 = dagen efter.</td></tr>
+            <tr><td><span class="fld">Samme dag</span></td><td>Tvinger <strong>Transit = 0</strong> (afsendelse = leveringsdag).</td></tr>
+            <tr><td><span class="fld">Portal</span></td><td>Vis formen som valgmulighed på portalen.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Sådan findes de valgbare datoer</h3>
+      <div class="formula">
+<span class="cm">Trin 1 — tidligste afsendelse</span><br>
+Afsendelse <span class="op">=</span> i dag hvis klokken <span class="op">&lt;</span> Hentes kl, ellers i morgen<br><br>
+<span class="cm">Trin 2 — leveringsdag pr. afsendelsesdag</span><br>
+<b>Levering</b> <span class="op">=</span> Afsendelse <span class="op">+</span> Transit<br>
+Gyldig hvis: kalender (dato+form) <span class="op">›</span> kalender (dato+blank) <span class="op">›</span> ugedags-fluebenet<br>
+<span class="cm">Fredags-loft: fristen er aldrig efter kl. 12:00 om fredagen.</span>
+      </div>
+      <ul class="clean">
+        <li><strong>Portalkalenderen</strong> (Åben/Lukket-dage, fx helligdage) overstyrer ugedags-fluebenene for de datoer den dækker.</li>
+        <li><strong>Fristen for en valgt dato</strong> regnes baglæns: afsendelsesdag = leveringsdato − Transit (weekend rykkes til forrige fredag), og fristen er den dags Hentes kl.</li>
+      </ul>
+
+      <div class="note warn">
+        <p class="note-h">Fælde: tom ugedags-opsætning</p>
+        <p>Har en leveringsform <strong>ingen ugedags-flueben</strong> (og ingen Åben-dage i kalenderen), finder beregningen <strong>nul</strong> datoer. Så <strong>låner</strong> portalen lydløst en anden forms datoer (kundens standardform, ellers en generisk hverdags-liste). Formen ser derfor ud til at virke — men datoerne er ikke dens egne, og fx “samme dag i dag” dukker aldrig op. <strong>Ret altid ved at sætte ugedags-fluebenene på formen</strong> (fx Man–Fre).</p>
+      </div>
+    </section>
+
     <hr class="rule">
-    <p class="mono" style="color:var(--ink-faint)">Motoren: <span class="k">Portal Raw Avail Mgt</span> (cu 50319) · prisberegning: <span class="k">Venmark Price Calc Mgt</span> (cu 50315) · felter: <span class="k">VM Item Procedure Ext</span> + Vareliste (side 50322) &amp; varekort.</p>
+    <p class="mono" style="color:var(--ink-faint)">Motoren: <span class="k">Portal Raw Avail Mgt</span> (cu 50319) · prisberegning: <span class="k">Venmark Price Calc Mgt</span> (cu 50315) · leveringsdatoer: <span class="k">dateUtils</span> (portal) · felter: <span class="k">VM Item Procedure Ext</span> + Vareliste (side 50322) &amp; varekort.</p>
   </main>
 </div>
 
 <footer>
   <div class="wrap">
-    <span>Disponibel-håndbogen · Venmark Fisk</span>
+    <span>Venmark-håndbogen · Venmark Fisk</span>
     <span class="mono">Intern reference · opdateres i takt med systemet</span>
   </div>
 </footer>
