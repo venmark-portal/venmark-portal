@@ -809,7 +809,7 @@ export function OrderRow({
                 if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
               }
             }}
-            className="w-10 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40 disabled:bg-gray-50"
+            className="w-16 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40 disabled:bg-gray-50"
           />
           <button
             onClick={() => onQty(quantity + 1)}
@@ -1188,12 +1188,17 @@ export default function OrderList({
   // Vil kunden have mere end loftet, opretter de en ny ordre til levering ugen efter.
   const rowMaxQty = useCallback((itemNo: string): number | null => {
     const avail = itemAvailabilities[itemNo]
-    if (!avail || !avail.strengtLager || !deliveryDate) return null
+    if (!avail || !deliveryDate) return null
     const disp = avail.disponibelt
-    if (disp <= 0) return null
+    if (disp <= 0) return null   // blokeret andetsteds (status disabler feltet)
     const deliveryStr = deliveryDate.toISOString().split('T')[0]
-    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null  // forward (lead) → fri
-    // Frist-vare: FORWARD-dato (≥ gulv) → ubegrænset (skaffes frisk); NÆR-dato → cap ved lager.
+    const todayStr    = new Date().toISOString().split('T')[0]
+    // UBEGRÆNSET-undtagelser:
+    //  • Auktionsvare i FRI-bestilling (priser IKKE stemplet i dag) → købes på auktion.
+    if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
+    //  • Forward-dækket via lead/indkøb (naesteLevering ≤ leveringsdato) → skaffes til datoen.
+    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
+    //  • Frist-vare til FORWARD-dato (≥ gulv) → skaffes frisk; NÆR-dato falder igennem → cap.
     const cutoff = itemCutoffs.get(itemNo)
     if (cutoff && cutoff.cutoffWeekday > 0) {
       const floor = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
@@ -1201,7 +1206,8 @@ export default function OrderList({
       const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
       if (dd >= floor) return null
     }
-    return disp   // loft = disponibelt (også for rigelige varer — ingen oversalg)
+    // Ellers: loft = disponibelt for ALLE varetyper (strenge, handelsvarer, producerede) → intet oversalg.
+    return disp
   }, [itemAvailabilities, itemCutoffs, deliveryDate, portalHolidays])
 
   // ── Antal ───────────────────────────────────────────────────────────────────

@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
     const avails     = await getItemAvailabilities(custLoc).catch(() => new Map())
     const ddMidnight = new Date(deliveryDate); ddMidnight.setHours(0, 0, 0, 0)
     const dStr       = deliveryDate.toISOString().split('T')[0]
+    const todayStr   = new Date().toISOString().split('T')[0]
     const tooEarly: string[] = []
     const overCap:  string[] = []
     for (const l of lines) {
@@ -92,8 +93,10 @@ export async function POST(req: NextRequest) {
         tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${floor.toLocaleDateString('da-DK')})`)
         continue
       }
-      // 2. Antals-loft: streng vare fra lager (ikke forward) → maks disponibelt (uanset størrelse)
-      if (a.strengtLager && !isForward && disp > 0 && l.quantity > disp)
+      // 2. Antals-loft: ALLE varetyper cappes ved disponibelt (intet oversalg), UNDTAGET
+      //    auktions-fri-bestilling (priser ikke stemplet i dag) + forward-dækkede datoer.
+      const auctionFree = a.auktionsKategori && (a.priserOpdateret ? a.priserOpdateret.slice(0, 10) !== todayStr : true)
+      if (!auctionFree && !isForward && disp > 0 && l.quantity > disp)
         overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
     }
     if (tooEarly.length) {
@@ -104,7 +107,7 @@ export async function POST(req: NextRequest) {
     }
     if (overCap.length) {
       return NextResponse.json(
-        { error: `For stort antal på strenge varer — ${overCap.join(', ')}. Vil du have mere, opret en ny bestilling til levering ugen efter.` },
+        { error: `For stort antal — ${overCap.join(', ')}. Vi har ikke mere til denne leveringsdato.` },
         { status: 422 }
       )
     }
