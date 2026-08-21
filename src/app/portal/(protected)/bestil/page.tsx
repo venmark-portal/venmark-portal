@@ -47,9 +47,6 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   const toDate90  = new Date(today); toDate90.setDate(today.getDate() + 90)
   const toDate90str = toDate90.toISOString().split('T')[0]
 
-  // Kundens (aktiv kunde = evt. valgt butik) lokation → portal-disponibelt beregnes
-  // pr. den lokation vi sender fra (fx København-kunder → KBH-lager). Tom = alle lokationer.
-  const custLocation = await _mark('loc', getCustomerLocationCode(customerNo).catch(() => ''))
 
   // ── Hent alt parallelt ────────────────────────────────────────────────────────
   // Kalenderen hentes nu HER (afhænger kun af datoer) i stedet for et separat,
@@ -57,7 +54,9 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   // itemAvailabilities hentes IKKE her (hele kataloget) længere — det gjorde favorit-loading
   // langsom. Den hentes SCOPET til de viste varer nedenfor (som BC's hurtig indtastning slår
   // skyggen op for favoritterne). Kategori/søgning henter disponibilitet på-forlangende.
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await _mark('phase1', Promise.all([
+  // custLocation (kundens lokation) hentes nu PARALLELT i phase-1 i stedet for sekventielt før.
+  const [custLocation, portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await _mark('phase1', Promise.all([
+    getCustomerLocationCode(customerNo).catch(() => ''),
     getPortalPrices(customerNo, priceGrp, chainGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
