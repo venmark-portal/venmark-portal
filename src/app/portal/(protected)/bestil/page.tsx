@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems, getCustomerLocationCode } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems, getCustomerLocationCode } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
@@ -141,15 +141,15 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
     getItemAvailabilities(custLocation, allNumbers).catch(() => new Map()),
   ]))
   const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
-  const [attrMap, uomMap] = await _mark('attrs+uoms', Promise.all([
-    getItemsAttributeValues(itemRefs),
-    getItemsUoMs(itemRefs),
-  ]))
+  // Attributterne kommer nu MED varekortet (foldet ind via $expand i getItemsByNumbers) —
+  // så vi behøver ikke længere ét attribut-kald pr. vare (var ~4s af page-load). Kun enheder.
+  const uomMap = await _mark('uoms', getItemsUoMs(itemRefs))
 
   // Byg item-map med kundepris for qty=1 som startpris + attributter + enheder
   const itemMap = new Map(
     bcItems.map((item) => {
-      const attrs = attrMap.get(item.number) ?? []
+      const attrs: BCItemAttributeValue[] = (item.itemAttributeValues ?? [])
+        .map(a => ({ attributeName: a.attributeName ?? '', value: a.value ?? '' }))
 
       // ── Brug faktiske BC-enheder inkl. korrekte konverteringsfaktorer ──────
       // Merges BC-enheder (har korrekte faktorer) med prislisteenheder (altid synlige)
