@@ -1209,18 +1209,10 @@ export async function getItemsByNumbers(numbers: string[]): Promise<BCItem[]> {
   const perBatch = await Promise.all(
     batches.map(async (batch) => {
       const filter = encodeURIComponent(batch.map((n) => `number eq '${n}'`).join(' or '))
-      // Fold varens attributter ind via $expand → ÉT kald pr. batch i stedet for ét pr. VARE
-      // (attribut-kaldene var ~4s af page-load). Fejler expand (ikke understøttet), hentes
-      // items UDEN attributter, så listen aldrig brækker — bare ingen attribut-ikoner.
-      let res = await fetch(
-        `${base}/items?$filter=${filter}&${sel}&$expand=picture,itemAttributeValues`,
+      const res = await fetch(
+        `${base}/items?$filter=${filter}&${sel}&$expand=picture`,
         { headers, next: { revalidate: 300 } } as any,
       )
-      if (!res.ok)
-        res = await fetch(
-          `${base}/items?$filter=${filter}&${sel}&$expand=picture`,
-          { headers, next: { revalidate: 300 } } as any,
-        )
       if (!res.ok) return [] as BCItem[]
       const data = await res.json()
       return (data.value ?? []) as BCItem[]
