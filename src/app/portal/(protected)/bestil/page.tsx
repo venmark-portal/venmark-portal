@@ -22,7 +22,14 @@ function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): num
 }
 
 
-export default async function BestilPage() {
+export default async function BestilPage({ searchParams }: { searchParams?: Promise<Record<string, string>> }) {
+  // Fase-timing (vises kun med ?debug=1) — så vi kan se hvor page-load-tiden går.
+  const _sp: any = searchParams ? await searchParams : {}
+  const _debug = _sp?.debug === '1'
+  const _t: Record<string, number> = {}
+  const _mark = async <T,>(k: string, p: Promise<T>): Promise<T> => { const s = Date.now(); const r = await p; _t[k] = Date.now() - s; return r }
+  const _tStart = Date.now()
+
   const session    = await getServerSession(authOptions)
   const userId     = (session?.user as any)?.id               as string
   const customerNo = (session?.user as any)?.bcCustomerNumber  as string ?? ''
@@ -42,7 +49,7 @@ export default async function BestilPage() {
 
   // Kundens (aktiv kunde = evt. valgt butik) lokation → portal-disponibelt beregnes
   // pr. den lokation vi sender fra (fx København-kunder → KBH-lager). Tom = alle lokationer.
-  const custLocation = await getCustomerLocationCode(customerNo).catch(() => '')
+  const custLocation = await _mark('loc', getCustomerLocationCode(customerNo).catch(() => ''))
 
   // ── Hent alt parallelt ────────────────────────────────────────────────────────
   // Kalenderen hentes nu HER (afhænger kun af datoer) i stedet for et separat,
@@ -50,7 +57,7 @@ export default async function BestilPage() {
   // itemAvailabilities hentes IKKE her (hele kataloget) længere — det gjorde favorit-loading
   // langsom. Den hentes SCOPET til de viste varer nedenfor (som BC's hurtig indtastning slår
   // skyggen op for favoritterne). Kategori/søgning henter disponibilitet på-forlangende.
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await Promise.all([
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await _mark('phase1', Promise.all([
     getPortalPrices(customerNo, priceGrp, chainGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -72,7 +79,7 @@ export default async function BestilPage() {
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
     getCustomerPortalShipmentMethods(customerNo).catch(() => []),
     getPortalCalendarDays(today8601, toDate90str).catch(() => []),
-  ])
+  ]))
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
   // null = BC-fejl → vis alt. Set = filter aktiv (kun varer med RangeringPrisliste > 0)
@@ -129,15 +136,15 @@ export default async function BestilPage() {
   const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos]))
 
   // ── Hent varekortdetaljer + disponibilitet (SCOPET til de viste varer) parallelt ──────
-  const [bcItems, itemAvailabilities] = await Promise.all([
+  const [bcItems, itemAvailabilities] = await _mark('items+avail', Promise.all([
     getItemsByNumbers(allNumbers),
     getItemAvailabilities(custLocation, allNumbers).catch(() => new Map()),
-  ])
+  ]))
   const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
-  const [attrMap, uomMap] = await Promise.all([
+  const [attrMap, uomMap] = await _mark('attrs+uoms', Promise.all([
     getItemsAttributeValues(itemRefs),
     getItemsUoMs(itemRefs),
-  ])
+  ]))
 
   // Byg item-map med kundepris for qty=1 som startpris + attributter + enheder
   const itemMap = new Map(
@@ -261,11 +268,18 @@ export default async function BestilPage() {
   // Estimerede priser: gennemsnit af seneste 10 salg for varer uden aftalt pris
   const zeroPriceNos = allNumbers.filter(n => (itemMap.get(n)?.unitPrice ?? 0) === 0)
   const estimatedPrices = zeroPriceNos.length > 0
-    ? await getAverageSalesPriceForItems(customerNo, zeroPriceNos).catch(() => new Map<string, number>())
+    ? await _mark('avgPrice', getAverageSalesPriceForItems(customerNo, zeroPriceNos).catch(() => new Map<string, number>()))
     : new Map<string, number>()
 
   return (
     <div className="space-y-4">
+      {_debug && (
+        <pre className="rounded bg-black text-green-400 text-xs p-3 overflow-x-auto whitespace-pre-wrap">
+          {'FASE-TIMING (ms) — ' + allNumbers.length + ' viste varer\n' +
+            Object.entries(_t).map(([k, v]) => '  ' + k.padEnd(12) + ' ' + v).join('\n') +
+            '\n  ' + 'TOTAL'.padEnd(12) + ' ' + (Date.now() - _tStart)}
+        </pre>
+      )}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Ny bestilling</h1>
         <p className="mt-1 text-sm text-gray-500">
