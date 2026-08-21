@@ -47,7 +47,10 @@ export default async function BestilPage() {
   // ── Hent alt parallelt ────────────────────────────────────────────────────────
   // Kalenderen hentes nu HER (afhænger kun af datoer) i stedet for et separat,
   // sekventielt kald senere — sparer én BC-runde-tur i page-load.
-  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, itemAvailabilities, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await Promise.all([
+  // itemAvailabilities hentes IKKE her (hele kataloget) længere — det gjorde favorit-loading
+  // langsom. Den hentes SCOPET til de viste varer nedenfor (som BC's hurtig indtastning slår
+  // skyggen op for favoritterne). Kategori/søgning henter disponibilitet på-forlangende.
+  const [portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await Promise.all([
     getPortalPrices(customerNo, priceGrp, chainGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     prisma.dailyPromotion.findMany({
@@ -65,7 +68,6 @@ export default async function BestilPage() {
     getItemCutoffs().catch(() => new Map()),
     getItemCategories().catch(() => []),
     getWebshopVisibleItemNos().catch(() => null),
-    getItemAvailabilities(custLocation).catch(() => new Map()),
     getPortalShipmentMethods().catch(() => []),
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
     getCustomerPortalShipmentMethods(customerNo).catch(() => []),
@@ -126,8 +128,11 @@ export default async function BestilPage() {
 
   const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos]))
 
-  // ── Hent varekortdetaljer + attributter + enheder fra BC parallelt ─────────
-  const bcItems = await getItemsByNumbers(allNumbers)
+  // ── Hent varekortdetaljer + disponibilitet (SCOPET til de viste varer) parallelt ──────
+  const [bcItems, itemAvailabilities] = await Promise.all([
+    getItemsByNumbers(allNumbers),
+    getItemAvailabilities(custLocation, allNumbers).catch(() => new Map()),
+  ])
   const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
   const [attrMap, uomMap] = await Promise.all([
     getItemsAttributeValues(itemRefs),

@@ -104,12 +104,13 @@ interface Props {
   existingNos?:    Set<string>
   itemAvailabilities?: Record<string, BCItemAvailability>
   deliveryDate?:   Date
+  onResults?:      (itemNos: string[]) => void
 }
 
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
-  itemAvailabilities, deliveryDate,
+  itemAvailabilities, deliveryDate, onResults,
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
@@ -178,6 +179,8 @@ export default function ItemSearchModal({
           const items = data.value ?? []
           setResults(items)
           setHasMore(favMode && items.length === PAGE_SIZE)
+          // Hent disponibilitet for søgeresultaterne (ikke i initial-scopet)
+          onResults?.(items.map((i: EnrichedItem) => i.number))
         }
       } catch {
         setError('Kunne ikke nå serveren — prøv igen')

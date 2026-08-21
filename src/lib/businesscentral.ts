@@ -1870,7 +1870,7 @@ export interface BCItemAvailability {
  * Returnerer Map fra itemNo → tilgængeligheds-data for alle varer.
  * Bruges af bestillingssiden til at blokere/advare afhængigt af varetype.
  */
-export async function getItemAvailabilities(locationCode?: string): Promise<Map<string, BCItemAvailability>> {
+export async function getItemAvailabilities(locationCode?: string, itemNos?: string[]): Promise<Map<string, BCItemAvailability>> {
   try {
     const token   = await getAccessToken()
     const tenant  = process.env.BC_TENANT_ID
@@ -1878,35 +1878,54 @@ export async function getItemAvailabilities(locationCode?: string): Promise<Map<
     const company = process.env.BC_COMPANY_ID
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    // Kun de felter portalen faktisk bruger → mindre payload (dropper lager/iProduktion/iKoeb/
+    // description/baseUnitOfMeasure som ingen læser her).
+    const select = '$select=itemNo,disponibelt,strengtLager,auktionsKategori,tilgaengeligFra,aabnTil,lukAfgang,statusNote,danskTekstPrisliste,priserOpdateret,naesteLevering'
 
-    // Kundens lokation → disponibelt/lager/køb beregnes pr. den lokation (BC page 50373).
-    // Tom lokation = alle lokationer (uændret).
-    const locFilter = locationCode
-      ? `&$filter=${encodeURIComponent(`locationFilter eq '${locationCode.replace(/'/g, "''")}'`)}`
-      : ''
+    // Kundens lokation → disponibelt beregnes pr. den lokation (BC page 50373). '' = alle lokationer.
+    const locClause = locationCode ? `locationFilter eq '${locationCode.replace(/'/g, "''")}'` : ''
 
     const result = new Map<string, BCItemAvailability>()
-    let url: string | null = `${base}/itemAvailabilities?$top=1000${locFilter}`
-    while (url) {
-      const res: Response = await fetch(url, { headers, cache: 'no-store' } as any)
-      if (!res.ok) break
-      const data = await res.json()
-      for (const item of (data.value ?? [])) {
-        if (!item.itemNo) continue
-        result.set(item.itemNo, {
-          disponibelt:         item.disponibelt         ?? 0,
-          strengtLager:        item.strengtLager         === true,
-          auktionsKategori:    item.auktionsKategori     === true,
-          tilgaengeligFra:     (item.tilgaengeligFra && item.tilgaengeligFra !== '0001-01-01') ? item.tilgaengeligFra : null,
-          aabnTil:             (item.aabnTil && item.aabnTil !== '00:00:00' && item.aabnTil !== 'PT0S') ? item.aabnTil : null,
-          lukAfgang:           item.lukAfgang            === true,
-          statusNote:          item.statusNote           ?? '',
-          danskTekstPrisliste: item.danskTekstPrisliste  ?? '',
-          priserOpdateret:     item.priserOpdateret      || null,
-          naesteLevering:      (item.naesteLevering && item.naesteLevering !== '0001-01-01') ? item.naesteLevering : null,
-        })
+    const mapRow = (item: any) => {
+      if (!item.itemNo) return
+      result.set(item.itemNo, {
+        disponibelt:         item.disponibelt         ?? 0,
+        strengtLager:        item.strengtLager         === true,
+        auktionsKategori:    item.auktionsKategori     === true,
+        tilgaengeligFra:     (item.tilgaengeligFra && item.tilgaengeligFra !== '0001-01-01') ? item.tilgaengeligFra : null,
+        aabnTil:             (item.aabnTil && item.aabnTil !== '00:00:00' && item.aabnTil !== 'PT0S') ? item.aabnTil : null,
+        lukAfgang:           item.lukAfgang            === true,
+        statusNote:          item.statusNote           ?? '',
+        danskTekstPrisliste: item.danskTekstPrisliste  ?? '',
+        priserOpdateret:     item.priserOpdateret      || null,
+        naesteLevering:      (item.naesteLevering && item.naesteLevering !== '0001-01-01') ? item.naesteLevering : null,
+      })
+    }
+
+    async function fetchPages(filterClause: string) {
+      const f = filterClause ? `&$filter=${encodeURIComponent(filterClause)}` : ''
+      let url: string | null = `${base}/itemAvailabilities?${select}&$top=1000${f}`
+      while (url) {
+        const res: Response = await fetch(url, { headers, cache: 'no-store' } as any)
+        if (!res.ok) break
+        const data = await res.json()
+        for (const item of (data.value ?? [])) mapRow(item)
+        url = data['@odata.nextLink'] ?? null
       }
-      url = data['@odata.nextLink'] ?? null
+    }
+
+    // SCOPET: hent KUN de ønskede varer (som BC's hurtig indtastning slår skyggen op for de
+    // viste favoritter). Batches à 40 (URL-længde) og parallelt. Uden itemNos = hele kataloget.
+    if (itemNos && itemNos.length) {
+      const CHUNK = 40
+      const chunks: string[][] = []
+      for (let i = 0; i < itemNos.length; i += CHUNK) chunks.push(itemNos.slice(i, i + CHUNK))
+      await Promise.all(chunks.map(chunk => {
+        const inClause = '(' + chunk.map(n => `itemNo eq '${n.replace(/'/g, "''")}'`).join(' or ') + ')'
+        return fetchPages(locClause ? `${locClause} and ${inClause}` : inClause)
+      }))
+    } else {
+      await fetchPages(locClause)
     }
     return result
   } catch { return new Map() }

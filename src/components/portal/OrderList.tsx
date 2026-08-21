@@ -1013,10 +1013,30 @@ function DeliveryPicker({
 
 export default function OrderList({
   promotions, stdFavorites = [], favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
-  requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities = {},
+  requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities: initialAvail = {},
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
   estimatedPrices = {} as Record<string, number>,
 }: Props) {
+  // Disponibilitet er STATE: initialt kun de viste varer (favoritter osv.); kategori/søgning
+  // fletter nye varers disponibilitet ind via ensureAvailability (som BC's skygge-opslag).
+  const [itemAvailabilities, setItemAvailabilities] = useState<Record<string, BCItemAvailability>>(initialAvail)
+
+  const ensureAvailability = useCallback(async (nos: string[]) => {
+    const missing = Array.from(new Set(nos.filter(n => n && !(n in itemAvailabilities))))
+    if (!missing.length) return
+    try {
+      const res = await fetch('/api/portal/availabilities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemNos: missing }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data?.availabilities && Object.keys(data.availabilities).length)
+        setItemAvailabilities(prev => ({ ...prev, ...data.availabilities }))
+    } catch { /* disponibilitet er best-effort */ }
+  }, [itemAvailabilities])
+
   // ── Leveringsmetode-state ────────────────────────────────────────────────────
   const [selectedMethodCode, setSelectedMethodCode] = useState(customerShipmentMethodCode)
   const selectedMethod = shipmentMethods.find(m => m.code === selectedMethodCode)
@@ -1432,14 +1452,17 @@ export default function OrderList({
       .then(r => r.ok ? r.json() : { items: [], priceTiers: [] })
       .then(data => {
         if (!cancelled) {
-          setCategoryItems(data.items ?? [])
+          const items = data.items ?? []
+          setCategoryItems(items)
           setCategoryPriceTiers(data.priceTiers ?? [])
+          // Hent disponibilitet for kategoriens varer (de er ikke i initial-scopet)
+          ensureAvailability(items.map((i: EnrichedItem) => i.number))
         }
       })
       .catch(() => { if (!cancelled) { setCategoryItems([]); setCategoryPriceTiers([]) } })
       .finally(() => { if (!cancelled) setCategoryLoading(false) })
     return () => { cancelled = true }
-  }, [activeCategory])
+  }, [activeCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const specialReservedNos = new Set(
     Array.from(specialReservations.keys())
@@ -2079,6 +2102,7 @@ export default function OrderList({
           onToggleFav={toggleFavorite}
           itemAvailabilities={itemAvailabilities}
           deliveryDate={deliveryDate}
+          onResults={ensureAvailability}
         />
       )}
 
