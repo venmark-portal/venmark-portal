@@ -1997,7 +1997,7 @@ export default function OrderList({
               onClick={() => { setShowReview(false); setError('') }}
               className="rounded-lg border border-blue-400 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
             >
-              ← Tilbage og ret
+              ← Tilbage (tilføj mere)
             </button>
           </div>
 
@@ -2011,15 +2011,42 @@ export default function OrderList({
               const price      = resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUom)
               const total      = price * l.quantity
               return (
-                <div key={l.item.number} className="flex items-center justify-between px-4 py-2 gap-3">
+                <div key={l.item.number} className="flex items-center justify-between px-3 sm:px-4 py-2 gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900 leading-snug">{l.item.displayName}</p>
                     <p className="text-[11px] text-gray-400 font-mono">{l.item.number}</p>
+                    {total > 0 && <p className="text-[11px] text-gray-500 sm:hidden">{fmt.format(total)}</p>}
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-semibold text-gray-800">{l.quantity} {uomCode}</p>
+                  {/* Rediger antal direkte her */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setQty(l.item, Math.max(0, l.quantity - 1))}
+                      className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                      aria-label="Færre"
+                    ><Minus size={12} /></button>
+                    <input
+                      type="number" min={0} step="any"
+                      value={l.quantity || ''}
+                      onChange={e => setQty(l.item, Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-16 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => setQty(l.item, l.quantity + 1)}
+                      className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
+                      aria-label="Flere"
+                    ><Plus size={12} /></button>
+                    <span className="w-11 text-[11px] text-gray-400 truncate">{uomCode}</span>
+                  </div>
+                  <div className="hidden sm:block w-24 text-right shrink-0">
                     {total > 0 && <p className="text-[11px] text-gray-500">{fmt.format(total)}</p>}
                   </div>
+                  {/* Slet varen */}
+                  <button
+                    onClick={() => setQty(l.item, 0)}
+                    title="Fjern varen"
+                    aria-label="Fjern varen"
+                    className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-red-50 hover:text-red-600 active:scale-95 transition"
+                  ><X size={14} /></button>
                 </div>
               )
             })}
