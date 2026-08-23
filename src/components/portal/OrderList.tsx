@@ -66,6 +66,7 @@ interface Props {
   customerShipmentMethodCode?:  string
   calendarDays?:                BCCalendarDay[]
   estimatedPrices?:             Record<string, number>
+  zeroPriceNos?:                string[]   // varer uden aftalt pris → hent "ca. X kr." efter render
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -1015,7 +1016,8 @@ export default function OrderList({
   promotions, stdFavorites = [], favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
   requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities: initialAvail = {},
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
-  estimatedPrices = {} as Record<string, number>,
+  estimatedPrices: initialEst = {} as Record<string, number>,
+  zeroPriceNos = [],
 }: Props) {
   // Disponibilitet er STATE: initialt kun de viste varer (favoritter osv.); kategori/søgning
   // fletter nye varers disponibilitet ind via ensureAvailability (som BC's skygge-opslag).
@@ -1036,6 +1038,23 @@ export default function OrderList({
         setItemAvailabilities(prev => ({ ...prev, ...data.availabilities }))
     } catch { /* disponibilitet er best-effort */ }
   }, [itemAvailabilities])
+
+  // "ca. X kr."-estimater er STATE og hentes EFTER render (per-vare faktura-opslag ~2s) —
+  // så listen vises straks og estimaterne popper ind for varer uden aftalt pris.
+  const [estimatedPrices, setEstimatedPrices] = useState<Record<string, number>>(initialEst)
+  useEffect(() => {
+    if (!zeroPriceNos.length) return
+    let cancelled = false
+    fetch('/api/portal/estimated-prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemNos: zeroPriceNos }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled && data?.estimatedPrices) setEstimatedPrices(prev => ({ ...prev, ...data.estimatedPrices })) })
+      .catch(() => { /* estimater er best-effort */ })
+    return () => { cancelled = true }
+  }, [zeroPriceNos])
 
   // ── Leveringsmetode-state ────────────────────────────────────────────────────
   const [selectedMethodCode, setSelectedMethodCode] = useState(customerShipmentMethodCode)

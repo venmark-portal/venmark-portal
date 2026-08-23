@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getAverageSalesPriceForItems, getCustomerLocationCode } from '@/lib/businesscentral'
+import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getCustomerLocationCode } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
@@ -266,11 +266,10 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   // Fallback: hvis BC-leveringsmetode ikke har konfigurerede ugedage, brug næste hverdage
   const deliveryDays = rawDeliveryDays.length > 0 ? rawDeliveryDays : nextBusinessDays(today, 20)
 
-  // Estimerede priser: gennemsnit af seneste 10 salg for varer uden aftalt pris
+  // Estimerede priser ("ca. X kr." for varer uden aftalt pris) UDSKYDES nu til klienten:
+  // de laves af per-vare faktura-opslag (~2s) og er ikke nødvendige for at vise listen.
+  // Vi sender bare varenumrene uden pris; OrderList henter estimaterne efter render.
   const zeroPriceNos = allNumbers.filter(n => (itemMap.get(n)?.unitPrice ?? 0) === 0)
-  const estimatedPrices = zeroPriceNos.length > 0
-    ? await _mark('avgPrice', getAverageSalesPriceForItems(customerNo, zeroPriceNos).catch(() => new Map<string, number>()))
-    : new Map<string, number>()
 
   return (
     <div className="space-y-4">
@@ -305,7 +304,8 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
         shipmentMethods={allowedMethods.length > 0 ? allowedMethods : (customerMethod ? [customerMethod] : [])}
         customerShipmentMethodCode={customerMethod?.code ?? ''}
         calendarDays={calendarDays}
-        estimatedPrices={Object.fromEntries(estimatedPrices)}
+        estimatedPrices={{}}
+        zeroPriceNos={zeroPriceNos}
       />
     </div>
   )

@@ -437,7 +437,7 @@ export async function getPortalPrices(
       const pageSize = topMatch ? parseInt(topMatch[1]) : 0
       let url: string | null = startUrl
       while (url) {
-        const res: Response = await fetch(url, { headers, next: { revalidate: 60 } } as any)
+        const res: Response = await fetch(url, { headers, next: { revalidate: 300 } } as any)
         if (!res.ok) break
         const data = await res.json()
         const page: any[] = data.value ?? []
@@ -615,7 +615,7 @@ export async function getCustomerFavorites(customerNo: string): Promise<BCCustom
     const allItems: any[] = []
     let nextUrl: string | null = `${base}/customerFavorites?$filter=${filter}&$orderby=sortOrder&$top=500`
     while (nextUrl) {
-      const res = await fetch(nextUrl, { headers, next: { revalidate: 120 } } as any)
+      const res = await fetch(nextUrl, { headers, next: { revalidate: 300 } } as any)
       if (!res.ok) break
       const data = await res.json()
       allItems.push(...(data.value ?? []))
@@ -672,7 +672,7 @@ export async function getStandingOrderLines(customerNo: string): Promise<BCStand
 
     const res = await fetch(`${base}/standingOrderLines?$filter=${filter}&$orderby=sortOrder,itemNo`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 120 },
+      next: { revalidate: 300 },
     })
     if (!res.ok) return []
 
@@ -1605,7 +1605,7 @@ export async function getItemsUoMs(
         const rows: any[] = []
         let url: string | null = `${base}/itemUnitsOfMeasure?$filter=${filter}&$top=1000`
         while (url) {
-          const res = await fetch(url, { headers, next: { revalidate: 60 } } as any)
+          const res = await fetch(url, { headers, next: { revalidate: 600 } } as any)
           if (!res.ok) break
           const data = await res.json()
           rows.push(...(data.value ?? []))
