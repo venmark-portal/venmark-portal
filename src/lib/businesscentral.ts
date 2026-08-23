@@ -1526,36 +1526,42 @@ export interface BCItemAttributeValue {
 export async function getItemsAttributeValues(
   items: Array<{ id: string; number: string }>,
 ): Promise<Map<string, BCItemAttributeValue[]>> {
-  if (items.length === 0) return new Map()
+  const map = new Map<string, BCItemAttributeValue[]>()
+  if (items.length === 0) return map
   try {
-    const token = await getAccessToken()
-    const base  = bcBaseUrl()
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-    const results = await Promise.allSettled(
-      items.map(async ({ id, number }) => {
-        const res = await fetch(`${base}/items(${id})/itemAttributeValues`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-          next: { revalidate: 3600 },
-        })
-        if (!res.ok) return { number, attrs: [] as BCItemAttributeValue[] }
+    // Batchet via den nye BC-API (page 50327): ét filtreret kald pr. batch à 40 varenumre
+    // (før: ét kald pr. VARE = ~4s). Parallelt.
+    const nos = items.map(i => i.number)
+    const CHUNK = 40
+    const chunks: string[][] = []
+    for (let i = 0; i < nos.length; i += CHUNK) chunks.push(nos.slice(i, i + CHUNK))
+
+    await Promise.all(chunks.map(async (chunk) => {
+      const inClause = '(' + chunk.map(n => `itemNo eq '${n.replace(/'/g, "''")}'`).join(' or ') + ')'
+      let url: string | null = `${base}/itemAttributes?$filter=${encodeURIComponent(inClause)}&$top=1000`
+      while (url) {
+        const res: Response = await fetch(url, { headers, next: { revalidate: 3600 } } as any)
+        if (!res.ok) break
         const data = await res.json()
-        return {
-          number,
-          attrs: (data.value ?? []).map((a: any) => ({
-            attributeName: a.attributeName ?? '',
-            value:         a.value ?? '',
-          })) as BCItemAttributeValue[],
+        for (const row of (data.value ?? [])) {
+          if (!row.itemNo || !row.value) continue
+          const arr = map.get(row.itemNo) ?? []
+          arr.push({ attributeName: row.attributeName ?? '', value: row.value ?? '' })
+          map.set(row.itemNo, arr)
         }
-      }),
-    )
-
-    const map = new Map<string, BCItemAttributeValue[]>()
-    for (const r of results) {
-      if (r.status === 'fulfilled') map.set(r.value.number, r.value.attrs)
-    }
+        url = data['@odata.nextLink'] ?? null
+      }
+    }))
     return map
   } catch {
-    return new Map()
+    return map
   }
 }
 
