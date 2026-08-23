@@ -34,6 +34,12 @@ interface RowStatus {
   aabnTilLabel: string | null
 }
 
+// Lokal YYYY-MM-DD — IKKE toISOString() (skifter til UTC → rykker lokal-midnat én dag tilbage
+// i UTC+2, så morgendags-levering fejlagtigt læses som "i dag").
+function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function computeStatus(
   avail: BCItemAvailability | undefined,
   deliveryDate: Date | undefined,
@@ -42,8 +48,8 @@ function computeStatus(
   if (!avail || !deliveryDate) return none
 
   const now = new Date()
-  const deliveryStr = deliveryDate.toISOString().split('T')[0]
-  const todayStr    = now.toISOString().split('T')[0]
+  const deliveryStr = localYmd(deliveryDate)
+  const todayStr    = localYmd(now)
   const isToday     = deliveryStr === todayStr
 
   let aabnTilLabel: string | null = null

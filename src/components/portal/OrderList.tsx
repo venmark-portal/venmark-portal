@@ -213,6 +213,13 @@ function parseAabnTil(s: string): { hh: number; mm: number } | null {
   return (hh === 0 && mm === 0) ? null : { hh, mm }
 }
 
+// Lokal YYYY-MM-DD. VIGTIGT: brug IKKE toISOString() til dato-sammenligning — den konverterer
+// til UTC og rykker lokal-midnat én dag tilbage i UTC+2 (mandag 00:00 → søndag 22:00 UTC), så
+// en morgendags-levering fejlagtigt blev læst som "i dag" og udløste frist-spærringen forkert.
+function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function getItemAvailStatus(
   avail: BCItemAvailability | undefined,
   deliveryDate: Date | undefined,
@@ -221,8 +228,8 @@ function getItemAvailStatus(
   if (!avail || !deliveryDate) return none
 
   const now = new Date()
-  const deliveryStr = deliveryDate.toISOString().split('T')[0]
-  const todayStr = now.toISOString().split('T')[0]
+  const deliveryStr = localYmd(deliveryDate)
+  const todayStr = localYmd(now)
   const isToday = deliveryStr === todayStr
 
   // aabnTil-tidspunkt: altid synligt som info på varen (Clock-ikon)
@@ -1210,8 +1217,8 @@ export default function OrderList({
     if (!avail || !deliveryDate) return null
     const disp = avail.disponibelt
     if (disp <= 0) return null   // blokeret andetsteds (status disabler feltet)
-    const deliveryStr = deliveryDate.toISOString().split('T')[0]
-    const todayStr    = new Date().toISOString().split('T')[0]
+    const deliveryStr = localYmd(deliveryDate)
+    const todayStr    = localYmd(new Date())
     // UBEGRÆNSET-undtagelser:
     //  • Auktionsvare i FRI-bestilling (priser IKKE stemplet i dag) → købes på auktion.
     if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
