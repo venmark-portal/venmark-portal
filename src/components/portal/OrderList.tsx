@@ -2039,8 +2039,13 @@ export default function OrderList({
               return (
                 <div key={l.item.number} className="flex items-center justify-between px-3 sm:px-4 py-2 gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 leading-snug">{l.item.displayName}</p>
-                    <p className="text-[11px] text-gray-400 font-mono">{l.item.number}</p>
+                    <p className="text-sm font-medium text-gray-900 leading-snug flex items-center gap-1 flex-wrap">
+                      {l.item.displayName}
+                      {(l.item.attributes ?? []).map((a, i) => <AttrIcon key={`${l.item.number}-a${i}`} attr={a} />)}
+                    </p>
+                    <p className="text-[11px] text-gray-400 font-mono">
+                      {l.item.number}{price > 0 ? ` · ${fmt.format(price)}/${uomCode}` : ''}
+                    </p>
                     {total > 0 && <p className="text-[11px] text-gray-500 sm:hidden">{fmt.format(total)}</p>}
                   </div>
                   {/* Rediger antal direkte her */}
