@@ -1220,10 +1220,15 @@ export default function OrderList({
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
     const s = getItemAvailStatus(avail, deliveryDate)
-    // Har varen et hårdt loft (streng vare fra lager), vis "Maks X" så kunden kender grænsen.
+    // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
-    if (cap != null)
+    if (cap != null) {
+      // Loft = 0 (udsolgt, ikke dækket) → BLOKÉR feltet, ikke "Maks 0". Bevar en evt. eksisterende
+      // blokerings-tekst fra status (fx "Ingen lager – kontakt os"), ellers generisk.
+      if (cap <= 0)
+        return { ...s, blocked: true, blockLabel: s.blockLabel || 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
       return { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
+    }
     return s
   }
 
@@ -1247,33 +1252,28 @@ export default function OrderList({
     : 0
   const pastDeadline = deadline ? now > deadline : false
 
-  // ── Antals-loft for strenge varer ────────────────────────────────────────────
-  // En STRENG vare UDEN frist, leveret fra lager med knapt lager (<50 kg), må ikke bestilles
-  // i større mængde end disponibelt. Ubegrænset (returnerer null) når:
-  //   • varen ikke er streng, eller ingen leveringsdato er valgt
-  //   • varen har en bestillingsfrist (frist-vare) → datoen gater, mængden er fri (skaffes frisk)
-  //   • leveringsdatoen er forward-dækket (naesteLevering) → skaffes til den dato
-  //   • rigeligt lager (>50 kg) → ucappet (afslør ikke præcise mængder)
-  // Vil kunden have mere end loftet, opretter de en ny ordre til levering ugen efter.
+  // ── Antals-loft pr. vare ─────────────────────────────────────────────────────
+  // Loftet = disponibelt for ALLE varetyper (strenge, handelsvarer, producerede) → intet oversalg.
+  // UBEGRÆNSET (returnerer null) KUN når varen kan skaffes til tiden:
+  //   • ingen leveringsdato valgt
+  //   • auktionsvare i FRI-bestilling (priser IKKE stemplet i dag) → købes på auktion
+  //   • forward-dækket via afgang/indkøb (naesteLevering ≤ leveringsdato)
+  //   • KAN SKAFFES i tide (daekketFra ≤ afsendelsesdato)
+  //   • frist-vare til forward-dato (≥ gulv) → skaffes frisk
+  // Disse tjekkes FØR lager, så "kan skaffes" vinder over 0 lager (auktionsvare udsolgt men købbar).
+  // Er varen IKKE dækket → loft = max(disponibelt, 0). Udsolgt (≤0) → 0 = kan ikke bestilles.
+  // (Før returnerede vi null=ubegrænset ved 0 lager, men status blokerer kun strenge/i-dag-varer,
+  //  så en udsolgt handelsvare til FREMTIDIG levering kunne fejlagtigt sælges i det uendelige.)
   const rowMaxQty = useCallback((itemNo: string): number | null => {
     const avail = itemAvailabilities[itemNo]
     if (!avail || !deliveryDate) return null
-    const disp = avail.disponibelt
-    if (disp <= 0) return null   // blokeret andetsteds (status disabler feltet)
     const deliveryStr = localYmd(deliveryDate)
     const todayStr    = localYmd(new Date())
-    // UBEGRÆNSET-undtagelser:
-    //  • Auktionsvare i FRI-bestilling (priser IKKE stemplet i dag) → købes på auktion.
-    if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
-    //  • Forward-dækket via lead/indkøb (naesteLevering ≤ leveringsdato) → skaffes til datoen.
-    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
-    //  • KAN SKAFFES i tide (køb/auktion/produktion) — gælder ALLE varer, også dem MED delvist
-    //    lager (fx auktionsvare med 75 kg der kan suppleres på morgendagens auktion). Måles mod
-    //    AFSENDELSESDATOEN (dispatchStr), ikke leveringsdatoen — vi skal kunne skaffe varen senest
-    //    når vi pakker/sender, ikke når kunden modtager.
     const dispatchStr = dispatchDate ? localYmd(dispatchDate) : deliveryStr
+    // UBEGRÆNSET-undtagelser (kan skaffes) — tjekkes før lager.
+    if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
+    if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
     if (avail.daekketFra && dispatchStr >= avail.daekketFra) return null
-    //  • Frist-vare til FORWARD-dato (≥ gulv) → skaffes frisk; NÆR-dato falder igennem → cap.
     const cutoff = itemCutoffs.get(itemNo)
     if (cutoff && cutoff.cutoffWeekday > 0) {
       const floor = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
@@ -1281,8 +1281,8 @@ export default function OrderList({
       const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
       if (dd >= floor) return null
     }
-    // Ellers: loft = disponibelt for ALLE varetyper (strenge, handelsvarer, producerede) → intet oversalg.
-    return disp
+    // Ikke dækket → cap ved disponibel (0 for udsolgt → intet oversalg).
+    return Math.max(avail.disponibelt, 0)
   }, [itemAvailabilities, itemCutoffs, deliveryDate, dispatchDate, portalHolidays])
 
   // ── Antal ───────────────────────────────────────────────────────────────────

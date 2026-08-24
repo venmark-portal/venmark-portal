@@ -452,9 +452,15 @@ export default function ItemSearchModal({
                         ) : null
                       })()}
                       {cap != null ? (
-                        <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-orange-100 text-orange-600">
-                          Maks {Math.round(cap * 10) / 10} {item.baseUnitOfMeasureCode}
-                        </span>
+                        cap <= 0 ? (
+                          <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-red-100 text-red-600">
+                            Udsolgt
+                          </span>
+                        ) : (
+                          <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-orange-100 text-orange-600">
+                            Maks {Math.round(cap * 10) / 10} {item.baseUnitOfMeasureCode}
+                          </span>
+                        )
                       ) : status.disponibeltLabel ? (
                         <span className={`rounded px-1 py-0 leading-tight text-[10px] font-semibold ${
                           status.disponibeltColor === 'red'
@@ -504,7 +510,7 @@ export default function ItemSearchModal({
                       step="any"
                       value={qty || ''}
                       placeholder="0"
-                      disabled={status.blocked}
+                      disabled={status.blocked || (cap != null && cap <= 0)}
                       data-modal-qty-input="true"
                       onChange={(e) => setQty(item.number, Math.max(0, parseFloat(e.target.value) || 0))}
                       onKeyDown={(e) => {
