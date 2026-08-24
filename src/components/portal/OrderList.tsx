@@ -1424,7 +1424,12 @@ export default function OrderList({
       const next = new Map(prev)
       for (const { item, quantity } of items) {
         const existing = next.get(item.number)
-        next.set(item.number, { item, quantity: (existing?.quantity ?? 0) + quantity, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
+        let q = (existing?.quantity ?? 0) + quantity
+        // Håndhæv antals-loftet defensivt — søgning må ikke omgå rowMaxQty (oversalg).
+        const cap = rowMaxQty(item.number)
+        if (cap != null && q > cap) q = cap
+        if (q <= 0) { next.delete(item.number); continue }
+        next.set(item.number, { item, quantity: q, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
       }
       return next
     })
@@ -2203,6 +2208,7 @@ export default function OrderList({
           deliveryDate={deliveryDate}
           onResults={onSearchResults}
           getDisplayPrice={getSearchDisplayPrice}
+          getMaxQty={rowMaxQty}
         />
       )}
 

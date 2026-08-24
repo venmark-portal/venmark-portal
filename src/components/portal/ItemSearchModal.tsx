@@ -113,12 +113,14 @@ interface Props {
   onResults?:      (itemNos: string[]) => void
   /** Resolver kundens rigtige pris (aftalt trappe → estimat → varekort). Uden denne vises varekortets rå unitPrice. */
   getDisplayPrice?: (item: EnrichedItem) => number
+  /** Antals-loft pr. vare (samme logik som favoritlisten). null = ubegrænset. Uden denne cappes der ikke i søgningen. */
+  getMaxQty?:      (itemNo: string) => number | null
 }
 
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
-  itemAvailabilities, deliveryDate, onResults, getDisplayPrice,
+  itemAvailabilities, deliveryDate, onResults, getDisplayPrice, getMaxQty,
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
@@ -208,6 +210,9 @@ export default function ItemSearchModal({
 
   // ── Hjælpefunktioner ──────────────────────────────────────────────────────────
   function setQty(itemNo: string, qty: number) {
+    // Håndhæv antals-loftet (samme cap som favoritlisten) — også ved tastning/plus.
+    const cap = getMaxQty?.(itemNo)
+    if (cap != null && qty > cap) qty = cap
     setQuantities(prev => {
       const next = new Map(prev)
       if (qty <= 0) next.delete(itemNo)
@@ -376,6 +381,8 @@ export default function ItemSearchModal({
             const status   = (!favMode && !singleMode)
               ? computeStatus(itemAvailabilities?.[item.number], deliveryDate)
               : { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null as null, aabnTilLabel: null }
+            // Antals-loft (samme cap som favoritlisten) — vises som "Maks X" og håndhæves.
+            const cap = (!favMode && !singleMode) ? (getMaxQty?.(item.number) ?? null) : null
 
             return (
               <div
@@ -444,7 +451,11 @@ export default function ItemSearchModal({
                           <span className="font-semibold text-gray-600">{fmt.format(price)}/{item.baseUnitOfMeasureCode}</span></>
                         ) : null
                       })()}
-                      {status.disponibeltLabel && (
+                      {cap != null ? (
+                        <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-orange-100 text-orange-600">
+                          Maks {Math.round(cap * 10) / 10} {item.baseUnitOfMeasureCode}
+                        </span>
+                      ) : status.disponibeltLabel ? (
                         <span className={`rounded px-1 py-0 leading-tight text-[10px] font-semibold ${
                           status.disponibeltColor === 'red'
                             ? 'bg-red-100 text-red-600'
@@ -454,7 +465,7 @@ export default function ItemSearchModal({
                         }`}>
                           {status.disponibeltLabel} {item.baseUnitOfMeasureCode}
                         </span>
-                      )}
+                      ) : null}
                       {isExist && <span className="text-gray-400 italic">allerede favorit</span>}
                     </div>
                   </div>
@@ -508,7 +519,7 @@ export default function ItemSearchModal({
                     />
                     <button
                       onClick={() => setQty(item.number, qty + 1)}
-                      disabled={status.blocked}
+                      disabled={status.blocked || (cap != null && qty >= cap)}
                       tabIndex={-1}
                       className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-25 active:scale-95 transition"
                     >
