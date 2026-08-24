@@ -1259,6 +1259,9 @@ export default function OrderList({
     if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
     //  • Forward-dækket via lead/indkøb (naesteLevering ≤ leveringsdato) → skaffes til datoen.
     if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
+    //  • KAN SKAFFES til datoen (køb/auktion/produktion) — gælder ALLE varer, også dem MED
+    //    delvist lager (fx auktionsvare med 75 kg der kan suppleres på morgendagens auktion).
+    if (avail.daekketFra && deliveryStr >= avail.daekketFra) return null
     //  • Frist-vare til FORWARD-dato (≥ gulv) → skaffes frisk; NÆR-dato falder igennem → cap.
     const cutoff = itemCutoffs.get(itemNo)
     if (cutoff && cutoff.cutoffWeekday > 0) {
