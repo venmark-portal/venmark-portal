@@ -230,6 +230,52 @@ export function getDispatchDateForMethodDelivery(
   return dispatch
 }
 
+/** Parser BC Time STRENGT — null for blank/00:00 (modsat parseCutoffTime's 14:00-default). */
+function parseTimeStrict(s: string | null | undefined): { hour: number; minute: number } | null {
+  if (!s || s.startsWith('00:00') || s === 'PT0S') return null
+  const colon = s.match(/^(\d{1,2}):(\d{2})/)
+  if (colon) return { hour: parseInt(colon[1]), minute: parseInt(colon[2]) }
+  const iso = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
+  if (iso) {
+    const hh = parseInt(iso[1] ?? '0'), mm = parseInt(iso[2] ?? '0')
+    return (hh === 0 && mm === 0) ? null : { hour: hh, minute: mm }
+  }
+  return null
+}
+
+/**
+ * Effektiv/afsendelses-dato (midnat) — SPEJLER BC's OrderEffectiveDate (cu 50319).
+ * = afsendelsesdag (leveringsdato − transit), MEN forskudt til arbejdsdagen FØR hvis leverings-
+ * formens "Hentes kl" (cutoffTime) ≤ "Pak næste dag til kl." (packNextDayUntil) → pakkes dagen før.
+ * Aldrig før i dag. Bruges til "kan skaffes"-dækning: en auktionsvare skal kunne købes senest på
+ * den effektive dato. Fx afhentning i MORGEN TIDLIG (tidlig Hentes kl) → effektiv dato = I DAG →
+ * cappes ved lager (auktionen når det ikke); afhentning 2 dage frem → effektiv i morgen → ubegrænset.
+ */
+export function getEffectiveDateForMethodDelivery(
+  deliveryDate: Date,
+  method: BCShipmentMethod,
+  holidays: Set<string> = new Set(),
+): Date {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const shipDate = getDispatchDateForMethodDelivery(deliveryDate, method) // levering − transit
+  if (shipDate <= today) return today
+  const cutoff    = parseTimeStrict(method.cutoffTime)
+  const threshold = parseTimeStrict(method.packNextDayUntil)
+  if (threshold && cutoff && (cutoff.hour * 60 + cutoff.minute) <= (threshold.hour * 60 + threshold.minute)) {
+    const isWorking = (d: Date) => {
+      const wd = d.getDay()
+      if (wd === 0 || wd === 6) return false
+      return !holidays.has(localDateStr(d))
+    }
+    const dayBefore = new Date(shipDate)
+    dayBefore.setDate(dayBefore.getDate() - 1)
+    while (!isWorking(dayBefore) && dayBefore > today) dayBefore.setDate(dayBefore.getDate() - 1)
+    if (dayBefore < today) return today
+    return dayBefore
+  }
+  return shipDate
+}
+
 /**
  * Genererer næste `count` gyldige leveringsdatoer for en given leveringsmetode.
  * Respekterer ugedagsmønster, portalkalender og bestillingstidspunkt.

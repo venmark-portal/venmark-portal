@@ -5,7 +5,7 @@ import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock,
 } from 'lucide-react'
-import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getDispatchDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
+import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
@@ -1237,13 +1237,14 @@ export default function OrderList({
   }
 
   const deliveryDate    = deliveryDays[selectedDay]
-  // Afsendelses-/effektiv dato = leveringsdato − transit (weekend snappet). "Kan skaffes"-dækning
-  // (daekketFra) måles mod DENNE, ikke leveringsdatoen: en auktionsvare skal kunne købes senest når
-  // vi afsender. Fx levering i morgen m. transit 1 → afsendelse i dag → auktion i dag (frist 06:45)
-  // misset efter 06:45 → cappet, selv om leveringsdatoen er i morgen.
-  const dispatchDate    = useMemo(
-    () => (deliveryDate && selectedMethod ? getDispatchDateForMethodDelivery(deliveryDate, selectedMethod) : deliveryDate),
-    [deliveryDate, selectedMethod],
+  // Effektiv dato (spejler BC's OrderEffectiveDate) = afsendelsesdag (levering − transit), forskudt
+  // til arbejdsdagen FØR hvis leveringsformen pakkes dagen før ("Hentes kl" ≤ "Pak næste dag til
+  // kl."). "Kan skaffes"-dækning (daekketFra) måles mod DENNE, ikke leveringsdatoen: en auktionsvare
+  // skal kunne købes senest på den effektive dato. Fx afhentning i morgen tidlig → effektiv i dag →
+  // cappet ved lager; afhentning 2 dage frem → effektiv i morgen → ubegrænset.
+  const effectiveDate   = useMemo(
+    () => (deliveryDate && selectedMethod ? getEffectiveDateForMethodDelivery(deliveryDate, selectedMethod, portalHolidays) : deliveryDate),
+    [deliveryDate, selectedMethod, portalHolidays],
   )
   const deadline        = deliveryDate ? deadlineFn(deliveryDate) : null
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
@@ -1267,14 +1268,14 @@ export default function OrderList({
   const rowMaxQty = useCallback((itemNo: string): number | null => {
     const avail = itemAvailabilities[itemNo]
     if (!avail || !deliveryDate) return null
-    const deliveryStr = localYmd(deliveryDate)
-    const todayStr    = localYmd(new Date())
-    const dispatchStr = dispatchDate ? localYmd(dispatchDate) : deliveryStr
-    // Kun FREMTIDIG afsendelse kan skaffes ekstra til; afsendelse i dag → kun lager.
-    if (dispatchStr > todayStr) {
+    const deliveryStr  = localYmd(deliveryDate)
+    const todayStr     = localYmd(new Date())
+    const effectiveStr = effectiveDate ? localYmd(effectiveDate) : deliveryStr
+    // Kun FREMTIDIG effektiv/afsendelses-dato kan skaffes ekstra til; effektiv dato i dag → kun lager.
+    if (effectiveStr > todayStr) {
       if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
       if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
-      if (avail.daekketFra && dispatchStr >= avail.daekketFra) return null
+      if (avail.daekketFra && effectiveStr >= avail.daekketFra) return null
       const cutoff = itemCutoffs.get(itemNo)
       if (cutoff && cutoff.cutoffWeekday > 0) {
         const floor = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
@@ -1283,9 +1284,9 @@ export default function OrderList({
         if (dd >= floor) return null
       }
     }
-    // Ikke dækket (eller afsendelse i dag) → cap ved disponibel (0 for udsolgt → intet oversalg).
+    // Ikke dækket (eller effektiv dato i dag) → cap ved disponibel (0 for udsolgt → intet oversalg).
     return Math.max(avail.disponibelt, 0)
-  }, [itemAvailabilities, itemCutoffs, deliveryDate, dispatchDate, portalHolidays])
+  }, [itemAvailabilities, itemCutoffs, deliveryDate, effectiveDate, portalHolidays])
 
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {

@@ -2088,10 +2088,11 @@ export interface BCShipmentMethod {
   fri:           boolean
   sat:           boolean
   sun:           boolean
-  cutoffTime:    string   // "HH:MM:SS.fffffff" — Edm.TimeOfDay fra BC
+  cutoffTime:    string   // "HH:MM:SS.fffffff" — Edm.TimeOfDay fra BC ("Hentes kl"/Portal Cutoff Time)
   transitDays:   number
   sameDay:       boolean
   portalVisible: boolean
+  packNextDayUntil?: string  // Setup."Pak næste dag til kl." — cutoffTime ≤ denne → pak/effektiv dato dagen før
 }
 
 export interface BCCalendarDay {
@@ -2128,6 +2129,7 @@ export async function getPortalShipmentMethods(): Promise<BCShipmentMethod[]> {
       transitDays:   m.transitDays   ?? 1,
       sameDay:       m.sameDay       ?? false,
       portalVisible: m.portalVisible ?? false,
+      packNextDayUntil: m.pakNaesteDagTil ?? undefined,
     }))
   } catch { return [] }
 }
