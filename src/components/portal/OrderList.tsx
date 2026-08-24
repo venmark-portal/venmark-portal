@@ -1063,6 +1063,29 @@ export default function OrderList({
     return () => { cancelled = true }
   }, [zeroPriceNos])
 
+  // Hent "ca."-estimater for varer der IKKE var i initial-scopet (fx søgeresultater),
+  // så de også kan vise en pris i stedet for varekortets 999-system-pris.
+  const ensureEstimated = useCallback(async (nos: string[]) => {
+    const missing = Array.from(new Set(nos.filter(n => n && !(n in estimatedPrices))))
+    if (!missing.length) return
+    try {
+      const res = await fetch('/api/portal/estimated-prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemNos: missing }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data?.estimatedPrices) setEstimatedPrices(prev => ({ ...prev, ...data.estimatedPrices }))
+    } catch { /* estimater er best-effort */ }
+  }, [estimatedPrices])
+
+  // Søgeresultat-callback: hent BÅDE disponibilitet og estimat-pris for de nye varer.
+  const onSearchResults = useCallback((nos: string[]) => {
+    ensureAvailability(nos)
+    ensureEstimated(nos)
+  }, [ensureAvailability, ensureEstimated])
+
   // ── Leveringsmetode-state ────────────────────────────────────────────────────
   const [selectedMethodCode, setSelectedMethodCode] = useState(customerShipmentMethodCode)
   const selectedMethod = shipmentMethods.find(m => m.code === selectedMethodCode)
@@ -1142,6 +1165,18 @@ export default function OrderList({
   const [categoryItems, setCategoryItems]           = useState<EnrichedItem[]>([])
   const [categoryPriceTiers, setCategoryPriceTiers] = useState<PriceTier[]>([])
   const [categoryLoading, setCategoryLoading]       = useState(false)
+
+  // Vis-pris for en vare i søgemodalen: kundens aftalte trappepris → invoice-estimat → varekort.
+  // (Uden dette viser søgningen varekortets rå unitPrice — fx 999-system-prisen.)
+  const getSearchDisplayPrice = useCallback((it: { number: string; unitPrice: number; baseUnitOfMeasureCode?: string }): number => {
+    const pool = [...priceTiers, ...categoryPriceTiers]
+    const base = it.baseUnitOfMeasureCode
+    const resolved = resolvePrice(it.number, 1, pool, 0, base, 1, base)
+    if (resolved > 0) return resolved
+    const est = estimatedPrices[it.number]
+    if (est && est > 0) return est
+    return it.unitPrice
+  }, [priceTiers, categoryPriceTiers, estimatedPrices])
   const [showSearch, setShowSearch]     = useState(false)
   const [showPromos, setShowPromos]     = useState(true)
   const [showStanding, setShowStanding] = useState(true)
@@ -2166,7 +2201,8 @@ export default function OrderList({
           onToggleFav={toggleFavorite}
           itemAvailabilities={itemAvailabilities}
           deliveryDate={deliveryDate}
-          onResults={ensureAvailability}
+          onResults={onSearchResults}
+          getDisplayPrice={getSearchDisplayPrice}
         />
       )}
 

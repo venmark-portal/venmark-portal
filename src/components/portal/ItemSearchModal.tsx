@@ -111,12 +111,14 @@ interface Props {
   itemAvailabilities?: Record<string, BCItemAvailability>
   deliveryDate?:   Date
   onResults?:      (itemNos: string[]) => void
+  /** Resolver kundens rigtige pris (aftalt trappe → estimat → varekort). Uden denne vises varekortets rå unitPrice. */
+  getDisplayPrice?: (item: EnrichedItem) => number
 }
 
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
-  itemAvailabilities, deliveryDate, onResults,
+  itemAvailabilities, deliveryDate, onResults, getDisplayPrice,
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
@@ -435,10 +437,13 @@ export default function ItemSearchModal({
                     <div className="truncate text-sm font-medium text-gray-900">{item.displayName}</div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
                       <span className="font-mono">{item.number}</span>
-                      {item.unitPrice > 0 && (
-                        <><span>·</span>
-                        <span className="font-semibold text-gray-600">{fmt.format(item.unitPrice)}/{item.baseUnitOfMeasureCode}</span></>
-                      )}
+                      {(() => {
+                        const price = getDisplayPrice ? getDisplayPrice(item) : item.unitPrice
+                        return price > 0 ? (
+                          <><span>·</span>
+                          <span className="font-semibold text-gray-600">{fmt.format(price)}/{item.baseUnitOfMeasureCode}</span></>
+                        ) : null
+                      })()}
                       {status.disponibeltLabel && (
                         <span className={`rounded px-1 py-0 leading-tight text-[10px] font-semibold ${
                           status.disponibeltColor === 'red'
