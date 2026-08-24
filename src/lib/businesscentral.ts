@@ -1946,6 +1946,49 @@ export async function getItemAvailabilities(locationCode?: string, itemNos?: str
   } catch { return new Map() }
 }
 
+// ─── Autoritativ disponibel-GENBEREGNING (BC) ────────────────────────────────
+// Portalen POSTer kunde+leveringsdato+leveringsform+varenumre til BC's coverage-API (side 50402),
+// som returnerer maks pr. vare via SAMME logik som salgslinjen (effektiv dato + disponibel-på-dato
+// + auktions-/produktions-/lead-dækning). Bruges når kunden skifter dato/leveringsform, så cappet
+// er autoritativt i stedet for en klientside-tilnærmelse. maxQty=-1/unlimited=true = ubegrænset.
+
+export interface BCCoverageRow { itemNo: string; maxQty: number; unlimited: boolean }
+export interface BCCoverageResult { effectiveDate: string; results: BCCoverageRow[] }
+
+export async function getCartCoverage(
+  customerNo: string,
+  locationCode: string,
+  deliveryDate: string,          // 'YYYY-MM-DD'
+  shipmentMethodCode: string,
+  itemNos: string[],
+): Promise<BCCoverageResult | null> {
+  if (!customerNo || !deliveryDate || !itemNos.length) return null
+  try {
+    const token   = await getAccessToken()
+    const tenant  = process.env.BC_TENANT_ID
+    const env     = process.env.BC_ENVIRONMENT_NAME
+    const company = process.env.BC_COMPANY_ID
+    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+
+    const res = await fetch(`${base}/portalCoverages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        customerNo,
+        locationCode:       locationCode || '',
+        deliveryDate,
+        shipmentMethodCode: shipmentMethodCode || '',
+        itemNos:            itemNos.join(','),
+      }),
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data?.resultJson) return null
+    return JSON.parse(data.resultJson) as BCCoverageResult
+  } catch { return null }
+}
+
 // ─── Salgsliste summeret (admin) ─────────────────────────────────────────────
 
 export interface SalgslisteCustomer {

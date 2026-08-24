@@ -1049,6 +1049,13 @@ export default function OrderList({
   // "ca. X kr."-estimater er STATE og hentes EFTER render (per-vare faktura-opslag ~2s) —
   // så listen vises straks og estimaterne popper ind for varer uden aftalt pris.
   const [estimatedPrices, setEstimatedPrices] = useState<Record<string, number>>(initialEst)
+
+  // ── Autoritativ disponibel-genberegning fra BC ───────────────────────────────
+  // coverageMax[itemNo] = maks antal fra BC (samme logik som salgslinjen), -1 = ubegrænset.
+  // Hentes når kunden skifter leveringsdato/-form (se effekten længere nede). Har en vare en
+  // BC-værdi, vinder den over klientside-tilnærmelsen i rowMaxQty.
+  const [coverageMax, setCoverageMax]         = useState<Record<string, number>>({})
+  const [coverageLoading, setCoverageLoading] = useState(false)
   useEffect(() => {
     if (!zeroPriceNos.length) return
     let cancelled = false
@@ -1266,6 +1273,10 @@ export default function OrderList({
   //   • frist-vare til forward-dato (≥ gulv) → skaffes frisk
   // Ellers → loft = max(disponibelt, 0). Udsolgt (≤0) → 0 = kan ikke bestilles.
   const rowMaxQty = useCallback((itemNo: string): number | null => {
+    // AUTORITATIVT: har BC genberegnet varen (efter dato/leveringsform-skift), vinder den værdi.
+    // -1 = ubegrænset (null her). Ellers falder vi tilbage til klientside-tilnærmelsen nedenfor.
+    const cov = coverageMax[itemNo]
+    if (cov !== undefined) return cov < 0 ? null : cov
     const avail = itemAvailabilities[itemNo]
     if (!avail || !deliveryDate) return null
     const deliveryStr  = localYmd(deliveryDate)
@@ -1286,7 +1297,39 @@ export default function OrderList({
     }
     // Ikke dækket (eller effektiv dato i dag) → cap ved disponibel (0 for udsolgt → intet oversalg).
     return Math.max(avail.disponibelt, 0)
-  }, [itemAvailabilities, itemCutoffs, deliveryDate, effectiveDate, portalHolidays])
+  }, [coverageMax, itemAvailabilities, itemCutoffs, deliveryDate, effectiveDate, portalHolidays])
+
+  // Genberegn disponibel fra BC når leveringsdato/-form skifter (autoritativt, synligt "beregner…").
+  // Varenumrene = alt vi har disponibilitet for (favoritter/STD/søgte). Debounced; falder stille
+  // tilbage til klientside-tilnærmelsen hvis kaldet fejler.
+  const deliveryStrForCoverage = deliveryDate ? localYmd(deliveryDate) : ''
+  const availKeysSig = Object.keys(itemAvailabilities).sort().join(',')
+  useEffect(() => {
+    const nos = Object.keys(itemAvailabilities)
+    if (!nos.length || !deliveryDate) return
+    let cancelled = false
+    setCoverageLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/portal/coverage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemNos: nos, deliveryDate: localYmd(deliveryDate), shipmentMethodCode: selectedMethodCode }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (!cancelled && Array.isArray(data.results)) {
+            const map: Record<string, number> = {}
+            for (const r of data.results) map[r.itemNo] = r.unlimited ? -1 : r.maxQty
+            setCoverageMax(map)
+          }
+        }
+      } catch { /* BC-genberegning er best-effort; klientside gater imens */ }
+      finally { if (!cancelled) setCoverageLoading(false) }
+    }, 350)
+    return () => { cancelled = true; clearTimeout(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliveryStrForCoverage, selectedMethodCode, availKeysSig])
 
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {
@@ -1627,6 +1670,11 @@ export default function OrderList({
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-400 inline-block" />OK</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />Knaphed</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" />Intet</span>
+          {coverageLoading && (
+            <span className="flex items-center gap-1 text-blue-500 font-medium">
+              <span className="h-2 w-2 rounded-full bg-blue-400 inline-block animate-pulse" />Genberegner disponibel…
+            </span>
+          )}
           <span className="flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
         </div>
 
