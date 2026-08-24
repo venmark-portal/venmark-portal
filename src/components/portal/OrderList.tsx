@@ -5,7 +5,7 @@ import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock,
 } from 'lucide-react'
-import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, earliestDeliveryForItem } from '@/lib/dateUtils'
+import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getDispatchDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
@@ -1232,6 +1232,14 @@ export default function OrderList({
   }
 
   const deliveryDate    = deliveryDays[selectedDay]
+  // Afsendelses-/effektiv dato = leveringsdato − transit (weekend snappet). "Kan skaffes"-dækning
+  // (daekketFra) måles mod DENNE, ikke leveringsdatoen: en auktionsvare skal kunne købes senest når
+  // vi afsender. Fx levering i morgen m. transit 1 → afsendelse i dag → auktion i dag (frist 06:45)
+  // misset efter 06:45 → cappet, selv om leveringsdatoen er i morgen.
+  const dispatchDate    = useMemo(
+    () => (deliveryDate && selectedMethod ? getDispatchDateForMethodDelivery(deliveryDate, selectedMethod) : deliveryDate),
+    [deliveryDate, selectedMethod],
+  )
   const deadline        = deliveryDate ? deadlineFn(deliveryDate) : null
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate
@@ -1259,9 +1267,12 @@ export default function OrderList({
     if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
     //  • Forward-dækket via lead/indkøb (naesteLevering ≤ leveringsdato) → skaffes til datoen.
     if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
-    //  • KAN SKAFFES til datoen (køb/auktion/produktion) — gælder ALLE varer, også dem MED
-    //    delvist lager (fx auktionsvare med 75 kg der kan suppleres på morgendagens auktion).
-    if (avail.daekketFra && deliveryStr >= avail.daekketFra) return null
+    //  • KAN SKAFFES i tide (køb/auktion/produktion) — gælder ALLE varer, også dem MED delvist
+    //    lager (fx auktionsvare med 75 kg der kan suppleres på morgendagens auktion). Måles mod
+    //    AFSENDELSESDATOEN (dispatchStr), ikke leveringsdatoen — vi skal kunne skaffe varen senest
+    //    når vi pakker/sender, ikke når kunden modtager.
+    const dispatchStr = dispatchDate ? localYmd(dispatchDate) : deliveryStr
+    if (avail.daekketFra && dispatchStr >= avail.daekketFra) return null
     //  • Frist-vare til FORWARD-dato (≥ gulv) → skaffes frisk; NÆR-dato falder igennem → cap.
     const cutoff = itemCutoffs.get(itemNo)
     if (cutoff && cutoff.cutoffWeekday > 0) {
@@ -1272,7 +1283,7 @@ export default function OrderList({
     }
     // Ellers: loft = disponibelt for ALLE varetyper (strenge, handelsvarer, producerede) → intet oversalg.
     return disp
-  }, [itemAvailabilities, itemCutoffs, deliveryDate, portalHolidays])
+  }, [itemAvailabilities, itemCutoffs, deliveryDate, dispatchDate, portalHolidays])
 
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {

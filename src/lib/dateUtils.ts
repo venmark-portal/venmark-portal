@@ -210,6 +210,27 @@ export function getDeadlineForMethodDelivery(
 }
 
 /**
+ * Afsendelses-/effektiv dato (midnat) for en leveringsdato + metode = leveringsdato − transitdage,
+ * weekend snappet til forrige fredag. Dette er den SHIP-side dato hvor vi skal have varen klar
+ * (pakket/sendt). Bruges til at måle "kan skaffes til tiden"-dækning (daekketFra) mod afsendelses-
+ * dagen i stedet for leveringsdagen — en auktionsvare skal kunne købes SENEST når vi afsender,
+ * ikke når kunden modtager. (Spejler afsendelsesdag-delen af getDeadlineForMethodDelivery.)
+ */
+export function getDispatchDateForMethodDelivery(
+  deliveryDate: Date,
+  method: BCShipmentMethod,
+): Date {
+  const transit  = method.sameDay ? 0 : (method.transitDays ?? 1)
+  const dispatch = new Date(deliveryDate)
+  dispatch.setHours(0, 0, 0, 0)
+  dispatch.setDate(dispatch.getDate() - transit)
+  const wd = dispatch.getDay()
+  if (wd === 0) dispatch.setDate(dispatch.getDate() - 2) // søndag → fredag
+  if (wd === 6) dispatch.setDate(dispatch.getDate() - 1) // lørdag → fredag
+  return dispatch
+}
+
+/**
  * Genererer næste `count` gyldige leveringsdatoer for en given leveringsmetode.
  * Respekterer ugedagsmønster, portalkalender og bestillingstidspunkt.
  *
