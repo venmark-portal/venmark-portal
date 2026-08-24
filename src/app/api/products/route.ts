@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getItems } from '@/lib/businesscentral'
+import { getItems, getWebshopVisibleItemNos } from '@/lib/businesscentral'
 
 export const runtime = 'nodejs'
 
@@ -12,7 +12,13 @@ export async function GET(req: NextRequest) {
   const skip     = Number(searchParams.get('skip') ?? 0)
 
   try {
-    const data = await getItems({ search, category, top, skip })
+    // Søgning skal også respektere portal-synligheden (RangeringPrisliste = 99 = skjult).
+    const [data, visible] = await Promise.all([
+      getItems({ search, category, top, skip }),
+      getWebshopVisibleItemNos().catch(() => null),
+    ])
+    if (visible && data && Array.isArray((data as any).value))
+      (data as any).value = (data as any).value.filter((i: any) => visible.has(i.number))
     return NextResponse.json(data)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Ukendt fejl'
