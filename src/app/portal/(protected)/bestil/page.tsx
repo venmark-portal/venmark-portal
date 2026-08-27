@@ -201,11 +201,13 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
     .map((n) => itemMap.get(n))
     .filter(Boolean) as NonNullable<ReturnType<typeof itemMap.get>>[]
 
-  // Kundens egne favoritter — kun dem der IKKE er STD (de er allerede i stdFavorites)
-  // Filtrér også varer uden pris bort (STD vises uanset; almindelige favoritter skjules)
+  // Kundens egne favoritter — kun dem der IKKE er STD (de er allerede i stdFavorites).
+  // Vises UANSET varekort-pris: auktionsvarer har typisk 0 på varekortet men prissættes via
+  // prisgruppe/auktion (og vises med den beregnede pris). Kunden har eksplicit favoriseret dem,
+  // så de skal med på favoritlisten (tidligere unitPrice>0-filter skjulte dem forkert).
   const favorites = customerFavNos
     .map((n) => itemMap.get(n))
-    .filter((i): i is NonNullable<ReturnType<typeof itemMap.get>> => i != null && (i.unitPrice ?? 0) > 0)
+    .filter((i): i is NonNullable<ReturnType<typeof itemMap.get>> => i != null)
 
   // Venmark-anbefalede (SaelgForH) — kun dem der IKKE allerede er STD eller kundens favorit.
   // Sikrer at hver vare kun vises én gang på siden, i sin højest-prioriterede sektion.

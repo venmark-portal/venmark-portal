@@ -1559,13 +1559,22 @@ export default function OrderList({
   const venmarkNos  = new Set(venmarkItems.map(v => v.item.number))
   const standingNos = new Set(standingOrders.map(s => s.item.number))
 
+  // Skjul en favorit KUN når den er udsolgt til I DAG (effektiv/afsendelses-dato = i dag OG
+  // blokeret). For FREMTIDIGE datoer vises alle favoritter — en auktionsvare med 0 lager kan
+  // bestilles frem i tiden, så den skal blive stående på favoritlisten (kunden skal ikke søge
+  // den frem). Uden disponibilitets-data skjules intet (fail-open).
+  const todayStr2  = localYmd(new Date())
+  const effIsToday = effectiveDate ? localYmd(effectiveDate) === todayStr2 : true
+  const hideTodaySoldOut = (itemNo: string) =>
+    effIsToday && (itemNo in itemAvailabilities) && rowAvailStatus(itemNo).blocked
+
   // Tre adskilte sektioner — hver vare vises kun i sin højest-prioriterede sektion.
   // STD > Kundens favoritter > Venmark anbefaler. Ingen sortering/fletning på tværs.
   // Promo-varer udelades fra alle tre sektioner (de har deres egen Hot-sektion).
-  const stdFavSection      = stdFavorites.filter(f => !promoNos.has(f.number))
-  const customerFavSection = favorites.filter(f => !promoNos.has(f.number) && !stdFavNos.has(f.number))
+  const stdFavSection      = stdFavorites.filter(f => !promoNos.has(f.number) && !hideTodaySoldOut(f.number))
+  const customerFavSection = favorites.filter(f => !promoNos.has(f.number) && !stdFavNos.has(f.number) && !hideTodaySoldOut(f.number))
   const venmarkSection     = venmarkItems
-    .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number))
+    .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number) && !hideTodaySoldOut(v.item.number))
 
   // ── Katalog-navigation ───────────────────────────────────────────────────────
   const catTree        = useMemo(() => buildCatTree(allCategories), [allCategories])
