@@ -177,6 +177,10 @@ export async function POST(req: NextRequest) {
 
     // Send direkte til BC — linjer oprettes med shipQuantity=0 (afventer godkendelse)
     try {
+      // Linje-bemærkninger (portal) pr. varenr — sendes til salgslinjens Portal Kundebemærkning.
+      const noteByItem = new Map<string, string>()
+      for (const l of lines) if (typeof l?.note === 'string' && l.note.trim()) noteByItem.set(l.bcItemNumber, l.note.trim())
+
       const bc = await createBCSalesOrder(
         activeCustomerNo,   // Sell-to = valgt butik (bestil på vegne af)
         deliveryDate,
@@ -185,6 +189,7 @@ export async function POST(req: NextRequest) {
           itemNumber: l.bcItemNumber,
           quantity:   l.quantity,
           uomCode:    l.uom,
+          note:       noteByItem.get(l.bcItemNumber),
         })),
         poNumber ?? undefined,
         driverNote ?? undefined,

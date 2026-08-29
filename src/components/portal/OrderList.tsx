@@ -3,7 +3,7 @@
 import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from 'react'
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
-  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star,
+  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star, MessageSquare,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
@@ -602,6 +602,7 @@ export function OrderRow({
   isStandingOrder = false,
   isFavorite = false, onToggleFav,
   isStd = false, onToggleStd,
+  note = '', onNote,
   selectedUom, onUomChange,
   onOpenDetail,
   unavailableLabel = '',
@@ -625,6 +626,8 @@ export function OrderRow({
   onToggleFav?:     () => void
   isStd?:           boolean
   onToggleStd?:     () => void
+  note?:            string
+  onNote?:          (v: string) => void
   selectedUom?:     string
   onUomChange?:     (code: string) => void
   onOpenDetail?:    () => void
@@ -664,6 +667,7 @@ export function OrderRow({
   }).slice(0, 5)
 
   const hasMultipleUoms = uoms.length > 1
+  const [noteOpen, setNoteOpen] = useState(false)   // mobil: udvid bemærknings-feltet
 
   const isBlocked = !!blockedLabel
   // Utilgængelig for den valgte leveringsdato (fx bestillingsfrist ikke nået) spærrer nu
@@ -857,8 +861,37 @@ export function OrderRow({
             <Heart size={15} fill={isFavorite ? 'currentColor' : 'none'} />
           </button>
         )}
+        {/* Bemærknings-ikon — udvider feltet på mobil (feltet er altid synligt på PC). */}
+        {onNote && (
+          <button
+            onClick={() => setNoteOpen(o => !o)}
+            tabIndex={-1}
+            className={`shrink-0 p-1 rounded-full transition-colors sm:hidden ${
+              note ? 'text-blue-500 hover:text-blue-400' : 'text-gray-200 hover:text-blue-400'
+            }`}
+            title={note ? `Bemærkning: ${note}` : 'Tilføj bemærkning'}
+          >
+            <MessageSquare size={15} fill={note ? 'currentColor' : 'none'} />
+          </button>
+        )}
 
       </div>
+
+      {/* Linje-bemærkning (portal → salgslinjens "Portal Kundebemærkning", maks 30 tegn).
+          Fast synlig på PC; på mobil kun når der er en bemærkning eller ikonet er trykket. */}
+      {onNote && (
+        <div className={`mt-1 items-center gap-1.5 pl-0 sm:pl-9 ${(noteOpen || note) ? 'flex' : 'hidden sm:flex'}`}>
+          <MessageSquare size={12} className="shrink-0 text-gray-300 hidden sm:block" />
+          <input
+            type="text"
+            value={note}
+            maxLength={30}
+            onChange={e => onNote(e.target.value.slice(0, 30))}
+            placeholder="Bemærkning til denne linje (maks 30 tegn)…"
+            className="flex-1 min-w-0 rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 placeholder:text-gray-300 focus:border-blue-400 focus:outline-none"
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -1167,6 +1200,15 @@ export default function OrderList({
     : 1
 
   const [lines, setLines]             = useState<Map<string, OrderLine>>(() => new Map())
+  // Portal-bemærkning pr. linje (itemNo → tekst, maks 30 tegn). Sendes til salgslinjens
+  // "Portal Kundebemærkning" ved indsendelse.
+  const [lineNotes, setLineNotes]     = useState<Map<string, string>>(() => new Map())
+  const setLineNote = (itemNo: string, v: string) => setLineNotes(prev => {
+    const n = new Map(prev)
+    if (v.trim()) n.set(itemNo, v.slice(0, 30)); else n.delete(itemNo)
+    return n
+  })
+  const noteProps = (itemNo: string) => ({ note: lineNotes.get(itemNo) ?? '', onNote: (v: string) => setLineNote(itemNo, v) })
   const uomPrefKey = `venmark_uom_${customerId}`
   const [lineUoms, setLineUoms]       = useState<Map<string, string>>(() => {
     const m = new Map<string, string>()
@@ -1534,6 +1576,7 @@ export default function OrderList({
         quantity:     l.quantity,
         uom:          uomCode,
         unitPrice:    resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUomCode),
+        note:         (lineNotes.get(l.item.number) ?? '').slice(0, 30),
       }
     })
 
@@ -1895,7 +1938,7 @@ export default function OrderList({
                 {promotions.map(({ item, note }) => (
                   <OrderRow
                     key={`promo-${item.number}`}
-                    item={item} quantity={getQty(item.number)}
+                    item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
                     onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
                     isPromo promoNote={note}
                     isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
@@ -1937,7 +1980,7 @@ export default function OrderList({
               {stdFavSection.map((item) => (
                 <OrderRow
                   key={`std-${item.number}`}
-                  item={item} quantity={getQty(item.number)}
+                  item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
                   onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
                   isVenmark={false} venmarkNote=""
                   isStandingOrder={standingNos.has(item.number)}
@@ -1967,7 +2010,7 @@ export default function OrderList({
               {customerFavSection.map((item) => (
                 <OrderRow
                   key={`fav-${item.number}`}
-                  item={item} quantity={getQty(item.number)}
+                  item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
                   onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
                   isVenmark={false} venmarkNote=""
                   isStandingOrder={standingNos.has(item.number)}
@@ -1997,7 +2040,7 @@ export default function OrderList({
               {venmarkSection.map(({ item, note }) => (
                 <OrderRow
                   key={`venmark-${item.number}`}
-                  item={item} quantity={getQty(item.number)}
+                  item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
                   onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
                   isVenmark={true} venmarkNote={note}
                   isStandingOrder={standingNos.has(item.number)}
@@ -2045,7 +2088,7 @@ export default function OrderList({
                         </button>
                       )}
                       <OrderRow
-                        item={s.item} quantity={currentQty}
+                        item={s.item} quantity={currentQty} {...noteProps(s.item.number)}
                         onQty={qty => setQty(s.item, qty)} priceTiers={priceTiers}
                         isFavorite={favSet.has(s.item.number)} onToggleFav={() => toggleFavorite(s.item)}
                         selectedUom={lineUoms.get(s.item.number) ?? s.unitOfMeasure} onUomChange={code => setLineUom(s.item, code)}
@@ -2089,7 +2132,7 @@ export default function OrderList({
                 {categoryItems.map(item => (
                   <OrderRow
                     key={`cat-${item.number}`}
-                    item={item} quantity={getQty(item.number)}
+                    item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
                     onQty={qty => setQty(item, qty)}
                     priceTiers={[...priceTiers, ...categoryPriceTiers]}
                     isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
@@ -2119,7 +2162,7 @@ export default function OrderList({
               {searchedLines.map(({ item, quantity }) => (
                 <OrderRow
                   key={`search-${item.number}`}
-                  item={item} quantity={quantity}
+                  item={item} quantity={quantity} {...noteProps(item.number)}
                   onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}

@@ -1289,7 +1289,7 @@ export async function createBCSalesOrder(
   customerNumber: string,
   deliveryDate:   Date,
   portalOrderId:  string,
-  lines: Array<{ itemNumber: string; quantity: number; uomCode: string }>,
+  lines: Array<{ itemNumber: string; quantity: number; uomCode: string; note?: string }>,
   poNumber?: string,
   driverNote?: string,
   orderNote?: string,
@@ -1357,6 +1357,28 @@ export async function createBCSalesOrder(
       const errText = await lineRes.text()
       console.error(`BC linje-fejl for vare ${line.itemNumber} (${lineRes.status}):`, errText)
       lineErrors.push(`Vare ${line.itemNumber}: (${lineRes.status}) ${errText}`)
+      continue
+    }
+
+    // Portal-linje-bemærkning (maks 30 tegn) → salgslinjens "Portal Kundebemærkning" via den
+    // redigerbare custom linje-API (page 50150). Best-effort: en fejl må ikke vælte ordren.
+    if (line.note?.trim()) {
+      try {
+        const created = await lineRes.json()
+        const lineId  = created?.id as string | undefined
+        if (lineId) {
+          await fetch(`${portalBase}/portalSalesLines(${lineId})`, {
+            method:  'PATCH',
+            headers: {
+              Authorization:  `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept:         'application/json',
+              'If-Match':     '*',
+            },
+            body: JSON.stringify({ portalCustomerNote: line.note.trim().slice(0, 30) }),
+          })
+        }
+      } catch { /* bemærkning er best-effort */ }
     }
   }
 
