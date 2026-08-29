@@ -775,6 +775,22 @@ export function OrderRow({
               </span>
             )}
           </div>
+
+          {/* Linje-bemærkning — inline under navn/pris. Fast synlig på PC; på mobil kun når der
+              er en bemærkning eller 💬-ikonet er trykket. Maks 30 tegn → Portal Kundebemærkning. */}
+          {onNote && (
+            <div className={`mt-1 items-center gap-1 ${(noteOpen || note) ? 'flex' : 'hidden sm:flex'}`}>
+              <MessageSquare size={11} className="shrink-0 text-gray-300" />
+              <input
+                type="text"
+                value={note}
+                maxLength={30}
+                onChange={e => onNote(e.target.value.slice(0, 30))}
+                placeholder="Indsæt bemærkning (maks 30 tegn)…"
+                className="w-full min-w-0 rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 placeholder:text-gray-300 focus:border-blue-400 focus:outline-none"
+              />
+            </div>
+          )}
         </div>
 
         {/* ── Enhed + Antal ────────────────────────── */}
@@ -876,22 +892,6 @@ export function OrderRow({
         )}
 
       </div>
-
-      {/* Linje-bemærkning (portal → salgslinjens "Portal Kundebemærkning", maks 30 tegn).
-          Fast synlig på PC; på mobil kun når der er en bemærkning eller ikonet er trykket. */}
-      {onNote && (
-        <div className={`mt-1 items-center gap-1.5 pl-0 sm:pl-9 ${(noteOpen || note) ? 'flex' : 'hidden sm:flex'}`}>
-          <MessageSquare size={12} className="shrink-0 text-gray-300 hidden sm:block" />
-          <input
-            type="text"
-            value={note}
-            maxLength={30}
-            onChange={e => onNote(e.target.value.slice(0, 30))}
-            placeholder="Bemærkning til denne linje (maks 30 tegn)…"
-            className="flex-1 min-w-0 rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 placeholder:text-gray-300 focus:border-blue-400 focus:outline-none"
-          />
-        </div>
-      )}
     </div>
   )
 }
