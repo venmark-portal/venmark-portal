@@ -68,7 +68,7 @@ function computeStatus(
     // afgangsdatoen (torsdags-afgang → fredags-levering). Se OrderList.getItemAvailStatus.
     const coveredByAfgang = !!avail.naesteLevering && deliveryStr >= avail.naesteLevering
     if (disp <= 0 && !coveredByAfgang) {
-      const label = avail.naesteLevering ? `Tilgængelig til afgang ${formatDate(avail.naesteLevering)}` : 'Ingen lager – kontakt os'
+      const label = avail.naesteLevering ? `Tilgængelig til afgang ${formatDate(avail.naesteLevering)}` : 'Ikke på lager eller i indkøb lige nu'
       return { blocked: true, blockLabel: label, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
     }
     if (disp <= 0) return { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel }

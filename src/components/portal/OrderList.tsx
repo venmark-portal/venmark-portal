@@ -256,7 +256,7 @@ function getItemAvailStatus(
     if (disp <= 0 && !coveredByAfgang) {
       const dateLabel = avail.naesteLevering
         ? `Tilgængelig til afgang ${formatAfgangDag(avail.naesteLevering)}`
-        : 'Ingen lager – kontakt os'
+        : 'Ikke på lager eller i indkøb lige nu'
       return { blocked: true, blockLabel: dateLabel, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
     }
     if (disp <= 0) {
@@ -1300,7 +1300,7 @@ export default function OrderList({
     const cap = rowMaxQty(itemNo)
     if (cap != null) {
       // Loft = 0 (udsolgt, ikke dækket) → BLOKÉR feltet, ikke "Maks 0". Bevar en evt. eksisterende
-      // blokerings-tekst fra status (fx "Ingen lager – kontakt os"), ellers generisk.
+      // blokerings-tekst fra status (fx "Ikke på lager eller i indkøb lige nu"), ellers generisk.
       if (cap <= 0)
         return { ...s, blocked: true, blockLabel: s.blockLabel || 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
       return { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
