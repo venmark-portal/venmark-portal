@@ -110,6 +110,8 @@ interface Props {
   existingNos?:    Set<string>
   itemAvailabilities?: Record<string, BCItemAvailability>
   deliveryDate?:   Date
+  /** "i dag"/"i morgen"/dato for bestillings-deadline — sættes ind i "Bestil … inden HH:MM". */
+  fristDayLabel?:  string
   onResults?:      (itemNos: string[]) => void
   /** Resolver kundens rigtige pris (aftalt trappe → estimat → varekort). Uden denne vises varekortets rå unitPrice. */
   getDisplayPrice?: (item: EnrichedItem) => number
@@ -120,7 +122,7 @@ interface Props {
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
-  itemAvailabilities, deliveryDate, onResults, getDisplayPrice, getMaxQty,
+  itemAvailabilities, deliveryDate, fristDayLabel, onResults, getDisplayPrice, getMaxQty,
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
@@ -412,7 +414,7 @@ export default function ItemSearchModal({
                 {!status.blockLabel && status.aabnTilLabel && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
                     <Clock size={9} />
-                    {status.aabnTilLabel}
+                    {fristDayLabel ? status.aabnTilLabel.replace('Bestil inden', `Bestil ${fristDayLabel} inden`) : status.aabnTilLabel}
                   </div>
                 )}
 

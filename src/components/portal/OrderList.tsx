@@ -1286,6 +1286,16 @@ export default function OrderList({
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
     const s = getItemAvailStatus(avail, deliveryDate)
+    // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato), så kunden ved BÅDE dag og tid
+    // når varen bestilles forud. Dagen = bestillings-deadline for den valgte leveringsdato.
+    if (s.aabnTilLabel && deadline) {
+      const d = new Date(deadline); d.setHours(0, 0, 0, 0)
+      const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+      const diff = Math.round((d.getTime() - today0.getTime()) / 86400000)
+      const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][d.getDay()]
+      const dag = diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${d.getDate()}/${d.getMonth() + 1}`
+      s.aabnTilLabel = s.aabnTilLabel.replace('Bestil inden', `Bestil ${dag} inden`)
+    }
     // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
     if (cap != null) {
@@ -1313,6 +1323,16 @@ export default function OrderList({
     [deliveryDate, selectedMethod, portalHolidays],
   )
   const deadline        = deliveryDate ? deadlineFn(deliveryDate) : null
+  // Bestillings-deadline som dag-tekst (i dag / i morgen / kort ugedag+dato) — bruges i
+  // "Bestil … inden HH:MM" så kunden ved BÅDE dag og tid ved forud-bestilling.
+  const fristDagLabel   = (() => {
+    if (!deadline) return ''
+    const d = new Date(deadline); d.setHours(0, 0, 0, 0)
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+    const diff = Math.round((d.getTime() - today0.getTime()) / 86400000)
+    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][d.getDay()]
+    return diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${d.getDate()}/${d.getMonth() + 1}`
+  })()
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate
     ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
@@ -2376,6 +2396,7 @@ export default function OrderList({
           onToggleFav={toggleFavorite}
           itemAvailabilities={itemAvailabilities}
           deliveryDate={deliveryDate}
+          fristDayLabel={fristDagLabel}
           onResults={onSearchResults}
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}
