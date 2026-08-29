@@ -1286,15 +1286,11 @@ export default function OrderList({
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
     const s = getItemAvailStatus(avail, deliveryDate)
-    // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato), så kunden ved BÅDE dag og tid
-    // når varen bestilles forud. Dagen = bestillings-deadline for den valgte leveringsdato.
-    if (s.aabnTilLabel && deadline) {
-      const d = new Date(deadline); d.setHours(0, 0, 0, 0)
-      const today0 = new Date(); today0.setHours(0, 0, 0, 0)
-      const diff = Math.round((d.getTime() - today0.getTime()) / 86400000)
-      const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][d.getDay()]
-      const dag = diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${d.getDate()}/${d.getMonth() + 1}`
-      s.aabnTilLabel = s.aabnTilLabel.replace('Bestil inden', `Bestil ${dag} inden`)
+    // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato). Dagen = leveringsdato minus
+    // varens leadtid (fx 2D → onsdag-levering skal bestilles mandag).
+    if (s.aabnTilLabel) {
+      const dag = getFristDagLabel(itemNo)
+      if (dag) s.aabnTilLabel = s.aabnTilLabel.replace('Bestil inden', `Bestil ${dag} inden`)
     }
     // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
@@ -1323,16 +1319,37 @@ export default function OrderList({
     [deliveryDate, selectedMethod, portalHolidays],
   )
   const deadline        = deliveryDate ? deadlineFn(deliveryDate) : null
-  // Bestillings-deadline som dag-tekst (i dag / i morgen / kort ugedag+dato) — bruges i
-  // "Bestil … inden HH:MM" så kunden ved BÅDE dag og tid ved forud-bestilling.
-  const fristDagLabel   = (() => {
-    if (!deadline) return ''
-    const d = new Date(deadline); d.setHours(0, 0, 0, 0)
+
+  // ── Bestillings-frist-DAG pr. vare (til "Bestil … inden HH:MM") ──────────────
+  // Kunden skal vide BÅDE dag og tid ved forud-bestilling. Dagen = leveringsdato MINUS varens
+  // leadtid (fx Leveringstid 2D → onsdags-levering skal bestilles mandag). Leadtiden udledes af
+  // daekketFra (= tidligste leverbar fra i dag): lead = arbejdsdage mellem i dag og daekketFra.
+  const isWorkday = (d: Date) => { const w = d.getDay(); return w !== 0 && w !== 6 && !portalHolidays.has(localYmd(d)) }
+  const countWorkdays = (from: Date, to: Date): number => {
+    let n = 0; const d = new Date(from); d.setHours(0, 0, 0, 0)
+    const end = new Date(to); end.setHours(0, 0, 0, 0)
+    while (d < end) { d.setDate(d.getDate() + 1); if (isWorkday(d)) n++ }
+    return n
+  }
+  const subWorkdays = (date: Date, n: number): Date => {
+    const d = new Date(date); d.setHours(0, 0, 0, 0); let left = n
+    while (left > 0) { d.setDate(d.getDate() - 1); if (isWorkday(d)) left-- }
+    return d
+  }
+  const getFristDagLabel = (itemNo: string): string => {
+    if (!deliveryDate) return ''
     const today0 = new Date(); today0.setHours(0, 0, 0, 0)
-    const diff = Math.round((d.getTime() - today0.getTime()) / 86400000)
-    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][d.getDay()]
-    return diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${d.getDate()}/${d.getMonth() + 1}`
-  })()
+    let frist = new Date(deliveryDate); frist.setHours(0, 0, 0, 0)
+    const dk = itemAvailabilities[itemNo]?.daekketFra
+    if (dk) {
+      const lead = countWorkdays(today0, new Date(dk + 'T00:00:00'))  // varens leadtid i arbejdsdage
+      if (lead > 0) frist = subWorkdays(frist, lead)
+    }
+    if (frist < today0) frist = today0
+    const diff = Math.round((frist.getTime() - today0.getTime()) / 86400000)
+    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][frist.getDay()]
+    return diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${frist.getDate()}/${frist.getMonth() + 1}`
+  }
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate
     ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
@@ -2396,7 +2413,7 @@ export default function OrderList({
           onToggleFav={toggleFavorite}
           itemAvailabilities={itemAvailabilities}
           deliveryDate={deliveryDate}
-          fristDayLabel={fristDagLabel}
+          getFristDayLabel={getFristDagLabel}
           onResults={onSearchResults}
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}
