@@ -17,6 +17,13 @@ export async function POST(req: NextRequest) {
       : []
     const deliveryDate: string       = typeof body?.deliveryDate === 'string' ? body.deliveryDate : ''
     const shipmentMethodCode: string = typeof body?.shipmentMethodCode === 'string' ? body.shipmentMethodCode : ''
+    // Kurven (varenr → antal). KUN denne kundes egen visning: BC netter den ind pr. vare (undtagen
+    // varen selv), så søsken med samme stykliste falder. Reserverer intet, deles ikke.
+    const cart: Record<string, number> = {}
+    if (body?.cart && typeof body.cart === 'object')
+      for (const [k, v] of Object.entries(body.cart as Record<string, unknown>))
+        if (typeof v === 'number' && v > 0) cart[k] = v
+
     if (!itemNos.length || !deliveryDate) return NextResponse.json({ results: [] })
 
     const customerNo = getActiveCustomerNo(session)
@@ -29,7 +36,7 @@ export async function POST(req: NextRequest) {
     const results: BCCoverageRow[] = []
     let effectiveDate = ''
     for (const chunk of chunks) {
-      const cov = await getCartCoverage(customerNo, loc, deliveryDate, shipmentMethodCode, chunk)
+      const cov = await getCartCoverage(customerNo, loc, deliveryDate, shipmentMethodCode, chunk, cart)
       if (cov) {
         results.push(...cov.results)
         effectiveDate = cov.effectiveDate

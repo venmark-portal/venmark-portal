@@ -1367,17 +1367,28 @@ export default function OrderList({
   // tilbage til klientside-tilnærmelsen hvis kaldet fejler.
   const deliveryStrForCoverage = deliveryDate ? localYmd(deliveryDate) : ''
   const availKeysSig = Object.keys(itemAvailabilities).sort().join(',')
+  // Kurv-signatur (varenr:antal) — genberegner disponibel når kunden taster/ændrer antal, så
+  // søsken med samme stykliste falder. KUN denne kundes egen visning (BC netter kurven ind pr.
+  // vare, ekskl. varen selv; reserverer intet, deles ikke).
+  const cartSig = Array.from(lines.entries())
+    .filter(([, l]) => l.quantity > 0)
+    .map(([no, l]) => `${no}:${l.quantity}`)
+    .sort()
+    .join(',')
   useEffect(() => {
     const nos = Object.keys(itemAvailabilities)
     if (!nos.length || !deliveryDate) return
     let cancelled = false
-    setCoverageLoading(true)
+    // Debounce (500 ms) — fyrer når kunden holder pause / går videre, ikke pr. tastetryk.
     const t = setTimeout(async () => {
+      const cart: Record<string, number> = {}
+      for (const [no, l] of lines) if (l.quantity > 0) cart[no] = l.quantity
+      setCoverageLoading(true)
       try {
         const res = await fetch('/api/portal/coverage', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemNos: nos, deliveryDate: localYmd(deliveryDate), shipmentMethodCode: selectedMethodCode }),
+          body: JSON.stringify({ itemNos: nos, deliveryDate: localYmd(deliveryDate), shipmentMethodCode: selectedMethodCode, cart }),
         })
         if (res.ok) {
           const data = await res.json()
@@ -1389,10 +1400,10 @@ export default function OrderList({
         }
       } catch { /* BC-genberegning er best-effort; klientside gater imens */ }
       finally { if (!cancelled) setCoverageLoading(false) }
-    }, 350)
+    }, 500)
     return () => { cancelled = true; clearTimeout(t) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deliveryStrForCoverage, selectedMethodCode, availKeysSig])
+  }, [deliveryStrForCoverage, selectedMethodCode, availKeysSig, cartSig])
 
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {

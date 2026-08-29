@@ -2026,6 +2026,7 @@ export async function getCartCoverage(
   deliveryDate: string,          // 'YYYY-MM-DD'
   shipmentMethodCode: string,
   itemNos: string[],
+  cart?: Record<string, number>, // {varenr: antal} — kundens kurv (kun egen visning; delt råvare nettes)
 ): Promise<BCCoverageResult | null> {
   if (!customerNo || !deliveryDate || !itemNos.length) return null
   try {
@@ -2044,6 +2045,7 @@ export async function getCartCoverage(
         deliveryDate,
         shipmentMethodCode: shipmentMethodCode || '',
         itemNos:            itemNos.join(','),
+        cartJson:           cart && Object.keys(cart).length ? JSON.stringify(cart) : '',
       }),
       cache: 'no-store',
     })
