@@ -1321,16 +1321,11 @@ export default function OrderList({
   const deadline        = deliveryDate ? deadlineFn(deliveryDate) : null
 
   // ── Bestillings-frist-DAG pr. vare (til "Bestil … inden HH:MM") ──────────────
-  // Kunden skal vide BÅDE dag og tid ved forud-bestilling. Dagen = leveringsdato MINUS varens
-  // leadtid (fx Leveringstid 2D → onsdags-levering skal bestilles mandag). Leadtiden udledes af
-  // daekketFra (= tidligste leverbar fra i dag): lead = arbejdsdage mellem i dag og daekketFra.
+  // Kunden skal vide BÅDE dag og tid ved forud-bestilling. Dagen = leveringsdato MINUS varens RÅ
+  // leadtid (leadDage fra BC = Lead Time Calculation, fx 2D). Trukket i arbejdsdage (weekend/
+  // helligdag springes over) → onsdags-levering m. 2D bliver mandag. leadDage er konstant (ikke
+  // forurenet af Åbn Til-skub/weekend som daekketFra), så beregningen er stabil uanset ugedag.
   const isWorkday = (d: Date) => { const w = d.getDay(); return w !== 0 && w !== 6 && !portalHolidays.has(localYmd(d)) }
-  const countWorkdays = (from: Date, to: Date): number => {
-    let n = 0; const d = new Date(from); d.setHours(0, 0, 0, 0)
-    const end = new Date(to); end.setHours(0, 0, 0, 0)
-    while (d < end) { d.setDate(d.getDate() + 1); if (isWorkday(d)) n++ }
-    return n
-  }
   const subWorkdays = (date: Date, n: number): Date => {
     const d = new Date(date); d.setHours(0, 0, 0, 0); let left = n
     while (left > 0) { d.setDate(d.getDate() - 1); if (isWorkday(d)) left-- }
@@ -1340,11 +1335,8 @@ export default function OrderList({
     if (!deliveryDate) return ''
     const today0 = new Date(); today0.setHours(0, 0, 0, 0)
     let frist = new Date(deliveryDate); frist.setHours(0, 0, 0, 0)
-    const dk = itemAvailabilities[itemNo]?.daekketFra
-    if (dk) {
-      const lead = countWorkdays(today0, new Date(dk + 'T00:00:00'))  // varens leadtid i arbejdsdage
-      if (lead > 0) frist = subWorkdays(frist, lead)
-    }
+    const lead = itemAvailabilities[itemNo]?.leadDage ?? 0   // varens rå leadtid (2D → 2)
+    if (lead > 0) frist = subWorkdays(frist, lead)
     if (frist < today0) frist = today0
     const diff = Math.round((frist.getTime() - today0.getTime()) / 86400000)
     const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][frist.getDay()]

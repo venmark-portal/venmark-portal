@@ -1943,6 +1943,7 @@ export interface BCItemAvailability {
   priserOpdateret:   string | null   // ISO datetime eller null
   naesteLevering:    string | null   // 'YYYY-MM-DD': tidligste fremtidige indkøbsordre (kun strengtLager + disponibelt<=0)
   daekketFra:        string | null   // 'YYYY-MM-DD': tidligste dato varen kan SKAFFES (køb/auktion/produktion) — ALLE varer. Levering >= denne → intet antals-loft.
+  leadDage:          number          // rå leadtid i dage (Lead Time Calculation, fx '2D'→2) — bestillings-frist-dag = leveringsdato − leadDage arbejdsdage
 }
 
 /**
@@ -1959,7 +1960,7 @@ export async function getItemAvailabilities(locationCode?: string, itemNos?: str
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     // Kun de felter portalen faktisk bruger → mindre payload (dropper lager/iProduktion/iKoeb/
     // description/baseUnitOfMeasure som ingen læser her).
-    const select = '$select=itemNo,disponibelt,strengtLager,auktionsKategori,tilgaengeligFra,aabnTil,lukAfgang,statusNote,danskTekstPrisliste,priserOpdateret,naesteLevering,daekketFra'
+    const select = '$select=itemNo,disponibelt,strengtLager,auktionsKategori,tilgaengeligFra,aabnTil,lukAfgang,statusNote,danskTekstPrisliste,priserOpdateret,naesteLevering,daekketFra,leadDage'
 
     // Kundens lokation → disponibelt beregnes pr. den lokation (BC page 50373). '' = alle lokationer.
     const locClause = locationCode ? `locationFilter eq '${locationCode.replace(/'/g, "''")}'` : ''
@@ -1979,6 +1980,7 @@ export async function getItemAvailabilities(locationCode?: string, itemNos?: str
         priserOpdateret:     item.priserOpdateret      || null,
         naesteLevering:      (item.naesteLevering && item.naesteLevering !== '0001-01-01') ? item.naesteLevering : null,
         daekketFra:          (item.daekketFra && item.daekketFra !== '0001-01-01') ? item.daekketFra : null,
+        leadDage:            item.leadDage ?? 0,
       })
     }
 
