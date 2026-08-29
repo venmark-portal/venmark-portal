@@ -1374,11 +1374,14 @@ export default function OrderList({
     const deliveryStr  = localYmd(deliveryDate)
     const todayStr     = localYmd(new Date())
     const effectiveStr = effectiveDate ? localYmd(effectiveDate) : deliveryStr
-    // AUKTIONSKATEGORI før "priser opdateret" → UBEGRÆNSET, OGSÅ i dag: dagens auktion er ikke
-    // afholdt endnu, så vi køber frit. (Dette er "åben indtil priser opdateret"-mekanismen —
-    // uafhængig af afsendelsesdato.) Når "priser opdateret" sættes i dag, falder den igennem
-    // og cappes ved disponibel. Andre skaffe-undtagelser gælder KUN fremtidig afsendelse.
-    if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr) return null
+    // AUKTIONSKATEGORI før "priser opdateret" → UBEGRÆNSET: dagens auktion er ikke afholdt endnu,
+    // så vi køber frit. MEN kun hvis leveringen fysisk kan NÅ en auktion — dvs. den effektive
+    // (pak-)dato ≥ daekketFra (tidligste auktions-dækkede dato). Ellers → kun lager. Det fanger:
+    //   • tidlig morgentur der pakkes FØR auktionen (effektiv dato < daekketFra) → kun lager
+    //   • WEEKEND (ingen auktion lør/søn; daekketFra ruller til mandag) → kun lager til før-mandag
+    // Uden daekketFra (ren kategori-auktionsvare uden egen frist) → uændret (ubegrænset).
+    if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr &&
+        (!avail.daekketFra || effectiveStr >= avail.daekketFra)) return null
     // Øvrige "kan skaffes"-undtagelser: kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
     if (effectiveStr > todayStr) {
       if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
