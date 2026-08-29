@@ -3,7 +3,7 @@
 import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from 'react'
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
-  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock,
+  CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
@@ -601,6 +601,7 @@ export function OrderRow({
   isVenmark = false, venmarkNote = '',
   isStandingOrder = false,
   isFavorite = false, onToggleFav,
+  isStd = false, onToggleStd,
   selectedUom, onUomChange,
   onOpenDetail,
   unavailableLabel = '',
@@ -622,6 +623,8 @@ export function OrderRow({
   isStandingOrder?: boolean
   isFavorite?:      boolean
   onToggleFav?:     () => void
+  isStd?:           boolean
+  onToggleStd?:     () => void
   selectedUom?:     string
   onUomChange?:     (code: string) => void
   onOpenDetail?:    () => void
@@ -829,7 +832,19 @@ export function OrderRow({
           </button>
         </div>
 
-        {/* ── Favorit-hjerte yderst til højre ─────── */}
+        {/* ── STD-pin (stjerne) + favorit-hjerte yderst til højre ─────── */}
+        {onToggleStd && (
+          <button
+            onClick={onToggleStd}
+            tabIndex={-1}
+            className={`shrink-0 p-1 rounded-full transition-colors ${
+              isStd ? 'text-amber-500 hover:text-amber-400' : 'text-gray-200 hover:text-amber-400'
+            }`}
+            title={isStd ? 'Fjern fra "Varer du altid skal have"' : 'Gør til STD — "Varer du altid skal have"'}
+          >
+            <Star size={15} fill={isStd ? 'currentColor' : 'none'} />
+          </button>
+        )}
         {onToggleFav && (
           <button
             onClick={onToggleFav}
@@ -1056,6 +1071,8 @@ export default function OrderList({
   // BC-værdi, vinder den over klientside-tilnærmelsen i rowMaxQty.
   const [coverageMax, setCoverageMax]         = useState<Record<string, number>>({})
   const [coverageLoading, setCoverageLoading] = useState(false)
+  // STD-pin overstyringer (itemNo → er STD) sat af stjerne-knappen; overlejrer serverens flag.
+  const [stdOverrides, setStdOverrides]       = useState<Map<string, boolean>>(new Map())
   useEffect(() => {
     if (!zeroPriceNos.length) return
     let cancelled = false
@@ -1568,11 +1585,30 @@ export default function OrderList({
   const hideTodaySoldOut = (itemNo: string) =>
     effIsToday && (itemNo in itemAvailabilities) && rowAvailStatus(itemNo).blocked
 
+  // STD-pin med optimistisk flytning: stjernen løfter en favorit op i STD-sektionen (og retur).
+  // stdOverrides overstyrer serverens standardFavorite-flag indtil næste load. Alle favorit-
+  // objekter (STD + almindelige) samles, og effIsStd afgør hvilken sektion varen vises i.
+  const effIsStd = (n: string) => stdOverrides.has(n) ? (stdOverrides.get(n) as boolean) : stdFavNos.has(n)
+  function toggleStd(item: EnrichedItem) {
+    const next = !effIsStd(item.number)
+    setStdOverrides(prev => new Map(prev).set(item.number, next))
+    fetch('/api/portal/favorites', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemNo: item.number, itemName: item.displayName, isStandard: next }),
+    })
+      .then(r => { if (!r.ok) throw new Error() })
+      .catch(() => setStdOverrides(prev => new Map(prev).set(item.number, !next)))
+  }
+  const favItemByNo = new Map<string, EnrichedItem>()
+  for (const f of [...stdFavorites, ...favorites]) if (!favItemByNo.has(f.number)) favItemByNo.set(f.number, f)
+  const allFavItems = Array.from(favItemByNo.values())
+
   // Tre adskilte sektioner — hver vare vises kun i sin højest-prioriterede sektion.
   // STD > Kundens favoritter > Venmark anbefaler. Ingen sortering/fletning på tværs.
   // Promo-varer udelades fra alle tre sektioner (de har deres egen Hot-sektion).
-  const stdFavSection      = stdFavorites.filter(f => !promoNos.has(f.number) && !hideTodaySoldOut(f.number))
-  const customerFavSection = favorites.filter(f => !promoNos.has(f.number) && !stdFavNos.has(f.number) && !hideTodaySoldOut(f.number))
+  const stdFavSection      = allFavItems.filter(f => effIsStd(f.number) && !promoNos.has(f.number) && !hideTodaySoldOut(f.number))
+  const customerFavSection = allFavItems.filter(f => !effIsStd(f.number) && !promoNos.has(f.number) && !hideTodaySoldOut(f.number))
   const venmarkSection     = venmarkItems
     .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number) && !hideTodaySoldOut(v.item.number))
 
@@ -1906,6 +1942,7 @@ export default function OrderList({
                   isVenmark={false} venmarkNote=""
                   isStandingOrder={standingNos.has(item.number)}
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  isStd={effIsStd(item.number)} onToggleStd={() => toggleStd(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                   onOpenDetail={() => setDetailItem(item)}
                   unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
@@ -1935,6 +1972,7 @@ export default function OrderList({
                   isVenmark={false} venmarkNote=""
                   isStandingOrder={standingNos.has(item.number)}
                   isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  isStd={effIsStd(item.number)} onToggleStd={() => toggleStd(item)}
                   selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
                   onOpenDetail={() => setDetailItem(item)}
                   unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}

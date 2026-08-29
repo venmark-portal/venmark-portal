@@ -923,6 +923,49 @@ export async function removeBCCustomerFavorite(
   }
 }
 
+// Sæt/ryd "Standard Favorite" (STD-pin) på kundens favorit-linje (tabel 50157). Findes linjen,
+// PATCH'es flaget; findes den ikke (og der pinnes), oprettes den som STD. Så kan kunden selv
+// løfte en favorit op i "VARER DU ALTID SKAL HAVE"-sektionen.
+export async function setBCStandardFavorite(
+  customerNo: string,
+  itemNo: string,
+  isStandard: boolean,
+  itemName?: string,
+): Promise<void> {
+  const token   = await getAccessToken()
+  const tenant  = process.env.BC_TENANT_ID
+  const env     = process.env.BC_ENVIRONMENT_NAME
+  const company = process.env.BC_COMPANY_ID
+  const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' }
+
+  const filter = encodeURIComponent(`customerNo eq '${customerNo}' and itemNo eq '${itemNo}'`)
+  const getRes = await fetch(`${base}/customerFavorites?$filter=${filter}&$select=id&$top=1`, { headers, cache: 'no-store' } as any)
+  let id = ''
+  if (getRes.ok) {
+    const d = await getRes.json()
+    id = d.value?.[0]?.id ?? ''
+  }
+
+  if (id) {
+    const res = await fetch(`${base}/customerFavorites(${id})`, {
+      method: 'PATCH',
+      headers: { ...headers, 'If-Match': '*' },
+      body: JSON.stringify({ standardFavorite: isStandard }),
+      cache: 'no-store',
+    } as any)
+    if (!res.ok) console.error(`[BC favorites] PATCH standardFavorite fejlede ${res.status}: ${await res.text().catch(() => '')}`)
+  } else if (isStandard) {
+    const res = await fetch(`${base}/customerFavorites`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ customerNo, itemNo, description: itemName ?? itemNo, standardFavorite: true }),
+      cache: 'no-store',
+    } as any)
+    if (!res.ok) console.error(`[BC favorites] POST STD fejlede ${res.status}: ${await res.text().catch(() => '')}`)
+  }
+}
+
 // ─── Hent bogførte salgsfakturaer ─────────────────────────────────────────────
 
 export interface BCPostedInvoice {
