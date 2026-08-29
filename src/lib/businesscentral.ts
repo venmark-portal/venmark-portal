@@ -1944,6 +1944,7 @@ export interface BCItemAvailability {
   naesteLevering:    string | null   // 'YYYY-MM-DD': tidligste fremtidige indkøbsordre (kun strengtLager + disponibelt<=0)
   daekketFra:        string | null   // 'YYYY-MM-DD': tidligste dato varen kan SKAFFES (køb/auktion/produktion) — ALLE varer. Levering >= denne → intet antals-loft.
   leadDage:          number          // rå leadtid i dage (Lead Time Calculation, fx '2D'→2) — bestillings-frist-dag = leveringsdato − leadDage arbejdsdage
+  auktionsFrist:     string | null   // Auktions-frist (kl.) OData 'PTxH…' — daglig bestillings-deadline for auktionsvarer; bruges til label når aabnTil er tom
 }
 
 /**
@@ -1960,7 +1961,7 @@ export async function getItemAvailabilities(locationCode?: string, itemNos?: str
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     // Kun de felter portalen faktisk bruger → mindre payload (dropper lager/iProduktion/iKoeb/
     // description/baseUnitOfMeasure som ingen læser her).
-    const select = '$select=itemNo,disponibelt,strengtLager,auktionsKategori,tilgaengeligFra,aabnTil,lukAfgang,statusNote,danskTekstPrisliste,priserOpdateret,naesteLevering,daekketFra,leadDage'
+    const select = '$select=itemNo,disponibelt,strengtLager,auktionsKategori,tilgaengeligFra,aabnTil,lukAfgang,statusNote,danskTekstPrisliste,priserOpdateret,naesteLevering,daekketFra,leadDage,auktionsFrist'
 
     // Kundens lokation → disponibelt beregnes pr. den lokation (BC page 50373). '' = alle lokationer.
     const locClause = locationCode ? `locationFilter eq '${locationCode.replace(/'/g, "''")}'` : ''
@@ -1981,6 +1982,7 @@ export async function getItemAvailabilities(locationCode?: string, itemNos?: str
         naesteLevering:      (item.naesteLevering && item.naesteLevering !== '0001-01-01') ? item.naesteLevering : null,
         daekketFra:          (item.daekketFra && item.daekketFra !== '0001-01-01') ? item.daekketFra : null,
         leadDage:            item.leadDage ?? 0,
+        auktionsFrist:       (item.auktionsFrist && item.auktionsFrist !== '00:00:00' && item.auktionsFrist !== 'PT0S') ? item.auktionsFrist : null,
       })
     }
 

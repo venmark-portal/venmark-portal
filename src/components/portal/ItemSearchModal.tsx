@@ -53,8 +53,9 @@ function computeStatus(
   const isToday     = deliveryStr === todayStr
 
   let aabnTilLabel: string | null = null
-  if (avail.aabnTil) {
-    const p = parseAabnTil(avail.aabnTil)
+  const fristTid = avail.aabnTil ?? avail.auktionsFrist
+  if (fristTid) {
+    const p = parseAabnTil(fristTid)
     if (p) aabnTilLabel = `Bestil inden ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
   }
 
