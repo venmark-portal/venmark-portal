@@ -716,6 +716,21 @@ export function OrderRow({
             <span className="text-sm font-medium text-gray-900 leading-snug">{item.displayName}</span>
             {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5"><RefreshCw size={9} />Fast ordre</span>}
             {visibleAttrs.map((attr, i) => <AttrIcon key={i} attr={attr} />)}
+            {/* "Indsæt bemærkning" på navnelinjen — folder bemærknings-linjen ud (ikke fast synlig). */}
+            {onNote && (
+              <button
+                onClick={() => setNoteOpen(o => !o)}
+                tabIndex={-1}
+                type="button"
+                className={`shrink-0 mt-[1px] inline-flex items-center gap-0.5 text-[10px] font-medium transition-colors ${
+                  note ? 'text-blue-500 hover:text-blue-400' : 'text-gray-300 hover:text-blue-400'
+                }`}
+                title={note ? `Bemærkning: ${note}` : 'Indsæt bemærkning'}
+              >
+                <MessageSquare size={11} fill={note ? 'currentColor' : 'none'} />
+                <span>{note ? 'Bemærkning' : 'Indsæt bemærkning'}</span>
+              </button>
+            )}
           </div>
           {/* Linje 2: nr (klikbar på mobil) + aktiv pris + trappepriser */}
           <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5 flex-wrap leading-tight">
@@ -776,17 +791,18 @@ export function OrderRow({
             )}
           </div>
 
-          {/* Linje-bemærkning — inline under navn/pris. Fast synlig på PC; på mobil kun når der
-              er en bemærkning eller 💬-ikonet er trykket. Maks 30 tegn → Portal Kundebemærkning. */}
-          {onNote && (
-            <div className={`mt-1 items-center gap-1 ${(noteOpen || note) ? 'flex' : 'hidden sm:flex'}`}>
+          {/* Linje-bemærkning — foldes UD via "Indsæt bemærkning" på navnelinjen (ikke fast synlig).
+              Vises når feltet er åbnet eller der allerede er en bemærkning. Maks 30 tegn → Portal Kundebemærkning. */}
+          {onNote && (noteOpen || note) && (
+            <div className="mt-1 flex items-center gap-1">
               <MessageSquare size={11} className="shrink-0 text-gray-300" />
               <input
                 type="text"
+                ref={el => { if (el && noteOpen && !note) el.focus() }}
                 value={note}
                 maxLength={30}
                 onChange={e => onNote(e.target.value.slice(0, 30))}
-                placeholder="Indsæt bemærkning (maks 30 tegn)…"
+                placeholder="Skriv bemærkning (maks 30 tegn)…"
                 className="w-full min-w-0 rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 placeholder:text-gray-300 focus:border-blue-400 focus:outline-none"
               />
             </div>
@@ -877,20 +893,6 @@ export function OrderRow({
             <Heart size={15} fill={isFavorite ? 'currentColor' : 'none'} />
           </button>
         )}
-        {/* Bemærknings-ikon — udvider feltet på mobil (feltet er altid synligt på PC). */}
-        {onNote && (
-          <button
-            onClick={() => setNoteOpen(o => !o)}
-            tabIndex={-1}
-            className={`shrink-0 p-1 rounded-full transition-colors sm:hidden ${
-              note ? 'text-blue-500 hover:text-blue-400' : 'text-gray-200 hover:text-blue-400'
-            }`}
-            title={note ? `Bemærkning: ${note}` : 'Tilføj bemærkning'}
-          >
-            <MessageSquare size={15} fill={note ? 'currentColor' : 'none'} />
-          </button>
-        )}
-
       </div>
     </div>
   )
