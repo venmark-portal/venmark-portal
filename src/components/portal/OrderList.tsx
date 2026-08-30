@@ -1298,14 +1298,25 @@ export default function OrderList({
     }
     // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
+    let result: ItemAvailStatus
     if (cap != null) {
       // Loft = 0 (udsolgt, ikke dækket) → BLOKÉR feltet, ikke "Maks 0". Bevar en evt. eksisterende
       // blokerings-tekst fra status (fx "Ikke på lager eller i indkøb lige nu"), ellers generisk.
       if (cap <= 0)
-        return { ...s, blocked: true, blockLabel: s.blockLabel || 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
-      return { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
+        result = { ...s, blocked: true, blockLabel: s.blockLabel || 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
+      else
+        result = { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
+    } else {
+      result = s
     }
-    return s
+    // DEBUG (?debug=1): vis de rå tal som etiket på varen, så man kan se hvorfor loftet er som det er.
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1') {
+      const a = itemAvailabilities[itemNo]
+      const eff = effectiveDate ? localYmd(effectiveDate) : (deliveryDate ? localYmd(deliveryDate) : '?')
+      const dbg = `🐞 dk=${a?.daekketFra ?? 'NULL'} eff=${eff} cov=${coverageMax[itemNo] ?? 'undef'} max=${cap === null ? 'FRI' : Math.round(cap * 10) / 10}`
+      result = { ...result, blocked: false, disponibeltLabel: dbg, disponibeltColor: 'red' }
+    }
+    return result
   }
 
   function rowInfoNote(itemNo: string): string {
