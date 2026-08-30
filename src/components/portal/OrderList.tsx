@@ -1365,24 +1365,23 @@ export default function OrderList({
   //   • frist-vare til forward-dato (≥ gulv) → skaffes frisk
   // Ellers → loft = max(disponibelt, 0). Udsolgt (≤0) → 0 = kan ikke bestilles.
   const rowMaxQty = useCallback((itemNo: string): number | null => {
-    // AUTORITATIVT: har BC genberegnet varen (efter dato/leveringsform-skift), vinder den værdi.
-    // -1 = ubegrænset (null her). Ellers falder vi tilbage til klientside-tilnærmelsen nedenfor.
     const cov = coverageMax[itemNo]
-    if (cov !== undefined) return cov < 0 ? null : cov
+    if (cov === -1) return null   // BC: ubegrænset (autoritativt)
     const avail = itemAvailabilities[itemNo]
-    if (!avail || !deliveryDate) return null
+    if (!avail || !deliveryDate) return (cov !== undefined && cov >= 0) ? cov : null
     const deliveryStr  = localYmd(deliveryDate)
     const todayStr     = localYmd(new Date())
     const effectiveStr = effectiveDate ? localYmd(effectiveDate) : deliveryStr
-    // AUKTIONSKATEGORI før "priser opdateret" → UBEGRÆNSET: dagens auktion er ikke afholdt endnu,
-    // så vi køber frit. MEN kun hvis leveringen fysisk kan NÅ en auktion — dvs. den effektive
-    // (pak-)dato ≥ daekketFra (tidligste auktions-dækkede dato). Ellers → kun lager. Det fanger:
-    //   • tidlig morgentur der pakkes FØR auktionen (effektiv dato < daekketFra) → kun lager
-    //   • WEEKEND (ingen auktion lør/søn; daekketFra ruller til mandag) → kun lager til før-mandag
-    // Uden daekketFra (ren kategori-auktionsvare uden egen frist) → uændret (ubegrænset).
+    // ── "KAN SKAFFES I TIDE"-undtagelser — GÆLDER UANSET coverage ────────────────
+    // daekketFra/naesteLevering hentes no-store (frisk pr. kald), mens BC-genberegningen (coverage)
+    // kan levere en STALE eller helt udeblivende værdi for tunge PRODUCEREDE varer (varmrøget mv.),
+    // der timer ud i genberegningen — så en gammel finit værdi bliver ellers hængende og capper en
+    // vare der reelt kan skaffes. Derfor tjekkes "kan skaffes" FØR coverage-værdien bruges. Det
+    // spejler præcis BC's CalcPortalMaxQty, der returnerer -1 (ubegrænset) i netop disse tilfælde
+    // (leadtid/auktion/afgang der dækker den effektive dato).
     if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr &&
         (!avail.daekketFra || effectiveStr >= avail.daekketFra)) return null
-    // Øvrige "kan skaffes"-undtagelser: kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
+    // Kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
     if (effectiveStr > todayStr) {
       if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
       if (avail.daekketFra && effectiveStr >= avail.daekketFra) return null
@@ -1394,6 +1393,8 @@ export default function OrderList({
         if (dd >= floor) return null
       }
     }
+    // Kan IKKE skaffes i tide → coverage (autoritativt disponibel-på-dato) vinder, ellers klient-disponibel.
+    if (cov !== undefined && cov >= 0) return cov
     // Ikke dækket (eller effektiv dato i dag) → cap ved disponibel (0 for udsolgt → intet oversalg).
     return Math.max(avail.disponibelt, 0)
   }, [coverageMax, itemAvailabilities, itemCutoffs, deliveryDate, effectiveDate, portalHolidays])
