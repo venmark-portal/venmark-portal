@@ -34,24 +34,26 @@ export async function POST(req: NextRequest) {
     if (!customerNo) return NextResponse.json({ results: [] })
     const loc = await getCustomerLocationCode(customerNo).catch(() => '')
 
+    // Chunk SMÅT (25) så BC's resultJson holder sig under tekstfeltets 2048 tegn. Kør parallelt
+    // for at holde svartiden nede trods flere kald (tung live-BOM pr. producerede vare).
     const chunks: string[][] = []
-    for (let i = 0; i < itemNos.length; i += 200) chunks.push(itemNos.slice(i, i + 200))
+    for (let i = 0; i < itemNos.length; i += 25) chunks.push(itemNos.slice(i, i + 25))
 
     const results: BCCoverageRow[] = []
     const diag: string[] = []
     let effectiveDate = ''
-    for (const chunk of chunks) {
+    const settled = await Promise.all(chunks.map(async (chunk) => {
       try {
         const cov = await getCartCoverage(customerNo, loc, deliveryDate, shipmentMethodCode, chunk, cart)
-        if (cov) {
-          results.push(...cov.results)
-          effectiveDate = cov.effectiveDate
-        } else {
-          diag.push(`chunk(${chunk.length}) → null (intet svar)`)
-        }
+        if (cov) return { cov }
+        return { err: `chunk(${chunk.length}) → null (intet svar)` }
       } catch (e: unknown) {
-        diag.push(`chunk(${chunk.length}) → FEJL: ${e instanceof Error ? e.message : String(e)}`)
+        return { err: `chunk(${chunk.length}) → FEJL: ${e instanceof Error ? e.message : String(e)}` }
       }
+    }))
+    for (const s of settled) {
+      if (s.cov) { results.push(...s.cov.results); effectiveDate = s.cov.effectiveDate }
+      else if (s.err) diag.push(s.err)
     }
     return NextResponse.json({ effectiveDate, results, diag })
   } catch (e: unknown) {
