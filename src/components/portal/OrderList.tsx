@@ -1442,6 +1442,23 @@ export default function OrderList({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveryStrForCoverage, selectedMethodCode, availKeysSig, cartSig])
 
+  // ── DEBUG (?debug=1) — udskriv disponibel-tal pr. vare til konsollen ─────────
+  // Viser hvorfor rowMaxQty capper/frigiver: daekketFra (kan skaffes), coverage-værdi,
+  // effektiv dato, og det endelige loft. Åbn browserkonsollen (F12) og filtrér "[disp".
+  const debugMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1'
+  useEffect(() => {
+    if (!debugMode || !deliveryDate) return
+    const today = localYmd(new Date())
+    const eff = effectiveDate ? localYmd(effectiveDate) : localYmd(deliveryDate)
+    // eslint-disable-next-line no-console
+    console.log(`[disp] i dag=${today}  effektiv=${eff}  levering=${localYmd(deliveryDate)}  form=${selectedMethodCode}`)
+    Object.keys(itemAvailabilities).sort().forEach(no => {
+      const a = itemAvailabilities[no]
+      // eslint-disable-next-line no-console
+      console.log(`[disp] ${no} dk=${a.daekketFra ?? 'NULL'} naeste=${a.naesteLevering ?? 'NULL'} strengt=${a.strengtLager} disp=${a.disponibelt} cov=${coverageMax[no] ?? 'undef'} max=${rowMaxQty(no)}`)
+    })
+  }, [debugMode, coverageMax, itemAvailabilities, deliveryDate, effectiveDate, selectedMethodCode, rowMaxQty])
+
   // ── Antal ───────────────────────────────────────────────────────────────────
   const setQty = useCallback((item: EnrichedItem, qty: number, fromStanding = false) => {
     if (!fromStanding) manuallyEdited.current.add(item.number)
