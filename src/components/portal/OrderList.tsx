@@ -1108,6 +1108,7 @@ export default function OrderList({
   // BC-værdi, vinder den over klientside-tilnærmelsen i rowMaxQty.
   const [coverageMax, setCoverageMax]         = useState<Record<string, number>>({})
   const [coverageLoading, setCoverageLoading] = useState(false)
+  const [coverageDiag, setCoverageDiag]       = useState('')   // ?debug=1: synlig coverage-status
   // STD-pin overstyringer (itemNo → er STD) sat af stjerne-knappen; overlejrer serverens flag.
   const [stdOverrides, setStdOverrides]       = useState<Map<string, boolean>>(new Map())
   useEffect(() => {
@@ -1430,9 +1431,11 @@ export default function OrderList({
           body: JSON.stringify({ itemNos: nos, deliveryDate: localYmd(deliveryDate), shipmentMethodCode: selectedMethodCode, cart }),
         })
         const data = res.ok ? await res.json() : null
-        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1')
-          // eslint-disable-next-line no-console
-          console.log('[cov] status=%s antal=%s eff=%s diag=%o', res.status, data?.results?.length ?? 'n/a', data?.effectiveDate ?? '', data?.diag ?? [])
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1') {
+          const has48199 = Array.isArray(data?.results) && data.results.some((r: { itemNo: string }) => r.itemNo === '48199')
+          const r48199 = Array.isArray(data?.results) ? data.results.find((r: { itemNo: string }) => r.itemNo === '48199') : null
+          setCoverageDiag(`status=${res.status} antal=${data?.results?.length ?? 'n/a'} eff=${data?.effectiveDate ?? ''} 48199=${has48199 ? JSON.stringify(r48199) : 'MANGLER'} diag=${JSON.stringify(data?.diag ?? [])}`)
+        }
         if (res.ok && data && Array.isArray(data.results)) {
           if (!cancelled) {
             const map: Record<string, number> = {}
@@ -1801,6 +1804,12 @@ export default function OrderList({
 
   return (
     <div className="space-y-4">
+      {/* DEBUG (?debug=1): synlig coverage-status — screenshot denne */}
+      {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1' && coverageDiag && (
+        <div className="rounded-lg bg-yellow-50 ring-1 ring-yellow-300 p-2 text-[11px] font-mono text-yellow-900 break-all">
+          🐞 COVERAGE: {coverageDiag}
+        </div>
+      )}
       {/* Leveringsmetode-vælger — kun synlige metoder */}
       {shipmentMethods.filter(m => m.portalVisible).length > 1 && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
