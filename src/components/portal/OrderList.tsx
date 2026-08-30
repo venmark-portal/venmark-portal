@@ -1305,7 +1305,9 @@ export default function OrderList({
         return { ...s, blocked: true, blockLabel: s.blockLabel || 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
       return { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
     }
-    return s
+    // Intet loft = FRI (kan skaffes/ubegrænset frem i tiden). Vis IKKE lager-tallet — det ligner
+    // ellers et maks og forvirrer kunden (Claus). Behold "Bestil [dag] inden …"-teksten.
+    return { ...s, disponibeltLabel: null, disponibeltColor: null }
   }
 
   function rowInfoNote(itemNo: string): string {

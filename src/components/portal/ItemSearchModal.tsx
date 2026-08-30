@@ -467,7 +467,8 @@ export default function ItemSearchModal({
                             Maks {Math.round(cap * 10) / 10} {item.baseUnitOfMeasureCode}
                           </span>
                         )
-                      ) : status.disponibeltLabel ? (
+                      ) : (!favMode && !singleMode) ? null /* FRI (kan skaffes frem i tid) → vis IKKE lager-tal (ligner et maks) */
+                      : status.disponibeltLabel ? (
                         <span className={`rounded px-1 py-0 leading-tight text-[10px] font-semibold ${
                           status.disponibeltColor === 'red'
                             ? 'bg-red-100 text-red-600'
