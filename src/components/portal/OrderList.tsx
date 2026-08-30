@@ -1313,7 +1313,7 @@ export default function OrderList({
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1') {
       const a = itemAvailabilities[itemNo]
       const eff = effectiveDate ? localYmd(effectiveDate) : (deliveryDate ? localYmd(deliveryDate) : '?')
-      const dbg = `🐞 dk=${a?.daekketFra ?? 'NULL'} eff=${eff} cov=${coverageMax[itemNo] ?? 'undef'} max=${cap === null ? 'FRI' : Math.round(cap * 10) / 10}`
+      const dbg = `🐞 lev=${deliveryDate ? localYmd(deliveryDate) : '?'} eff=${eff} dk=${a?.daekketFra ?? 'NULL'} cov=${coverageMax[itemNo] ?? 'undef'} max=${cap === null ? 'FRI' : Math.round(cap * 10) / 10}`
       result = { ...result, blocked: false, disponibeltLabel: dbg, disponibeltColor: 'red' }
     }
     return result
