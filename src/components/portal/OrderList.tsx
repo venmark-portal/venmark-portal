@@ -1429,15 +1429,21 @@ export default function OrderList({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ itemNos: nos, deliveryDate: localYmd(deliveryDate), shipmentMethodCode: selectedMethodCode, cart }),
         })
-        if (res.ok) {
-          const data = await res.json()
-          if (!cancelled && Array.isArray(data.results)) {
+        const data = res.ok ? await res.json() : null
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1')
+          // eslint-disable-next-line no-console
+          console.log('[cov] status=%s antal=%s eff=%s diag=%o', res.status, data?.results?.length ?? 'n/a', data?.effectiveDate ?? '', data?.diag ?? [])
+        if (res.ok && data && Array.isArray(data.results)) {
+          if (!cancelled) {
             const map: Record<string, number> = {}
             for (const r of data.results) map[r.itemNo] = r.unlimited ? -1 : r.maxQty
             setCoverageMax(map)
           }
         }
-      } catch { /* BC-genberegning er best-effort; klientside gater imens */ }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1') console.log('[cov] EXCEPTION', e)
+      }
       finally { if (!cancelled) setCoverageLoading(false) }
     }, 500)
     return () => { cancelled = true; clearTimeout(t) }

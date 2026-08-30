@@ -2033,31 +2033,30 @@ export async function getCartCoverage(
   cart?: Record<string, number>, // {varenr: antal} — kundens kurv (kun egen visning; delt råvare nettes)
 ): Promise<BCCoverageResult | null> {
   if (!customerNo || !deliveryDate || !itemNos.length) return null
-  try {
-    const token   = await getAccessToken()
-    const tenant  = process.env.BC_TENANT_ID
-    const env     = process.env.BC_ENVIRONMENT_NAME
-    const company = process.env.BC_COMPANY_ID
-    const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
+  const token   = await getAccessToken()
+  const tenant  = process.env.BC_TENANT_ID
+  const env     = process.env.BC_ENVIRONMENT_NAME
+  const company = process.env.BC_COMPANY_ID
+  const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
 
-    const res = await fetch(`${base}/portalCoverages`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        customerNo,
-        locationCode:       locationCode || '',
-        deliveryDate,
-        shipmentMethodCode: shipmentMethodCode || '',
-        itemNos:            itemNos.join(','),
-        cartJson:           cart && Object.keys(cart).length ? JSON.stringify(cart) : '',
-      }),
-      cache: 'no-store',
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    if (!data?.resultJson) return null
-    return JSON.parse(data.resultJson) as BCCoverageResult
-  } catch { return null }
+  const res = await fetch(`${base}/portalCoverages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      customerNo,
+      locationCode:       locationCode || '',
+      deliveryDate,
+      shipmentMethodCode: shipmentMethodCode || '',
+      itemNos:            itemNos.join(','),
+      cartJson:           cart && Object.keys(cart).length ? JSON.stringify(cart) : '',
+    }),
+    cache: 'no-store',
+  })
+  // Kaster med detaljer (status + BC-fejltekst) så coverage-ruten kan vise HVORFOR det fejler.
+  if (!res.ok) throw new Error(`BC ${res.status}: ${(await res.text()).slice(0, 400)}`)
+  const data = await res.json()
+  if (!data?.resultJson) throw new Error('BC svarede uden resultJson')
+  return JSON.parse(data.resultJson) as BCCoverageResult
 }
 
 // ─── Salgsliste summeret (admin) ─────────────────────────────────────────────

@@ -4,6 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { getActiveCustomerNo } from '@/lib/activeCustomer'
 import { getCustomerLocationCode, getCartCoverage, type BCCoverageRow } from '@/lib/businesscentral'
 
+// Giv BC-genberegningen tid (mange producerede varer = tung live-BOM). Uden dette kan et
+// serverless-timeout (10s) afbryde kaldet → tomt coverage → portalen falder tilbage til dagens tal.
+export const maxDuration = 120
+
 // Autoritativ disponibel-genberegning: portalen kalder denne når kunden skifter leveringsdato eller
 // -form. BC returnerer maks pr. vare (samme logik som salgslinjen). Varenumre chunkes så BC's
 // "Item Nos"-felt (2048 tegn) ikke overskrides.
@@ -34,16 +38,23 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < itemNos.length; i += 200) chunks.push(itemNos.slice(i, i + 200))
 
     const results: BCCoverageRow[] = []
+    const diag: string[] = []
     let effectiveDate = ''
     for (const chunk of chunks) {
-      const cov = await getCartCoverage(customerNo, loc, deliveryDate, shipmentMethodCode, chunk, cart)
-      if (cov) {
-        results.push(...cov.results)
-        effectiveDate = cov.effectiveDate
+      try {
+        const cov = await getCartCoverage(customerNo, loc, deliveryDate, shipmentMethodCode, chunk, cart)
+        if (cov) {
+          results.push(...cov.results)
+          effectiveDate = cov.effectiveDate
+        } else {
+          diag.push(`chunk(${chunk.length}) → null (intet svar)`)
+        }
+      } catch (e: unknown) {
+        diag.push(`chunk(${chunk.length}) → FEJL: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
-    return NextResponse.json({ effectiveDate, results })
-  } catch {
-    return NextResponse.json({ results: [] }, { status: 500 })
+    return NextResponse.json({ effectiveDate, results, diag })
+  } catch (e: unknown) {
+    return NextResponse.json({ results: [], diag: [`route-fejl: ${e instanceof Error ? e.message : String(e)}`] }, { status: 500 })
   }
 }
