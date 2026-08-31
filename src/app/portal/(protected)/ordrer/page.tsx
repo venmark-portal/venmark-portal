@@ -11,7 +11,7 @@ import {
 } from '@/lib/businesscentral'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
-import OrderLineStatus from '@/components/portal/OrderLineStatus'
+import OrderLineStatus, { LINE_GRID } from '@/components/portal/OrderLineStatus'
 
 export const dynamic = 'force-dynamic'
 
@@ -232,23 +232,35 @@ function OrderCard({ order, lines, fromBc, deliveryDate }: { order: BCCustomerOr
         </div>
       </div>
 
-      {/* Ordrelinjer (fra BC — dækker også ordrer tastet direkte i BC) */}
+      {/* Ordrelinjer som tabel — kolonne-overskrifter + ens bredder (scroller vandret på mobil) */}
       {lines && lines.length > 0 && (
-        <div className="divide-y divide-gray-50 border-t border-gray-100">
-          {lines.map((line) => (
-            <OrderLineStatus
-              key={line.id || `${line.documentNo}-${line.lineNo}`}
-              itemNumber={line.lineObjectNumber}
-              itemName={line.description}
-              quantity={line.quantity}
-              uom={line.unitOfMeasureCode}
-              unitPrice={line.unitPrice}
-              portalLineStatus={line.portalLineStatus ?? null}
-              portalCustomerNote={line.portalCustomerNote ?? null}
-              packedBy={line.packedBy ?? ''}
-              packedQty={line.packedQty ?? 0}
-            />
-          ))}
+        <div className="border-t border-gray-100 overflow-x-auto">
+          <div className="min-w-[720px]">
+            {/* Overskrifter */}
+            <div className={`${LINE_GRID} px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100 bg-gray-50/50`}>
+              <span></span>
+              <span>Varenr</span>
+              <span>Beskrivelse</span>
+              <span className="text-right">Antal</span>
+              <span className="text-right">Pris/enhed</span>
+              <span className="text-right">Beløb</span>
+              <span>Pakket af</span>
+            </div>
+            {lines.map((line) => (
+              <OrderLineStatus
+                key={line.id || `${line.documentNo}-${line.lineNo}`}
+                itemNumber={line.lineObjectNumber}
+                itemName={line.description}
+                quantity={line.quantity}
+                uom={line.unitOfMeasureCode}
+                unitPrice={line.unitPrice}
+                portalLineStatus={line.portalLineStatus ?? null}
+                portalCustomerNote={line.portalCustomerNote ?? null}
+                packedBy={line.packedBy ?? ''}
+                packedQty={line.packedQty ?? 0}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
