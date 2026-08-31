@@ -29,6 +29,18 @@ const fmt = new Intl.NumberFormat('da-DK', {
   style: 'currency', currency: 'DKK', minimumFractionDigits: 2,
 })
 
+// Danske dato-formater med punktummer: "4. sep." / "tirsdag 4. sep."
+const MND = ['jan.', 'feb.', 'mar.', 'apr.', 'maj', 'jun.', 'jul.', 'aug.', 'sep.', 'okt.', 'nov.', 'dec.']
+const UGE = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
+function daDato(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getDate()}. ${MND[d.getMonth()]}`
+}
+function daDatoUge(iso: string): string {
+  const d = new Date(iso)
+  return `${UGE[d.getDay()]} ${d.getDate()}. ${MND[d.getMonth()]}`
+}
+
 interface CustomerRef { customerNo: string; customerName: string }
 
 export default async function MyOrdersPage() {
@@ -91,7 +103,7 @@ export default async function MyOrdersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mine ordrer</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Mine Åbne bestillinger</h1>
         <p className="mt-1 text-sm text-gray-500">
           {totalOrders === 0
             ? 'Ingen åbne ordrer'
@@ -112,6 +124,19 @@ export default async function MyOrdersPage() {
         <div className="space-y-8">
           {groups.map(({ customer, orders }) => {
             const storeTotal = orders.reduce((s, o) => s + (o.amountIncludingTax || 0), 0)
+            // Leveringsdato = ordrens Requested Delivery Date, ellers TIDLIGSTE linje-afsendelsesdato
+            // (fanger BC-tastede ordrer der ikke har header-leveringsdato → ikke "Ingen leveringsdato").
+            const deliveryOf = (o: BCCustomerOrder) =>
+              o.requestedDeliveryDate ||
+              ((lineMap.get(o.number) ?? []).map(l => l.shipmentDate).filter(Boolean).sort()[0] ?? '')
+            // Nærmeste levering ØVERST (i dag først, sen september nederst); udaterede nederst.
+            const sortedOrders = orders.slice().sort((a, b) => {
+              const da = deliveryOf(a), db = deliveryOf(b)
+              if (!da && !db) return 0
+              if (!da) return 1
+              if (!db) return -1
+              return da.localeCompare(db)
+            })
             return (
               <section key={customer.customerNo} className="space-y-3">
                 {/* Butiks-overskrift — tydelig angivelse af hvilken butik */}
@@ -136,12 +161,13 @@ export default async function MyOrdersPage() {
                 )}
 
                 <div className="space-y-3">
-                  {orders.map((order) => (
+                  {sortedOrders.map((order) => (
                     <OrderCard
                       key={order.id || order.number}
                       order={order}
                       lines={lineMap.get(order.number) ?? null}
                       fromBc={!portalOrigin.has(order.number)}
+                      deliveryDate={deliveryOf(order)}
                     />
                   ))}
                 </div>
@@ -154,8 +180,10 @@ export default async function MyOrdersPage() {
   )
 }
 
-function OrderCard({ order, lines, fromBc }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean }) {
+function OrderCard({ order, lines, fromBc, deliveryDate }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string }) {
   const st = STATUS[order.status] ?? { label: order.status || 'Åben', cls: 'bg-gray-100 text-gray-600' }
+  // "Kladde" forvirrer kunden → skjul status-badgen for kladder (vis kun ved reelle statusser).
+  const showStatus = order.status !== 'Draft' && !!st.label
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
@@ -163,25 +191,30 @@ function OrderCard({ order, lines, fromBc }: { order: BCCustomerOrder; lines: BC
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-gray-900">
-              {order.requestedDeliveryDate
-                ? 'Levering ' + new Date(order.requestedDeliveryDate).toLocaleDateString('da-DK', {
-                    weekday: 'long', day: 'numeric', month: 'short',
-                  })
+              {deliveryDate
+                ? 'Levering ' + daDatoUge(deliveryDate)
                 : 'Ingen leveringsdato'}
             </span>
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${st.cls}`}>
-              {st.label}
-            </span>
-            {/* Oprindelse — tydeligt om ordren er tastet i BC eller bestilt online */}
+            {showStatus && (
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${st.cls}`}>
+                {st.label}
+              </span>
+            )}
+            {/* Oprindelse — tydeligt om ordren er tastet i BC (tlf/mail) eller bestilt online */}
             {fromBc ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                 <Building2 size={10} />
-                Tastet i BC
+                TLF/mail ordre
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                 <Globe size={10} />
                 Bestilt online
+              </span>
+            )}
+            {order.shipmentMethodName && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                {order.shipmentMethodName}
               </span>
             )}
             {order.number && (
@@ -191,9 +224,7 @@ function OrderCard({ order, lines, fromBc }: { order: BCCustomerOrder; lines: BC
             )}
           </div>
           <div className="mt-0.5 text-xs text-gray-400">
-            {order.orderDate && (
-              <>Bestilt {new Date(order.orderDate).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}</>
-            )}
+            {order.orderDate && <>Bestilt {daDato(order.orderDate)}</>}
             {order.amountIncludingTax > 0 && ` · ${fmt.format(order.amountIncludingTax)} inkl. moms`}
             {order.externalDocumentNumber && ` · Ref. ${order.externalDocumentNumber}`}
             {order.orderNote && ` · „${order.orderNote}"`}
@@ -214,6 +245,8 @@ function OrderCard({ order, lines, fromBc }: { order: BCCustomerOrder; lines: BC
               unitPrice={line.unitPrice}
               portalLineStatus={line.portalLineStatus ?? null}
               portalCustomerNote={line.portalCustomerNote ?? null}
+              packedBy={line.packedBy ?? ''}
+              packedQty={line.packedQty ?? 0}
             />
           ))}
         </div>

@@ -1488,6 +1488,7 @@ export interface BCCustomerOrder {
   amountIncludingTax:    number
   externalDocumentNumber: string
   orderNote:             string
+  shipmentMethodName:    string   // leveringsformens tekst (fra $expand shipmentMethod)
 }
 
 /**
@@ -1506,13 +1507,12 @@ export async function getCustomerOrders(customerNo: string): Promise<BCCustomerO
     const select = encodeURIComponent(
       'id,number,customerNumber,customerName,requestedDeliveryDate,orderDate,status,totalAmountIncludingTax,externalDocumentNumber',
     )
-    const res = await fetch(
-      `${base}/salesOrders?$filter=${filter}&$select=${select}&$orderby=requestedDeliveryDate desc&$top=200`,
-      {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        cache: 'no-store',
-      },
-    )
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    const baseUrl = `${base}/salesOrders?$filter=${filter}&$select=${select}&$orderby=requestedDeliveryDate desc&$top=200`
+    // Prøv MED leveringsform-expand; fejler den (ældre BC), falder vi tilbage til uden — så
+    // ordre-listen aldrig brækker på det ene felt.
+    let res = await fetch(`${baseUrl}&$expand=${encodeURIComponent('shipmentMethod($select=code,displayName)')}`, { headers, cache: 'no-store' })
+    if (!res.ok) res = await fetch(baseUrl, { headers, cache: 'no-store' })
     if (!res.ok) return []
     const data = await res.json()
     return (data.value ?? []).map((o: any) => ({
@@ -1526,6 +1526,7 @@ export async function getCustomerOrders(customerNo: string): Promise<BCCustomerO
       amountIncludingTax:     o.totalAmountIncludingTax ?? 0,
       externalDocumentNumber: o.externalDocumentNumber ?? '',
       orderNote:              '',
+      shipmentMethodName:     (o.shipmentMethod?.displayName || o.shipmentMethod?.code || '').trim(),
     })) as BCCustomerOrder[]
   } catch {
     return []
@@ -1543,6 +1544,9 @@ export interface BCPortalLine {
   unitPrice:          number
   portalLineStatus:   'Afventer' | 'Godkendt' | 'Afvist'
   portalCustomerNote: string
+  packedBy:           string   // initialer; tom = ikke pakket
+  packedQty:          number
+  shipmentDate:       string   // 'YYYY-MM-DD' — linjens afsendelses-/leveringsdato (fallback til ordre-dato)
 }
 
 /**
@@ -1573,7 +1577,21 @@ export async function getPortalLineStatuses(
     if (!res.ok) return null   // Extension ikke deployed endnu
 
     const data = await res.json()
-    return data.value as BCPortalLine[]
+    return (data.value ?? []).map((l: any) => ({
+      id:                 l.id,
+      documentNo:         l.documentNo ?? '',
+      lineNo:             l.lineNo ?? 0,
+      lineObjectNumber:   l.lineObjectNumber ?? '',
+      description:        l.description ?? '',
+      quantity:           l.quantity ?? 0,
+      unitOfMeasureCode:  l.unitOfMeasureCode ?? '',
+      unitPrice:          l.unitPrice ?? 0,
+      portalLineStatus:   l.portalLineStatus ?? 'Afventer',
+      portalCustomerNote: l.portalKundebemærkning ?? l.portalCustomerNote ?? '',
+      packedBy:           (l.packedBy ?? '').trim(),
+      packedQty:          l.packedQty ?? 0,
+      shipmentDate:       (!l.shipmentDate || l.shipmentDate === '0001-01-01') ? '' : l.shipmentDate,
+    })) as BCPortalLine[]
   } catch {
     return null
   }

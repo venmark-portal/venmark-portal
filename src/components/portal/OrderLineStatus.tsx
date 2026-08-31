@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, XCircle, PackageCheck, Package } from 'lucide-react'
 
 const fmt = new Intl.NumberFormat('da-DK', {
   style: 'currency', currency: 'DKK', minimumFractionDigits: 2,
@@ -15,6 +15,8 @@ interface Props {
   unitPrice:          number
   portalLineStatus:   'Afventer' | 'Godkendt' | 'Afvist' | null
   portalCustomerNote: string | null
+  packedBy?:          string
+  packedQty?:         number
 }
 
 const LINE_STATUS = {
@@ -25,12 +27,14 @@ const LINE_STATUS = {
 
 export default function OrderLineStatus({
   itemNumber, itemName, quantity, uom, unitPrice, portalLineStatus, portalCustomerNote,
+  packedBy = '', packedQty = 0,
 }: Props) {
   const [open, setOpen] = useState(false)
 
   const status  = LINE_STATUS[portalLineStatus ?? 'Afventer']
   const hasNote = !!portalCustomerNote
   const isAfvist = portalLineStatus === 'Afvist'
+  const isPacked = !!packedBy
 
   return (
     <div className="border-b border-gray-50 last:border-0">
@@ -51,13 +55,26 @@ export default function OrderLineStatus({
               B
             </button>
           )}
+          {/* Pakket af / ikke pakket */}
+          {isPacked ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 shrink-0" title={`Pakket af ${packedBy}${packedQty ? ` (${packedQty} ${uom})` : ''}`}>
+              <PackageCheck size={10} />Pakket {packedBy}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 shrink-0" title="Ikke pakket endnu">
+              <Package size={10} />Ikke pakket
+            </span>
+          )}
         </div>
 
-        {/* Antal + pris */}
-        <div className="ml-4 shrink-0 tabular-nums text-gray-500">
-          {quantity} {uom}
+        {/* Antal · beløb pr. enhed · linjebeløb */}
+        <div className="ml-4 shrink-0 tabular-nums text-right">
+          <span className="text-gray-700">{quantity} {uom}</span>
           {unitPrice > 0 && (
-            <span className="ml-2 text-gray-400">{fmt.format(quantity * unitPrice)}</span>
+            <>
+              <span className="ml-2 text-gray-400">à {fmt.format(unitPrice)}/{uom}</span>
+              <span className="ml-2 font-medium text-gray-600">{fmt.format(quantity * unitPrice)}</span>
+            </>
           )}
         </div>
       </div>
