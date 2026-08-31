@@ -15,12 +15,13 @@ export async function GET(
   const pictureId = req.nextUrl.searchParams.get('pictureId')
   if (!pictureId) return new NextResponse('Missing pictureId', { status: 400 })
 
+  let url = ''
   try {
     const token = await getAccessToken()
     const base  = bcBaseUrl()
 
     // BC-URL til billedindhold
-    const url = `${base}/items(${params.itemId})/picture(${pictureId})/pictureContent`
+    url = `${base}/items(${params.itemId})/picture(${pictureId})/pictureContent`
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -28,7 +29,15 @@ export async function GET(
       next: { revalidate: 86400 }, // Cache i 24 timer (billeder ændres sjældent)
     })
 
-    if (!res.ok) return new NextResponse(null, { status: 404 })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      // DIAGNOSE: vis BC-status + URL + fejltekst som ren tekst, så man kan åbne billed-URL'en
+      // direkte og se HVORFOR (i stedet for bare et brudt billede). Fjernes når fejlen er fundet.
+      return new NextResponse(
+        `BILLED-FEJL ${res.status}\nURL: ${url}\n${body.slice(0, 600)}`,
+        { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } },
+      )
+    }
 
     const contentType = res.headers.get('content-type') ?? 'image/jpeg'
     const buf = await res.arrayBuffer()
@@ -39,7 +48,10 @@ export async function GET(
         'Cache-Control': 'public, max-age=86400',
       },
     })
-  } catch {
-    return new NextResponse(null, { status: 500 })
+  } catch (e) {
+    return new NextResponse(
+      `BILLED-EXCEPTION: ${e instanceof Error ? e.message : String(e)}\nURL: ${url}`,
+      { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } },
+    )
   }
 }
