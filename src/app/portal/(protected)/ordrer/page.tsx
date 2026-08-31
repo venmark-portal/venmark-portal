@@ -11,7 +11,7 @@ import {
 } from '@/lib/businesscentral'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
-import OrderLineStatus, { LINE_GRID } from '@/components/portal/OrderLineStatus'
+import OrderLineStatus, { LINE_COLS, LINE_GRID_CLS } from '@/components/portal/OrderLineStatus'
 
 export const dynamic = 'force-dynamic'
 
@@ -237,7 +237,7 @@ function OrderCard({ order, lines, fromBc, deliveryDate }: { order: BCCustomerOr
         <div className="border-t border-gray-100 overflow-x-auto">
           <div className="min-w-[720px]">
             {/* Overskrifter */}
-            <div className={`${LINE_GRID} px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100 bg-gray-50/50`}>
+            <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100 bg-gray-50/50`} style={{ gridTemplateColumns: LINE_COLS }}>
               <span></span>
               <span>Varenr</span>
               <span>Beskrivelse</span>

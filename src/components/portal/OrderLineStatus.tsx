@@ -8,9 +8,10 @@ const num = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFr
 const qtyFmt = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 3 })
 
 // FÆLLES kolonne-skabelon — bruges af BÅDE overskriften (i ordre-siden) og hver linje, så
-// kolonnerne flugter. Faste bredder + én fleksibel beskrivelse-kolonne = ens bredde på alle rækker.
-export const LINE_GRID =
-  'grid grid-cols-[18px_56px_minmax(0,1fr)_120px_84px_92px_110px] gap-x-2 items-center'
+// kolonnerne flugter. Som inline gridTemplateColumns (ikke Tailwind arbitrary value) fordi
+// `minmax(0,1fr)`-kommaet ellers gav inkonsistent klasse-generering på tværs af filer.
+export const LINE_COLS = '18px 56px minmax(0,1fr) 120px 84px 92px 110px'
+export const LINE_GRID_CLS = 'grid gap-x-2 items-center'
 
 interface Props {
   itemNumber:         string
@@ -46,7 +47,7 @@ export default function OrderLineStatus({
 
   return (
     <div className="border-b border-gray-50 last:border-0">
-      <div className={`${LINE_GRID} px-4 py-1.5 text-sm`}>
+      <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-sm`} style={{ gridTemplateColumns: LINE_COLS }}>
         {/* Status-ikon */}
         <span title={status.label}>{status.icon}</span>
 
