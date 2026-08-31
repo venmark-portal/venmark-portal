@@ -546,12 +546,6 @@ function ItemDetailModal({ item, onClose }: { item: EnrichedItem; onClose: () =>
             <ShoppingCart size={32} className="text-gray-300" />
           </div>
         )}
-        {/* DIAGNOSE: klik for at åbne billed-URL'en direkte og se BC-fejlen (midlertidig). */}
-        {url && (
-          <a href={url} target="_blank" rel="noreferrer" className="block bg-yellow-50 text-yellow-800 text-[11px] underline px-2 py-1 break-all">
-            🐞 Åbn billed-URL (se fejl): {url}
-          </a>
-        )}
 
         <div className="p-5">
           <p className="text-xs font-mono text-gray-400 mb-1">{item.number}</p>
