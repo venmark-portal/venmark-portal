@@ -35,6 +35,12 @@ export default async function FakturaerPage() {
 
   const hasDocuments = invoices.length > 0 || creditMemos.length > 0
 
+  // Fakturaer + kreditnotaer i ÉN samlet liste, nyeste øverst.
+  const docs = [
+    ...invoices.map(inv => ({ ...inv, kind: 'invoice' as const })),
+    ...creditMemos.map(cm => ({ ...cm, kind: 'creditMemo' as const })),
+  ].sort((a, b) => new Date(b.postingDate).getTime() - new Date(a.postingDate).getTime())
+
   return (
     <div className="space-y-4">
       <div>
@@ -66,114 +72,70 @@ export default async function FakturaerPage() {
           <p className="mt-1 text-sm text-gray-400">Fakturaer og kreditnotaer fra de seneste 12 måneder vises her</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Fakturaer */}
-          {invoices.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Fakturaer</p>
-              <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
-                <div className="divide-y divide-gray-100">
-                  {invoices.map(inv => {
-                    const isRecent = new Date(inv.postingDate) >= thirtyDaysAgo
-                    const hasBalance = inv.remainingAmount > 0
-                    const dueDate = inv.dueDate ? new Date(inv.dueDate) : null
-                    const isOverdue = dueDate && !inv.closed && dueDate < new Date()
-                    return (
-                      <div key={inv.id} className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors">
-                        <Link href={`/portal/fakturaer/${inv.number}`} className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-sm font-semibold text-gray-900">{inv.number}</span>
-                            {isRecent && (
-                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Ny</span>
-                            )}
-                            {isOverdue && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                                <AlertCircle size={10} /> Forfaldent
-                              </span>
-                            )}
-                            {hasBalance && !isOverdue && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                                <AlertCircle size={10} /> Udestående
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 text-xs text-gray-500">
-                            {new Date(inv.postingDate).toLocaleDateString('da-DK', {
-                              day: 'numeric', month: 'short', year: 'numeric',
-                            })}
-                            {dueDate && ` · Forfald: ${dueDate.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}`}
-                          </div>
-                        </Link>
-                        <div className="shrink-0 flex items-center gap-3">
-                          <div className="text-right">
-                            <div className="text-sm font-semibold text-gray-900">{fmt.format(inv.totalAmountIncludingTax)}</div>
-                            {hasBalance && (
-                              <div className="text-xs text-amber-600">Rest: {fmt.format(inv.remainingAmount)}</div>
-                            )}
-                          </div>
-                          <a
-                            href={`/api/portal/fakturaer/${inv.id}/pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Download PDF"
-                            className="rounded-lg p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          >
-                            <Printer size={16} />
-                          </a>
-                        </div>
+        <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
+          <div className="divide-y divide-gray-100">
+            {docs.map(doc => {
+              const isCredit = doc.kind === 'creditMemo'
+              const inv = doc as any // faktura-only felter (dueDate/closed/remainingAmount)
+              const isRecent = new Date(doc.postingDate) >= thirtyDaysAgo
+              const dueDate = !isCredit && inv.dueDate ? new Date(inv.dueDate) : null
+              const hasBalance = !isCredit && inv.remainingAmount > 0
+              const isOverdue = dueDate && !inv.closed && dueDate < new Date()
+              const detailHref = isCredit ? `/portal/kreditnotaer/${doc.number}` : `/portal/fakturaer/${doc.number}`
+              const pdfHref = isCredit ? `/api/portal/kreditnotaer/${doc.id}/pdf` : `/api/portal/fakturaer/${doc.id}/pdf`
+              return (
+                <div key={`${doc.kind}-${doc.id}`} className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors">
+                  <Link href={detailHref} className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isCredit ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {isCredit ? 'Kreditnota' : 'Faktura'}
+                      </span>
+                      <span className="font-mono text-sm font-semibold text-gray-900">{doc.number}</span>
+                      {isRecent && (
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isCredit ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>Ny</span>
+                      )}
+                      {isOverdue && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                          <AlertCircle size={10} /> Forfaldent
+                        </span>
+                      )}
+                      {hasBalance && !isOverdue && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                          <AlertCircle size={10} /> Udestående
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-500">
+                      {new Date(doc.postingDate).toLocaleDateString('da-DK', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                      })}
+                      {dueDate && ` · Forfald: ${dueDate.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}`}
+                      {isCredit && doc.appliesToDocNo && ` · Vedr. faktura ${doc.appliesToDocNo}`}
+                    </div>
+                  </Link>
+                  <div className="shrink-0 flex items-center gap-3">
+                    <div className="text-right">
+                      <div className={`text-sm font-semibold ${isCredit ? 'text-purple-700' : 'text-gray-900'}`}>
+                        {isCredit ? '−' : ''}{fmt.format(doc.totalAmountIncludingTax)}
                       </div>
-                    )
-                  })}
+                      {hasBalance && (
+                        <div className="text-xs text-amber-600">Rest: {fmt.format(inv.remainingAmount)}</div>
+                      )}
+                    </div>
+                    <a
+                      href={pdfHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Download PDF"
+                      className={`rounded-lg p-1.5 text-gray-400 transition-colors ${isCredit ? 'hover:text-purple-600 hover:bg-purple-50' : 'hover:text-blue-600 hover:bg-blue-50'}`}
+                    >
+                      <Printer size={16} />
+                    </a>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Kreditnotaer */}
-          {creditMemos.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Kreditnotaer</p>
-              <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
-                <div className="divide-y divide-gray-100">
-                  {creditMemos.map(cm => {
-                    const isRecent = new Date(cm.postingDate) >= thirtyDaysAgo
-                    return (
-                      <div key={cm.id} className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors">
-                        <Link href={`/portal/kreditnotaer/${cm.number}`} className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-sm font-semibold text-gray-900">{cm.number}</span>
-                            {isRecent && (
-                              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">Ny</span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 text-xs text-gray-500">
-                            {new Date(cm.postingDate).toLocaleDateString('da-DK', {
-                              day: 'numeric', month: 'short', year: 'numeric',
-                            })}
-                            {cm.appliesToDocNo && ` · Vedr. faktura ${cm.appliesToDocNo}`}
-                          </div>
-                        </Link>
-                        <div className="shrink-0 flex items-center gap-3">
-                          <div className="text-right">
-                            <div className="text-sm font-semibold text-purple-700">−{fmt.format(cm.totalAmountIncludingTax)}</div>
-                          </div>
-                          <a
-                            href={`/api/portal/kreditnotaer/${cm.id}/pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Download PDF"
-                            className="rounded-lg p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
-                          >
-                            <Printer size={16} />
-                          </a>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
