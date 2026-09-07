@@ -1,5 +1,27 @@
 # Venmark Portal — Claude Code kontekst
 
+## LÆS FØRST: flere sessioner deler dette repo
+Der kører typisk **flere VS Code-/Claude-sessioner samtidig på samme PC** mod den samme
+git-klon. Et `git checkout` i én session river grundlaget væk under de andre — deres
+ændringer ser ud til at forsvinde, og en commit kan ende på den forkerte branch.
+
+**Regel: den fælles klon `C:\Users\241cib01\dev\venmark-portal` bliver på `main`.**
+Skal du arbejde på en anden branch, så tag dit eget arbejdstræ:
+
+```powershell
+.\nyt-worktree.ps1 skaerme staging   # -> ..\venmark-portal-skaerme på staging
+.\nyt-worktree.ps1 fragt             # -> ..\venmark-portal-fragt på ny branch arbejde/fragt
+```
+
+Worktrees deler samme `.git` (samme commits og remote), men har hvert sit arbejdstræ og
+sin egen branch, så sessionerne ikke rører hinanden. Scriptet junction'er `node_modules`
+fra hovedklonen, så du undgår et nyt `npm install`.
+
+`git worktree list` viser hvem der har hvad · ryd op med `git worktree remove <sti>`.
+
+Ser du ændringer i `git status` du ikke selv har lavet: **de tilhører en anden session.**
+Commit dem ikke — læg kun dine egne filer i din commit.
+
 ## Projektbeskrivelse
 Kundeportal for Venmark Fisk A/S bygget med Next.js 14 App Router + PostgreSQL.
 Kunder kan bestille varer, se fakturaer, reklamere og se leveringsstatus.
