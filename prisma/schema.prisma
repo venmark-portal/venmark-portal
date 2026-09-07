@@ -626,3 +626,30 @@ model SupplierReminderLog {
 
   @@index([declarationId])
 }
+
+// ─── Info-skærme (digital signage) ────────────────────────────────────────────
+// Tabellerne oprettes idempotent i src/lib/signage/schema.ts (serveren kører
+// ikke migrations) — modellerne står her som dokumentation af skemaet.
+
+model Screen {
+  id            String    @id
+  name          String
+  token         String    @unique   // deviceToken — skærmens eneste "login"
+  orientation   String    @default("landscape")  // landscape | portrait
+  slides        String    @default("[]")         // JSON: [{ widgetId, params, durationSec }]
+  active        Boolean   @default(true)
+  lastHeartbeat DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now())
+
+  @@index([active])
+}
+
+model BcWidgetCache {
+  key         String    @id       // widgetId?param=vaerdi — deles af ALLE skaerme
+  widgetId    String
+  payload     String              // JSON — sidste gode svar fra BC
+  fetchedAt   DateTime  @default(now())
+  lastError   String?
+  lastErrorAt DateTime?
+}
