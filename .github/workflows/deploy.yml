@@ -33,8 +33,9 @@ jobs:
               git stash push -m "auto-stash før deploy $(date -Is)"
             fi
             git pull origin main
+            # IKKE --omit=dev — se noten i test-jobbet: buildet kræver devDependencies.
             if git diff HEAD@{1} --name-only | grep -q 'package\.json\|package-lock\.json'; then
-              npm install --omit=dev
+              npm install
             fi
             set -a && source .env.local && set +a
             # Idempotent skema-selvhelbredelse: sikrer nye kolonner findes FØR prisma generate,
@@ -62,7 +63,10 @@ jobs:
               git stash push -m "auto-stash før deploy $(date -Is)"
             fi
             git pull origin staging
-            npm install --omit=dev
+            # IKKE --omit=dev: `next build` kræver devDependencies (typescript,
+            # tailwindcss, postcss). Uden typescript kan Next ikke læse "paths" fra
+            # tsconfig.json, og så fejler hvert eneste @/-import med "Module not found".
+            npm install
             set -a && source .env.local && set +a
             # Idempotent skema-selvhelbredelse (se prod-trin).
             echo 'ALTER TABLE "Customer" ADD COLUMN IF NOT EXISTS "bcChainPriceGroup" TEXT;' | npx prisma db execute --schema prisma/schema.prisma --stdin
