@@ -2102,7 +2102,14 @@ export interface SalgslisteRow {
  * Spejler BC "VM Sales Summary Mgt".BuildSummary — X-varer udeladt, og varer med
  * forsyning men uden salg får en base-enhed-række (salg = 0).
  */
-export async function getSalgsliste(salesDate: string): Promise<SalgslisteRow[]> {
+export async function getSalgsliste(
+  salesDate: string,
+  // Som standard sluges fejl og der returneres [] — admin-siden vil hellere vise en tom
+  // tabel end en fejlside. Info-skærmene har brug for det modsatte: de SKAL kunne se
+  // forskel på "intet salg i dag" og "BC svarer ikke", ellers viser skærmen tomme tal
+  // med fuld selvtillid i stedet for at falde tilbage på sidste gode data.
+  { throwOnError = false }: { throwOnError?: boolean } = {},
+): Promise<SalgslisteRow[]> {
   try {
     const token   = await getAccessToken()
     const tenant  = process.env.BC_TENANT_ID
@@ -2117,7 +2124,10 @@ export async function getSalgsliste(salesDate: string): Promise<SalgslisteRow[]>
     let aurl: string | null = `${base}/itemAvailabilities?$top=1000`
     while (aurl) {
       const res: Response = await fetch(aurl, { headers, cache: 'no-store' } as any)
-      if (!res.ok) break
+      if (!res.ok) {
+        if (throwOnError) throw new Error(`BC itemAvailabilities fejl (${res.status}): ${await res.text()}`)
+        break
+      }
       const data = await res.json()
       for (const it of (data.value ?? [])) {
         if (!it.itemNo || String(it.itemNo).startsWith('X')) continue
@@ -2138,7 +2148,10 @@ export async function getSalgsliste(salesDate: string): Promise<SalgslisteRow[]>
     let surl: string | null = `${base}/portalSalesLines?$filter=${filter}&$top=1000`
     while (surl) {
       const res: Response = await fetch(surl, { headers, cache: 'no-store' } as any)
-      if (!res.ok) break
+      if (!res.ok) {
+        if (throwOnError) throw new Error(`BC portalSalesLines fejl (${res.status}): ${await res.text()}`)
+        break
+      }
       const data = await res.json()
       for (const l of (data.value ?? [])) {
         const itemNo = l.lineObjectNumber ?? ''
@@ -2185,7 +2198,10 @@ export async function getSalgsliste(salesDate: string): Promise<SalgslisteRow[]>
     out.sort((a, b) => a.itemNo.localeCompare(b.itemNo, 'da'))
     for (const r of out) r.customers.sort((a, b) => b.qty - a.qty)
     return out
-  } catch { return [] }
+  } catch (err) {
+    if (throwOnError) throw err
+    return []
+  }
 }
 
 // ─── Hent forsendelsesmetoder fra BC (Shipment Method) ───────────────────────

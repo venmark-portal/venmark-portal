@@ -58,7 +58,9 @@ const DEFS: WidgetDef[] = [
     ],
     async fetch(params): Promise<DagensSalgData> {
       const dato = todayCopenhagen()
-      const rows = await getSalgsliste(dato)
+      // throwOnError: en skærm skal falde tilbage på sidste gode data når BC svarer
+      // dårligt — ikke vise "intet salg i dag" som om det var et rigtigt tal.
+      const rows = await getSalgsliste(dato, { throwOnError: true })
       const top  = params.top ?? 8
       const raekker = rows
         .filter(r => r.salg > 0)
