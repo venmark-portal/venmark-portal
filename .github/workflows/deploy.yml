@@ -26,6 +26,12 @@ jobs:
           script: |
             set -e
             cd /var/www/venmark
+            # Direkte edits på serveren må ikke kunne blokere et deploy (jf. CLAUDE.md).
+            # De gemmes i stash og kan hentes frem igen med `git stash list`.
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              echo "⚠ lokale ændringer på serveren — gemmer i stash før pull"
+              git stash push -m "auto-stash før deploy $(date -Is)"
+            fi
             git pull origin main
             if git diff HEAD@{1} --name-only | grep -q 'package\.json\|package-lock\.json'; then
               npm install --omit=dev
@@ -49,6 +55,12 @@ jobs:
           script: |
             set -e
             cd /var/www/venmark-test
+            # Direkte edits på serveren må ikke kunne blokere et deploy (jf. CLAUDE.md).
+            # De gemmes i stash og kan hentes frem igen med `git stash list`.
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              echo "⚠ lokale ændringer på serveren — gemmer i stash før pull"
+              git stash push -m "auto-stash før deploy $(date -Is)"
+            fi
             git pull origin staging
             npm install --omit=dev
             set -a && source .env.local && set +a
@@ -56,5 +68,9 @@ jobs:
             echo 'ALTER TABLE "Customer" ADD COLUMN IF NOT EXISTS "bcChainPriceGroup" TEXT;' | npx prisma db execute --schema prisma/schema.prisma --stdin
             npx prisma generate
             npm run build
-            pm2 restart venmark-test || pm2 start /var/www/venmark-test/ecosystem.config.js
+            # BEMÆRK: ecosystem.config.js i repoet er PROD-konfigurationen (venmark, port
+            # 3000, /var/www/venmark). Testmiljøets egen ligger som ecosystem.test.config.js
+            # på serveren (venmark-test, port 3002) — ellers ville en fallback her starte
+            # en dublet af prod.
+            pm2 restart venmark-test || pm2 start /var/www/venmark-test/ecosystem.test.config.js
             echo "✅ Test deployet"
