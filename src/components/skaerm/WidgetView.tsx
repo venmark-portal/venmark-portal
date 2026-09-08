@@ -4,6 +4,7 @@
 // læses på 3-5 meters afstand, ikke fra en kontorstol.
 
 import type { DagensSalgData, LeveringerIDagData } from '@/lib/signage/widgets'
+import type { ProduktionNu, UdbytteMontage } from '@/lib/produktion'
 
 export interface WidgetPayload {
   widgetId:  string
@@ -31,8 +32,97 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
   switch (payload.widgetId) {
     case 'dagens-salg':      return <DagensSalg data={payload.data as DagensSalgData} />
     case 'leveringer-i-dag': return <LeveringerIDag data={payload.data as LeveringerIDagData} />
+    case 'udbytte-montager': return <Udbytter data={payload.data as UdbytteMontage[]} />
+    case 'produktion-nu':    return <ProduktionNuView data={payload.data as ProduktionNu} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
+}
+
+const nf1 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 })
+
+function Udbytter({ data }: { data: UdbytteMontage[] }) {
+  if (!data?.length) {
+    return <Frame title="Udbytter"><p className="text-[4vh] text-slate-400">Ingen bogførte montager at vise endnu.</p></Frame>
+  }
+  return (
+    <Frame title="Udbytter · senest lukkede montager">
+      <div className="grid grid-cols-2 gap-x-[3vw] gap-y-[1.2vh]">
+        {data.map(m => (
+          <div key={m.productionNo} className="border-b border-white/10 pb-[0.8vh]">
+            <div className="flex items-baseline justify-between text-[2.6vh] text-slate-400">
+              <span>{m.productionNo} · {dansk(m.postingDate)}</span>
+              <span>{nf1.format(m.rawQty)} kg råvare</span>
+            </div>
+            {m.produkter.slice(0, 3).map(p => (
+              <div key={p.itemNo} className="flex items-baseline justify-between gap-[1vw]">
+                <span className="truncate text-[3vh] text-white">{p.description || p.itemNo}</span>
+                <span className={`shrink-0 text-[3.6vh] font-bold tabular-nums ${p.yieldPct >= 60 ? 'text-emerald-400' : p.yieldPct >= 35 ? 'text-amber-300' : 'text-rose-400'}`}>
+                  {nf1.format(p.yieldPct)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Frame>
+  )
+}
+
+function ProduktionNuView({ data }: { data: ProduktionNu }) {
+  return (
+    <Frame title="Produktion nu">
+      <div className="flex h-full gap-[3vw]">
+        <div className="flex-1">
+          {data.produktioner.length === 0 && (
+            <p className="text-[3.5vh] text-slate-400">Ingen produktioner er startet.</p>
+          )}
+          {data.produktioner.slice(0, 7).map(p => (
+            <div key={p.no} className="border-b border-white/10 py-[0.9vh]">
+              <div className="flex items-baseline justify-between gap-[1vw]">
+                <span className="truncate text-[3.2vh] text-white">{p.description || p.no}</span>
+                <span className="shrink-0 text-[2.6vh] text-slate-400">
+                  {p.jobNavn ?? (p.jobNo ? `job ${p.jobNo}` : '— mangler linje')}
+                </span>
+              </div>
+              <div className="text-[2.8vh] text-emerald-400">
+                {p.folk.length > 0
+                  ? p.folk.map(f => f.navn).join(' · ')
+                  : <span className="text-slate-500">ingen stemplet ind</span>}
+              </div>
+            </div>
+          ))}
+          {data.udenJob > 0 && (
+            <p className="mt-[1vh] text-[2.4vh] text-amber-400">
+              {data.udenJob} produktion{data.udenJob === 1 ? '' : 'er'} mangler linje — sæt Dan-Time jobnr. på familien
+            </p>
+          )}
+        </div>
+
+        <div className="w-[30%] shrink-0 border-l border-white/15 pl-[2vw]">
+          <div className="text-[2.6vh] uppercase tracking-widest text-slate-400">Timer i dag</div>
+          {data.linjer.map(l => (
+            <div key={l.jobNo} className="mt-[1vh] flex items-baseline justify-between">
+              <span className="truncate text-[2.8vh] text-white">{l.jobNavn ?? `job ${l.jobNo}`}</span>
+              <span className="shrink-0 text-[2.8vh] tabular-nums text-slate-300">
+                {nf1.format(l.timer)} t
+                {l.loenKr !== null && <span className="text-slate-500"> · {nf.format(l.loenKr)} kr</span>}
+              </span>
+            </div>
+          ))}
+          {data.timepris === 0 && (
+            <p className="mt-[1.5vh] text-[2.2vh] text-amber-400">
+              Gns. timeløn mangler i Virksomhedsoplysninger
+            </p>
+          )}
+        </div>
+      </div>
+    </Frame>
+  )
+}
+
+function dansk(iso: string): string {
+  const [a, m, d] = iso.split('-')
+  return d && m ? `${d}/${m}` : iso
 }
 
 function Frame({ title, children }: { title: string; children: React.ReactNode }) {
