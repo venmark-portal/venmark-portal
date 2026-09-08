@@ -58,13 +58,32 @@ export interface UdbytteMontage {
  * produkt — ikke en sum, der ville se ud som om noget manglede.
  */
 export async function sidsteUdbytter(antal = 10): Promise<UdbytteMontage[]> {
-  const fra = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 10)
-  const raekker = await bcHent('prodYields', { '$filter': `postingDate ge ${fra}`, '$top': '2000' })
+  // Én uge ad gangen, nyeste først, indtil vi har nok montager.
+  //
+  // Hvorfor ikke bare ét stort kald: BC sider resultatet op uanset $top og
+  // returnerer i NØGLErækkefølge (produktionsnr.), og nextLinks udløber. Et bredt
+  // kald gav derfor de ÆLDSTE montager — skærmen viste 31. august som "senest
+  // lukkede", selvom der var bogført montager samme dag. Et vindue på en uge er
+  // ~500 rækker og passer i én side.
+  const dag = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10)
+  const raekker: any[] = []
+  const pr = new Map<string, UdbytteMontage>()
+
+  for (let uge = 0; uge < 8; uge++) {
+    const side = await bcHent('prodYields', {
+      '$filter': `postingDate ge ${dag(7 * (uge + 1))} and postingDate le ${dag(7 * uge)}`,
+      '$top':    '1000',
+    })
+    raekker.push(...side)
+    const nok = new Set(raekker
+      .filter(r => iVaresortiment(r.itemNo) && Number(r.rawQty) >= MIN_RAAVARE_KG && Number(r.actualYieldPct) > 0)
+      .map(r => r.productionNo)).size
+    if (nok >= antal) break
+  }
 
   const brugbare = raekker.filter(r =>
     iVaresortiment(r.itemNo) && Number(r.rawQty) >= MIN_RAAVARE_KG && Number(r.actualYieldPct) > 0)
 
-  const pr = new Map<string, UdbytteMontage>()
   for (const r of brugbare) {
     let m = pr.get(r.productionNo)
     if (!m) {
