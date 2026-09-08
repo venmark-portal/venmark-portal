@@ -650,6 +650,28 @@ model Screen {
   @@index([groupId])
 }
 
+// Vores egen historik over Dan-Time-stemplinger. Nødvendig fordi Dan-Times
+// situationsrapport kun viser SENESTE stempel pr. medarbejder, og jobnummeret
+// forsvinder når personen stempler ud — man kan altså ikke spørge bagudrettet.
+// Samples hvert par minutter af /api/cron/dantime.
+model DanTimeStempling {
+  id        String   @id             // lonnr|dato|ind
+  lonnr     String
+  navn      String
+  afdeling  String?
+  gruppe    String?
+  dato      String                   // YYYY-MM-DD (dansk lokaltid)
+  ind       String                   // HH:MM
+  ud        String?                  // HH:MM — null = stadig stemplet ind
+  jobNr     String?                  // fastholdes fra da personen var inde
+  jobNavn   String?
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @default(now())
+
+  @@unique([lonnr, dato, ind])
+  @@index([jobNr, dato])
+}
+
 model ScreenGroup {
   id        String   @id
   name      String
