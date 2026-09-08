@@ -126,7 +126,7 @@ DEFS.push(
   {
     id:          'produktion-nu',
     name:        'Produktion nu',
-    description: 'Igangværende produktioner med hvilke folk der er stemplet ind på linjen, plus timer og anslået lønkroner pr. linje i dag.',
+    description: 'Igangværende produktioner med hvilke folk der er stemplet ind på linjen, plus timer og anslået lønkroner pr. linje i dag. Viser kun varenumre 10000-25000 — røgeri (over 40000) færdiggøres først dagen efter og hører ikke til på dagens skærm.',
     ttlSec:      60,
     params: [
       { key: 'topLinjer', label: 'Antal linjer i tabellen', type: 'number', default: 6, min: 3, max: 12 },
