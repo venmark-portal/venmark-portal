@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 
-const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod']
+const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/skaerm']
 
 export default function FooterConditional() {
   const pathname = usePathname()
