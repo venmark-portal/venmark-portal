@@ -15,15 +15,30 @@ function iVaresortiment(itemNo: string): boolean {
   return Number.isFinite(n) && n >= ITEM_FRA && n <= ITEM_TIL
 }
 
-async function bcHent(sti: string, params: Record<string, string>): Promise<any[]> {
-  const token = await getAccessToken()
+/**
+ * BC returnerer rækker i NØGLErækkefølge og sider dem op uanset $top. Følger man
+ * ikke nextLink, får man de ÆLDSTE montager og tror det er de nyeste — præcis
+ * den fælde udbytte-skærmen faldt i første gang.
+ */
+async function bcHent(sti: string, params: Record<string, string>, maxSider = 20): Promise<any[]> {
+  const token   = await getAccessToken()
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')
-  const res = await fetch(`${bcPortalBaseUrl()}/${sti}?${qs}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`BC ${sti} fejl (${res.status}): ${(await res.text()).slice(0, 200)}`)
-  return (await res.json()).value ?? []
+
+  let url: string | null = `${bcPortalBaseUrl()}/${sti}?${qs}`
+  const alle: any[] = []
+  for (let side = 0; url && side < maxSider; side++) {
+    const res: Response = await fetch(url, { headers, cache: 'no-store' })
+    if (!res.ok) {
+      // En udløbet nextLink må ikke koste os det vi allerede har hentet.
+      if (side > 0) break
+      throw new Error(`BC ${sti} fejl (${res.status}): ${(await res.text()).slice(0, 200)}`)
+    }
+    const data = await res.json()
+    alle.push(...(data.value ?? []))
+    url = data['@odata.nextLink'] ?? null
+  }
+  return alle
 }
 
 // ─── Udbytte på lukkede montager ─────────────────────────────────────────────
