@@ -125,9 +125,15 @@ export interface ProduktionNu {
 }
 
 export async function produktionNu(): Promise<ProduktionNu> {
-  const ordrer = await bcHent('prodOrders', {
+  const alle = await bcHent('prodOrders', {
     '$filter': 'productionStarted eq true and afsluttet eq false', '$top': '200',
   })
+
+  // Samme varenummer-interval som udbytterne. Røgeri-varerne ligger over 40000 og
+  // skal IKKE med: de står som "startet" i dagevis, fordi de først færdiggøres
+  // dagen efter, og ville ellers fylde skærmen med produktioner ingen arbejder på
+  // lige nu (Claus 2026-09-08).
+  const ordrer = alle.filter(o => iVaresortiment(o.itemNo))
 
   // Timeprisen kommer fra Virksomhedsoplysninger — samme sats som styklisteberegningen.
   let timepris = 0
