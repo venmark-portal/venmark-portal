@@ -32,6 +32,36 @@ async function bcFetch(sti: string, init: RequestInit = {}): Promise<Response> {
 export interface JobSynkResultat { set: number; oprettet: number; opdateret: number }
 
 /**
+ * Skriver ét job. "Last Seen" er markeret Editable = false i BC-tabellen, så
+ * API'et afviser feltet ("Control 'lastSeen' is read-only"). Vi prøver med, og
+ * falder tilbage til uden — så virker synkroniseringen i dag, OG feltet begynder
+ * af sig selv at blive udfyldt den dag tabellen gør feltet skrivbart.
+ */
+async function skrivJob(
+  sti: string, metode: 'POST' | 'PATCH', headers: Record<string, string>,
+  jobNo: string, name: string, sidst: Date,
+): Promise<boolean> {
+  const grund = metode === 'POST' ? { jobNo, name } : { name }
+
+  let r = await bcFetch(sti, {
+    method: metode, headers,
+    body: JSON.stringify({ ...grund, lastSeen: sidst.toISOString() }),
+  })
+  if (r.ok) return true
+
+  const tekst = await r.text()
+  if (r.status === 400 && tekst.includes('lastSeen')) {
+    r = await bcFetch(sti, { method: metode, headers, body: JSON.stringify(grund) })
+    if (r.ok) return true
+    console.error(`[dantime→bc] job ${jobNo} (uden lastSeen):`, (await r.text()).slice(0, 200))
+    return false
+  }
+
+  console.error(`[dantime→bc] job ${jobNo}:`, tekst.slice(0, 200))
+  return false
+}
+
+/**
  * De job vi har set folk stemplet ind på, skrives til BC's "VM Dan-Time Job".
  * Navnet kan ændre sig i Dan-Time; nummeret er nøglen.
  */
@@ -56,24 +86,16 @@ export async function synkJobsTilBC(): Promise<JobSynkResultat> {
     const findes = efterNr.get(j.jobNr)
 
     if (!findes) {
-      const r = await bcFetch('danTimeJobs', {
-        method: 'POST',
-        body: JSON.stringify({ jobNo: j.jobNr, name: navn, lastSeen: j.sidst.toISOString() }),
-      })
-      if (r.ok) oprettet++
-      else console.error(`[dantime→bc] kunne ikke oprette job ${j.jobNr}:`, (await r.text()).slice(0, 200))
+      const r = await skrivJob('danTimeJobs', 'POST', {}, j.jobNr, navn, j.sidst)
+      if (r) oprettet++
       continue
     }
 
     // Rør kun BC hvis navnet reelt har ændret sig — ellers larmer vi i deres
     // ændringslog for ingenting.
     if ((findes.name ?? '') !== navn) {
-      const r = await bcFetch(`danTimeJobs(${findes.id})`, {
-        method:  'PATCH',
-        headers: { 'If-Match': '*' },
-        body:    JSON.stringify({ name: navn, lastSeen: j.sidst.toISOString() }),
-      })
-      if (r.ok) opdateret++
+      const r = await skrivJob(`danTimeJobs(${findes.id})`, 'PATCH', { 'If-Match': '*' }, j.jobNr, navn, j.sidst)
+      if (r) opdateret++
     }
   }
   return { set: set.length, oprettet, opdateret }
