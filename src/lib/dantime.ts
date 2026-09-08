@@ -161,7 +161,72 @@ export async function ingestDanTime(raekker: DanTimeRow[]): Promise<IngestResult
     if (fx === 1) nye++
     if (r.ud) lukkede++
   }
+
+  // Sikkerhedsnet: rapporten viser kun SENESTE stempling pr. person, så skifter
+  // nogen job uden at vi når at se udstemplingen, ville det gamle interval stå
+  // åbent for evigt og tælle timer i det uendelige. Ingen kan være to steder på
+  // én gang — så et åbent interval lukkes ved næste interval samme dag.
+  await prisma.$executeRaw`
+    UPDATE "DanTimeStempling" a SET ud = (
+      SELECT MIN(b.ind) FROM "DanTimeStempling" b
+      WHERE b.lonnr = a.lonnr AND b.dato = a.dato AND b.ind > a.ind)
+    WHERE a.ud IS NULL AND EXISTS (
+      SELECT 1 FROM "DanTimeStempling" b
+      WHERE b.lonnr = a.lonnr AND b.dato = a.dato AND b.ind > a.ind)
+  `
+
   return { hentet: raekker.length, nye, lukkede }
+}
+
+// ─── Timer pr. job ───────────────────────────────────────────────────────────
+
+export interface JobTimer {
+  jobNr:    string
+  jobNavn:  string | null
+  personer: number
+  minutter: number
+  timer:    number
+}
+
+/**
+ * Arbejdstimer pr. job for en dag. Timerne er EKSAKTE — de regnes af
+ * stemplingernes egne IND/UD, ikke af sample-intervallet.
+ *
+ * Pauser er allerede trukket fra: folk stempler ud når de holder pause, så et
+ * interval indeholder kun arbejdstid. Åbne intervaller tælles til og med nu.
+ */
+export async function timerPrJob(dato: string): Promise<JobTimer[]> {
+  await ensureDanTimeSchema()
+  const rows = await prisma.$queryRaw<{
+    jobNr: string; jobNavn: string | null; ind: string; ud: string | null
+  }[]>`
+    SELECT "jobNr", "jobNavn", ind, ud FROM "DanTimeStempling"
+    WHERE dato = ${dato} AND "jobNr" IS NOT NULL
+  `
+
+  const nu = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Copenhagen', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  }).format(new Date())
+
+  const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const pr = new Map<string, JobTimer>()
+
+  for (const r of rows) {
+    const slut = r.ud ?? nu
+    let m = min(slut) - min(r.ind)
+    if (m < 0) m += 24 * 60          // vagt hen over midnat
+    if (m <= 0) continue
+
+    const e = pr.get(r.jobNr) ??
+      { jobNr: r.jobNr, jobNavn: r.jobNavn, personer: 0, minutter: 0, timer: 0 }
+    e.personer += 1
+    e.minutter += m
+    pr.set(r.jobNr, e)
+  }
+
+  const ud = Array.from(pr.values())
+  for (const e of ud) e.timer = Math.round((e.minutter / 60) * 100) / 100
+  return ud.sort((a, b) => b.minutter - a.minutter)
 }
 
 // ─── Opslag ──────────────────────────────────────────────────────────────────
