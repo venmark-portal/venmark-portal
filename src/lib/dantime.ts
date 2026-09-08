@@ -195,6 +195,11 @@ export interface JobTimer {
  * Pauser er allerede trukket fra: folk stempler ud når de holder pause, så et
  * interval indeholder kun arbejdstid. Åbne intervaller tælles til og med nu.
  */
+/** Dagens dato i dansk tid (YYYY-MM-DD) — samme dato som stemplingerne gemmes på. */
+export function copenhagenDato(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(now)
+}
+
 export async function timerPrJob(dato: string): Promise<JobTimer[]> {
   await ensureDanTimeSchema()
   const rows = await prisma.$queryRaw<{

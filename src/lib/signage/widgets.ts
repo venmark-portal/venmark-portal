@@ -6,6 +6,7 @@
 // widget, tilføjes den her (og en visning i src/components/skaerm/WidgetView).
 
 import { getSalgsliste, getSalesOrdersForDelivery } from '@/lib/businesscentral'
+import { produktionNu, sidsteUdbytter, type ProduktionNu, type UdbytteMontage } from '@/lib/produktion'
 
 export interface WidgetParamDef {
   key:     string
@@ -108,6 +109,34 @@ const DEFS: WidgetDef[] = [
     },
   },
 ]
+
+DEFS.push(
+  {
+    id:          'udbytte-montager',
+    name:        'Udbytter, sidste lukkede montager',
+    description: 'Udbytte pr. produkt på de senest bogførte montager. Viser kun varenumre 10000-25000 og montager med mindst 25 kg råvare — resten er fejl eller produktioner hvor systemet er "snydt".',
+    ttlSec:      300,
+    params: [
+      { key: 'antal', label: 'Antal montager', type: 'number', default: 10, min: 3, max: 15 },
+    ],
+    async fetch(params): Promise<UdbytteMontage[]> {
+      return sidsteUdbytter(params.antal ?? 10)
+    },
+  },
+  {
+    id:          'produktion-nu',
+    name:        'Produktion nu',
+    description: 'Igangværende produktioner med hvilke folk der er stemplet ind på linjen, plus timer og anslået lønkroner pr. linje i dag.',
+    ttlSec:      60,
+    params: [
+      { key: 'topLinjer', label: 'Antal linjer i tabellen', type: 'number', default: 6, min: 3, max: 12 },
+    ],
+    async fetch(params): Promise<ProduktionNu> {
+      const d = await produktionNu()
+      return { ...d, linjer: d.linjer.slice(0, params.topLinjer ?? 6) }
+    },
+  },
+)
 
 export const WIDGETS: Record<string, WidgetDef> = Object.fromEntries(DEFS.map(w => [w.id, w]))
 
