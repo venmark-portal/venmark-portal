@@ -1,13 +1,11 @@
 'use client'
 
-// Fase 1-player: ÉN zone der roterer mellem skærmens slides.
-//
-// NB: den anden Claude-session ejer skærm-frontenden. Det her er "bevis flowet"-
-// playeren — den taler det endelige API (manifest / data / heartbeat), så den kan
-// skiftes ud uden at røre serveren.
+// Playeren. To zoner: BC-tallene står fast øverst, slide-båndet roterer i bunden
+// (layout 'split'). Med layout 'single' roterer alt i én fuldskærms-zone.
 //
 // Tre løkker kører uafhængigt:
-//   manifest hvert 15 s  → ny version = redaktøren har ændret noget → hent forfra
+//   manifest hvert 15 s  → ny version = ændret opsætning ELLER et tidsplanlagt
+//                          slide der er gået ind/ud → hent hele tilstanden forfra
 //   data     hvert 30 s  → friske BC-tal (serveren har selv en delt cache)
 //   heartbeat hvert 30 s → admin kan se om skærmen reelt kører
 // Fejler et kald, beholder vi det vi har. Skærmen må aldrig gå sort.
@@ -17,14 +15,15 @@ import WidgetView, { type WidgetPayload } from '@/components/skaerm/WidgetView'
 
 interface Slide {
   widgetId:    string
-  params:      Record<string, number>
   durationSec: number
+  zone:        'main' | 'ticker'
 }
 
 export interface PlayerData {
   version:     string
   name:        string
   orientation: 'landscape' | 'portrait'
+  layout:      'single' | 'split'
   slides:      Slide[]
   widgets:     WidgetPayload[]
 }
@@ -34,44 +33,37 @@ const DATA_MS      = 30_000
 const HEARTBEAT_MS = 30_000
 
 export default function Player({ token, initial }: { token: string; initial: PlayerData }) {
-  const [slides,  setSlides]  = useState<Slide[]>(initial.slides)
-  const [widgets, setWidgets] = useState<WidgetPayload[]>(initial.widgets)
-  const [idx,     setIdx]     = useState(0)
+  const [state, setState]     = useState<PlayerData>(initial)
   const [klokken, setKlokken] = useState<string | null>(null)
-
   const version = useRef(initial.version)
 
-  const hentData = useCallback(async () => {
+  const hentAlt = useCallback(async () => {
     const res = await fetch(`/api/skaerm/${token}/data`, { cache: 'no-store' })
     if (!res.ok) return
-    const d = await res.json()
-    setWidgets(d.widgets ?? [])
+    const d: PlayerData = await res.json()
+    version.current = d.version
+    setState(d)
   }, [token])
 
-  // Manifest-poll: skifter versionen, har redaktøren ændret opsætningen.
+  // Manifest-poll: skifter versionen, er der sket noget — enten har redaktøren
+  // ændret opsætningen, eller et tidsplanlagt slide er gået ind eller ud.
   useEffect(() => {
     const t = setInterval(async () => {
       try {
         const res = await fetch(`/api/skaerm/${token}/manifest`, { cache: 'no-store' })
         if (!res.ok) return
         const m = await res.json()
-        if (m.version === version.current) return
-        version.current = m.version
-        setSlides(m.slides ?? [])
-        setIdx(0)
-        await hentData()
+        if (m.version !== version.current) await hentAlt()
       } catch { /* netfejl — vi kører videre på det vi har */ }
     }, MANIFEST_MS)
     return () => clearInterval(t)
-  }, [token, hentData])
+  }, [token, hentAlt])
 
-  // Data-poll.
   useEffect(() => {
-    const t = setInterval(() => { hentData().catch(() => {}) }, DATA_MS)
+    const t = setInterval(() => { hentAlt().catch(() => {}) }, DATA_MS)
     return () => clearInterval(t)
-  }, [hentData])
+  }, [hentAlt])
 
-  // Heartbeat.
   useEffect(() => {
     const slaa = () => {
       fetch(`/api/skaerm/${token}/heartbeat`, { method: 'POST', cache: 'no-store' }).catch(() => {})
@@ -81,15 +73,6 @@ export default function Player({ token, initial }: { token: string; initial: Pla
     return () => clearInterval(t)
   }, [token])
 
-  // Rotation mellem slides.
-  useEffect(() => {
-    if (slides.length < 2) return
-    const ms = Math.max(5, slides[idx]?.durationSec ?? 20) * 1000
-    const t  = setTimeout(() => setIdx(i => (i + 1) % slides.length), ms)
-    return () => clearTimeout(t)
-  }, [slides, idx])
-
-  // Ur i hjørnet.
   useEffect(() => {
     const vis = () => setKlokken(
       new Intl.DateTimeFormat('da-DK', {
@@ -101,28 +84,84 @@ export default function Player({ token, initial }: { token: string; initial: Pla
     return () => clearInterval(t)
   }, [])
 
-  const aktuel = widgets[idx]
+  // Indeksér slides med deres payload, så de to aldrig kan komme ud af trit.
+  const alle   = state.slides.map((s, i) => ({ slide: s, payload: state.widgets[i] }))
+  const split  = state.layout === 'split'
+  const main   = split ? alle.filter(x => x.slide.zone !== 'ticker') : alle
+  const ticker = split ? alle.filter(x => x.slide.zone === 'ticker') : []
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-900">
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-slate-900">
+      <Zone items={main} className="min-h-0 flex-1" />
+
+      {ticker.length > 0 && (
+        <Zone
+          items={ticker}
+          className="h-[22vh] min-h-0 shrink-0 border-t border-white/15 bg-slate-950"
+        />
+      )}
+
+      <Ur klokken={klokken} items={alle} />
+    </div>
+  )
+}
+
+/** Én zone der roterer mellem sine egne slides. */
+function Zone({
+  items, className,
+}: {
+  items: { slide: Slide; payload: WidgetPayload | undefined }[]
+  className?: string
+}) {
+  const [idx, setIdx] = useState(0)
+
+  // Falder antallet af slides (fx et tidsplanlagt slide der går ud), må indekset
+  // ikke blive stående uden for listen.
+  useEffect(() => {
+    if (idx >= items.length && items.length > 0) setIdx(0)
+  }, [items.length, idx])
+
+  useEffect(() => {
+    if (items.length < 2) return
+    const ms = Math.max(5, items[idx]?.slide.durationSec ?? 20) * 1000
+    const t  = setTimeout(() => setIdx(i => (i + 1) % items.length), ms)
+    return () => clearTimeout(t)
+  }, [items, idx])
+
+  if (items.length === 0) return null
+  const vist = idx < items.length ? idx : 0
+
+  return (
+    <div className={`relative ${className ?? ''}`}>
       {/* Alle slides ligger i DOM'en og skiftes med opacity — intet sort blink. */}
-      {slides.map((s, i) => (
+      {items.map((x, i) => (
         <div
-          key={`${s.widgetId}-${i}`}
+          key={`${x.slide.widgetId}-${i}`}
           className="absolute inset-0 transition-opacity duration-700"
-          style={{ opacity: i === idx ? 1 : 0 }}
-          aria-hidden={i !== idx}
+          style={{ opacity: i === vist ? 1 : 0 }}
+          aria-hidden={i !== vist}
         >
-          <WidgetView payload={widgets[i]} />
+          <WidgetView payload={x.payload} />
         </div>
       ))}
+    </div>
+  )
+}
 
-      <div className="absolute bottom-[2vh] right-[3vh] flex items-baseline gap-[2vw] text-[2.4vh] text-slate-500">
-        {aktuel?.stale && aktuel.fetchedAt && (
-          <span className="text-amber-400">Opdateret kl. {klokkeslet(aktuel.fetchedAt)}</span>
-        )}
-        <span>{klokken}</span>
-      </div>
+function Ur({
+  klokken, items,
+}: {
+  klokken: string | null
+  items: { payload: WidgetPayload | undefined }[]
+}) {
+  // Vis "opdateret kl." så snart NOGET på skærmen kører på gamle tal.
+  const gammel = items.find(x => x.payload?.stale && x.payload.fetchedAt)?.payload
+  return (
+    <div className="pointer-events-none absolute bottom-[1.5vh] right-[2.5vh] flex items-baseline gap-[2vw] text-[2.2vh] text-slate-500">
+      {gammel?.fetchedAt && (
+        <span className="text-amber-400">Opdateret kl. {klokkeslet(gammel.fetchedAt)}</span>
+      )}
+      <span>{klokken}</span>
     </div>
   )
 }

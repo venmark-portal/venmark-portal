@@ -636,13 +636,38 @@ model Screen {
   name          String
   token         String    @unique   // deviceToken — skærmens eneste "login"
   orientation   String    @default("landscape")  // landscape | portrait
-  slides        String    @default("[]")         // JSON: [{ widgetId, params, durationSec }]
+  layout        String    @default("single")     // single | split (BC øverst + slide-bånd)
+  groupId       String?
+  // JSON: [{ widgetId, params, durationSec, zone, schedule? }]
+  // zone: main | ticker · schedule: { from, to, timeFrom, timeTo, weekdays[] } i dansk tid
+  slides        String    @default("[]")
   active        Boolean   @default(true)
   lastHeartbeat DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @default(now())
 
   @@index([active])
+  @@index([groupId])
+}
+
+model ScreenGroup {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+// Adgang pr. bruger x skaerm ELLER gruppe. Gaelder kun brugere med
+// AdminUser.signageLimited = true; almindelige portal-admins kan alt.
+model ScreenAccess {
+  id        String   @id
+  userId    String
+  screenId  String?
+  groupId   String?
+  role      String   @default("editor")  // viewer | editor | admin
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model BcWidgetCache {

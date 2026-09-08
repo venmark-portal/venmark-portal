@@ -6,7 +6,7 @@
 
 import { notFound } from 'next/navigation'
 import { getWidgetData } from '@/lib/signage/cache'
-import { contentVersion, getScreenByToken } from '@/lib/signage/screens'
+import { activeSlides, contentVersion, copenhagenNow, getScreenByToken } from '@/lib/signage/screens'
 import Player from './Player'
 
 export const dynamic = 'force-dynamic'
@@ -17,19 +17,21 @@ export default async function SkaermPage({ params }: { params: { token: string }
   if (!screen || !screen.active) notFound()
 
   // Første billede server-rendres, så skærmen viser rigtige tal allerede ved
-  // opstart — også hvis den tænder før nogen kigger på den.
-  const widgets = await Promise.all(
-    screen.slides.map(s => getWidgetData(s.widgetId, s.params)),
-  )
+  // opstart — også hvis den tænder før nogen kigger på den. Samme tidsstempel
+  // til både tidsplan og hash, så de ikke kan komme ud af trit.
+  const nu      = copenhagenNow()
+  const slides  = activeSlides(screen, nu)
+  const widgets = await Promise.all(slides.map(s => getWidgetData(s.widgetId, s.params)))
 
   return (
     <Player
       token={screen.token}
       initial={{
-        version:     contentVersion(screen),
+        version:     contentVersion(screen, nu),
         name:        screen.name,
         orientation: screen.orientation,
-        slides:      screen.slides,
+        layout:      screen.layout,
+        slides,
         widgets,
       }}
     />
