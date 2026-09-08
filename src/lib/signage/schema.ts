@@ -42,6 +42,40 @@ async function run(): Promise<void> {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "Screen_active_idx" ON "Screen" (active)
   `
+
+  // ── Grupper: tildel adgang (og senere indhold) pr. gruppe i stedet for pr. skærm ──
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "ScreenGroup" (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW()
+    )
+  `
+  await prisma.$executeRaw`ALTER TABLE "Screen" ADD COLUMN IF NOT EXISTS "groupId" TEXT`
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Screen_groupId_idx" ON "Screen" ("groupId")`
+
+  // Layout: 'single' = én zone i fuld skærm · 'split' = BC øverst + slide-bånd i bunden.
+  await prisma.$executeRaw`ALTER TABLE "Screen" ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'single'`
+
+  // ── Adgang pr. bruger × skærm ELLER gruppe ──────────────────────────────────
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "ScreenAccess" (
+      id          TEXT PRIMARY KEY,
+      "userId"    TEXT NOT NULL,
+      "screenId"  TEXT,
+      "groupId"   TEXT,
+      role        TEXT NOT NULL DEFAULT 'editor',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW()
+    )
+  `
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "ScreenAccess_userId_idx" ON "ScreenAccess" ("userId")`
+
+  // Portal-admins har i forvejen adgang til kunder, ordrer og fakturaer, så de er
+  // også signage-superadmins. Flaget her er til dem der KUN skal have skærme — fx
+  // marketing: for dem gælder udelukkende det ScreenAccess giver.
+  // Default false, så eksisterende admins er uændrede.
+  await prisma.$executeRaw`ALTER TABLE "AdminUser" ADD COLUMN IF NOT EXISTS "signageLimited" BOOLEAN NOT NULL DEFAULT false`
 }
 
 /** Idempotent — DDL'en køres kun én gang pr. proces. */

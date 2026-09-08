@@ -1,6 +1,8 @@
 import { getServerSession } from 'next-auth'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
+import { isLimitedUser } from '@/lib/signage/screens'
 import SessionProvider from '@/components/portal/SessionProvider'
 
 export default async function AdminLayout({
@@ -12,6 +14,17 @@ export default async function AdminLayout({
 
   if (!session || (session.user as any)?.role !== 'admin') {
     redirect('/admin/login')
+  }
+
+  // Signage-begrænsede brugere (fx marketing) må kun se skærm-siderne — ikke
+  // kunder, ordrer og fakturaer. Tjekket ligger her frem for i middlewaren,
+  // fordi det kræver et databaseopslag, og databasen er den eneste sandhed:
+  // fjerner man begrænsningen, gælder det med det samme uden nyt login.
+  const userId = String((session.user as any)?.id ?? '')
+  const begraenset = userId ? await isLimitedUser(userId) : false
+  const sti = headers().get('x-pathname') ?? ''
+  if (begraenset && !sti.startsWith('/admin/skaerme')) {
+    redirect('/admin/skaerme')
   }
 
   return (
@@ -30,6 +43,10 @@ export default async function AdminLayout({
                 </span>
               </div>
               <nav className="flex items-center gap-1 text-sm font-medium text-gray-600 flex-wrap">
+                {begraenset ? (
+                  <a href="/admin/skaerme" className="rounded px-2 py-1 bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100">Skærme</a>
+                ) : (
+                <>
                 <a href="/admin/kunder"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kunder</a>
                 <a href="/admin/ordrer"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Ordrer</a>
                 <a href="/admin/salgsliste"    className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Salgsliste</a>
@@ -47,6 +64,8 @@ export default async function AdminLayout({
                 <a href="/admin/leveringskoder"   className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Leveringskoder</a>
                 <a href="/admin/kassefoto"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kassefoto</a>
                 <a href="/admin/skaerme"          className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Skærme</a>
+                </>
+                )}
               </nav>
               <a
                 href="/api/auth/signout"

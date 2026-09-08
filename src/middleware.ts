@@ -33,7 +33,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/portal', req.url))
   }
 
-  return NextResponse.next()
+  // Giv stien videre til server-komponenterne. Admin-layoutet bruger den til at
+  // holde signage-begrænsede brugere inde på skærm-siderne — det tjek kræver et
+  // databaseopslag og kan derfor ikke ligge her i Edge-middlewaren.
+  const headers = new Headers(req.headers)
+  headers.set('x-pathname', pathname)
+  return NextResponse.next({ request: { headers } })
 }
 
 export const config = {
