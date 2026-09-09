@@ -143,6 +143,8 @@ export interface Medarbejder { navn: string; lonnr: string; initialer: string }
 
 export interface LinjeProduktion {
   no: string; description: string
+  /** Ordrens varenr. — på familieproduktioner er det familiekoden. */
+  itemNo: string
   afsluttet: boolean
   /** Kun på afsluttede: hvem der var på linjen da ordren blev afsluttet. */
   folk: Medarbejder[]
@@ -195,7 +197,8 @@ export async function produktionNu(): Promise<ProduktionNu> {
     }
 
     const prod: LinjeProduktion = {
-      no: String(o.no), description: String(o.description ?? ""), afsluttet, folk,
+      no: String(o.no), description: String(o.description ?? ''),
+      itemNo: String(o.itemNo ?? ''), afsluttet, folk,
     }
     if (!jobNo) { udenLinje.push(prod); continue }
 
