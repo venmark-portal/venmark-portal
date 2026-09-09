@@ -94,17 +94,21 @@ async function mailBeskeder(): Promise<Besked[]> {
   if (!tRes.ok) throw new Error(`Graph-token ${tRes.status}`)
   const token = (await tRes.json()).access_token
 
-  // Vi henter flere end vi skal bruge, fordi støjen sorteres fra bagefter.
+  // Vi henter langt flere end vi skal bruge, fordi det meste sorteres fra: både
+  // maskinsvar og alt der har fået en Outlook-kategori.
   // 'String 0x001A' = beskedklassen (PidTagMessageClass) — den afslører kvitteringer.
   const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(bruger)}` +
-              `/mailFolders/Inbox/messages?$top=60` +
-              `&$select=subject,receivedDateTime,from,internetMessageHeaders` +
+              `/mailFolders/Inbox/messages?$top=150` +
+              `&$select=subject,receivedDateTime,from,categories,internetMessageHeaders` +
               `&$expand=singleValueExtendedProperties($filter=id eq 'String 0x001A')` +
               `&$orderby=receivedDateTime desc`
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
   if (!res.ok) throw new Error(`Graph mail ${res.status}: ${(await res.text()).slice(0, 120)}`)
 
   return ((await res.json()).value ?? [])
+    // En Outlook-kategori betyder at nogen har taget mailen (kategorierne er
+    // navne: Line, Nicolai, COOP). Skærmen viser kun det ingen har taget fat i.
+    .filter((m: any) => (m.categories ?? []).length === 0)
     .filter((m: any) => !erMaskinsvar(m))
     .map((m: any) => ({
       slags: 'mail' as const,
