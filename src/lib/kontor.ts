@@ -180,7 +180,7 @@ export async function beskedFeed(antal = 20): Promise<BeskedFeed> {
 
   const valgt: Besked[] = []
   const rest:  Besked[] = []
-  for (const liste of perKilde.values()) {
+  for (const liste of Array.from(perKilde.values())) {
     valgt.push(...liste.slice(0, kvote))
     rest.push(...liste.slice(kvote))
   }
