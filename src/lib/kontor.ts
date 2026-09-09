@@ -35,9 +35,16 @@ export interface BeskedFeed {
   mangler:  string[]
 }
 
-/** Indgående SMS. Afsender = matchet navn hvis vi kender nummeret, ellers nummeret. */
+/**
+ * Indgående SMS. Afsender = matchet navn hvis vi kender nummeret, ellers nummeret.
+ *
+ * Datofilteret er ikke pynt: BC returnerer i NØGLErækkefølge, så et rent
+ * `$top=100` gav de 100 ÆLDSTE poster — feeden viste SMS fra juni, mens dagens
+ * lå usete. Samme fælde som udbytterne.
+ */
 async function smsBeskeder(): Promise<Besked[]> {
-  const raekker = await bcHent('smsLogs', { '$top': '100' })
+  const fra = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 19) + 'Z'
+  const raekker = await bcHent('smsLogs', { '$filter': `loggedAt ge ${fra}`, '$top': '1000' })
   return raekker
     .filter(r => String(r.direction ?? '').toLowerCase().startsWith('in'))
     .map(r => ({
@@ -153,21 +160,37 @@ export async function beskedFeed(antal = 20): Promise<BeskedFeed> {
     ['portal', portalBeskeder()],
   ]
 
-  const beskeder: Besked[] = []
+  const perKilde = new Map<string, Besked[]>()
   const mangler:  string[] = []
   for (const [navn, p] of kilder) {
-    try { beskeder.push(...await p) }
-    catch (e) {
+    try {
+      const r = (await p).filter(b => b.tid).sort((a, b) => b.tid.localeCompare(a.tid))
+      perKilde.set(navn, r)
+    } catch (e) {
       mangler.push(navn)
       console.error(`[kontor] ${navn}:`, e instanceof Error ? e.message : e)
     }
   }
 
+  // Hver kilde får en garanteret andel af pladserne først. Uden det fortrænger
+  // mailen alt andet: indbakken får mange mails om dagen, mens der kan gå uger
+  // mellem to SMS — og så var de aldrig at se, selvom de er vigtige.
+  const aktive = Array.from(perKilde.values()).filter(v => v.length > 0)
+  const kvote  = aktive.length > 0 ? Math.max(1, Math.floor(antal / aktive.length)) : antal
+
+  const valgt: Besked[] = []
+  const rest:  Besked[] = []
+  for (const liste of perKilde.values()) {
+    valgt.push(...liste.slice(0, kvote))
+    rest.push(...liste.slice(kvote))
+  }
+
+  // Resten af pladserne går til de nyeste uanset kilde.
+  rest.sort((a, b) => b.tid.localeCompare(a.tid))
+  valgt.push(...rest.slice(0, Math.max(0, antal - valgt.length)))
+
   return {
-    beskeder: beskeder
-      .filter(b => b.tid)
-      .sort((a, b) => b.tid.localeCompare(a.tid))
-      .slice(0, antal),
+    beskeder: valgt.sort((a, b) => b.tid.localeCompare(a.tid)).slice(0, antal),
     mangler,
   }
 }
@@ -237,15 +260,17 @@ export async function tabteKunder(fra = 7, til = 21, antal = 60): Promise<TabtKu
     '$top':    '5000',
   })
 
-  // Personalet handler som privatkunder og skal ikke med. De kendes på
-  // bogførings-/prisgruppen PERSONALE — hverken navn eller kundenummer røber det.
+  // Personalet handler som privatkunder og skal ikke med. De kendes udelukkende
+  // på DEBITORBOGFØRINGSGRUPPEN PERSONALE (Claus) — ikke prisgruppen, for den
+  // kan en rigtig kunde også have. Hverken navn eller kundenummer røber det.
   // Kan gruppen ikke hentes, viser vi hellere for meget end at skjule en rigtig
   // kunde i tavshed.
   const personale = new Set<string>()
   try {
     for (const c of await bcHent('customerGroups', { '$top': '5000' })) {
-      const g = `${c.postingGroup ?? ''} ${c.priceGroup ?? ''}`.toUpperCase()
-      if (g.includes('PERSONALE')) personale.add(String(c.number))
+      if (String(c.postingGroup ?? '').trim().toUpperCase() === 'PERSONALE') {
+        personale.add(String(c.number))
+      }
     }
   } catch (e) {
     console.error('[kontor] customerGroups:', e instanceof Error ? e.message : e)
