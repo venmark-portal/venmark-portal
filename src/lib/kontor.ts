@@ -230,17 +230,31 @@ export interface TabtKunde {
  * Vi henter et vindue der er bredere end `til`, så en kunde der købte for nylig
  * ikke fejlagtigt ser ud til at være væk.
  */
-export async function tabteKunder(fra = 7, til = 21, antal = 10): Promise<TabtKunde[]> {
+export async function tabteKunder(fra = 7, til = 21, antal = 60): Promise<TabtKunde[]> {
   const dag = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10)
   const fakturaer = await bcHent('postedSalesInvoices', {
     '$filter': `postingDate ge ${dag(til + 7)}`,
     '$top':    '5000',
   })
 
+  // Personalet handler som privatkunder og skal ikke med. De kendes på
+  // bogførings-/prisgruppen PERSONALE — hverken navn eller kundenummer røber det.
+  // Kan gruppen ikke hentes, viser vi hellere for meget end at skjule en rigtig
+  // kunde i tavshed.
+  const personale = new Set<string>()
+  try {
+    for (const c of await bcHent('customerGroups', { '$top': '5000' })) {
+      const g = `${c.postingGroup ?? ''} ${c.priceGroup ?? ''}`.toUpperCase()
+      if (g.includes('PERSONALE')) personale.add(String(c.number))
+    }
+  } catch (e) {
+    console.error('[kontor] customerGroups:', e instanceof Error ? e.message : e)
+  }
+
   const sidste = new Map<string, { navn: string; dato: string }>()
   for (const f of fakturaer) {
     const nr = String(f.customerNumber ?? '')
-    if (!nr) continue
+    if (!nr || personale.has(nr)) continue
     const dato = String(f.postingDate ?? '').slice(0, 10)
     const kendt = sidste.get(nr)
     if (!kendt || dato > kendt.dato) sidste.set(nr, { navn: String(f.customerName ?? nr), dato })
