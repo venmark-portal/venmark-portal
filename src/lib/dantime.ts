@@ -342,6 +342,15 @@ export async function alleJobNavne(): Promise<Map<string, string>> {
   return new Map(rows.filter(r => r.jobNavn).map(r => [r.jobNr, r.jobNavn as string]))
 }
 
+/** Lønnr → initialer, til opslag når vi kun har nummeret fra BC. */
+export async function initialerPrLonnr(): Promise<Map<string, string>> {
+  await ensureDanTimeSchema()
+  const rows = await prisma.$queryRaw<{ lonnr: string; initialer: string }[]>`
+    SELECT lonnr, initialer FROM "DanTimeMedarbejder"
+  `
+  return new Map(rows.map(r => [r.lonnr, r.initialer]))
+}
+
 export async function listMedarbejdere(): Promise<Medarbejder[]> {
   await ensureDanTimeSchema()
   return prisma.$queryRaw<Medarbejder[]>`
