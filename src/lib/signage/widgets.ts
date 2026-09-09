@@ -7,6 +7,10 @@
 
 import { getSalgsliste, getSalesOrdersForDelivery } from '@/lib/businesscentral'
 import { produktionNu, sidsteUdbytter, type ProduktionNu, type UdbytteRaekke } from '@/lib/produktion'
+import {
+  afvisteLinjer, beskedFeed, nyesteReklamationer, tabteKunder,
+  type AfvistLinje, type BeskedFeed, type Reklamation, type TabtKunde,
+} from '@/lib/kontor'
 
 export interface WidgetParamDef {
   key:     string
@@ -134,6 +138,53 @@ DEFS.push(
     async fetch(params): Promise<ProduktionNu> {
       const d = await produktionNu()
       return { ...d, linjer: d.linjer.slice(0, params.topLinjer ?? 6) }
+    },
+  },
+)
+
+DEFS.push(
+  {
+    id:          'beskeder',
+    name:        'Beskeder (mail · SMS · portal)',
+    description: 'Mail, indgående SMS og beskeder fra kundeportalen blandet sammen efter tid — kun overskrifter, med farve pr. type.',
+    ttlSec:      60,
+    params: [
+      { key: 'antal', label: 'Antal beskeder', type: 'number', default: 20, min: 5, max: 40 },
+    ],
+    async fetch(params): Promise<BeskedFeed> { return beskedFeed(params.antal ?? 20) },
+  },
+  {
+    id:          'afvist-linjer',
+    name:        'Afviste varer (oversalg)',
+    description: 'Salgslinjer hvor sælgeren har solgt mere end der var — nyeste først, med sælgernavn.',
+    ttlSec:      120,
+    params: [
+      { key: 'antal', label: 'Antal linjer', type: 'number', default: 15, min: 5, max: 30 },
+    ],
+    async fetch(params): Promise<AfvistLinje[]> { return afvisteLinjer(params.antal ?? 15) },
+  },
+  {
+    id:          'reklamationer',
+    name:        'Nyeste reklamationer',
+    description: 'De senest oprettede reklamationer fra kundeportalen.',
+    ttlSec:      120,
+    params: [
+      { key: 'antal', label: 'Antal', type: 'number', default: 3, min: 1, max: 10 },
+    ],
+    async fetch(params): Promise<Reklamation[]> { return nyesteReklamationer(params.antal ?? 3) },
+  },
+  {
+    id:          'tabte-kunder',
+    name:        'Kunder vi er ved at tabe',
+    description: 'Kunder hvis seneste faktura ligger mellem 7 og 21 dage tilbage — længst væk først. Det er der de tabes.',
+    ttlSec:      600,
+    params: [
+      { key: 'fra',   label: 'Fra dage',  type: 'number', default: 7,  min: 1,  max: 60 },
+      { key: 'til',   label: 'Til dage',  type: 'number', default: 21, min: 2,  max: 120 },
+      { key: 'antal', label: 'Antal',     type: 'number', default: 10, min: 3,  max: 25 },
+    ],
+    async fetch(params): Promise<TabtKunde[]> {
+      return tabteKunder(params.fra ?? 7, params.til ?? 21, params.antal ?? 10)
     },
   },
 )

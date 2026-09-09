@@ -5,6 +5,7 @@
 
 import type { DagensSalgData, LeveringerIDagData } from '@/lib/signage/widgets'
 import type { ProduktionNu, UdbytteRaekke } from '@/lib/produktion'
+import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kontor'
 
 export interface WidgetPayload {
   widgetId:  string
@@ -34,8 +35,101 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
     case 'leveringer-i-dag': return <LeveringerIDag data={payload.data as LeveringerIDagData} />
     case 'udbytte-montager': return <Udbytter data={payload.data as UdbytteRaekke[]} />
     case 'produktion-nu':    return <ProduktionNuView data={payload.data as ProduktionNu} />
+    case 'beskeder':         return <Beskeder data={payload.data as BeskedFeed} />
+    case 'afvist-linjer':    return <Afviste data={payload.data as AfvistLinje[]} />
+    case 'reklamationer':    return <Reklamationer data={payload.data as Reklamation[]} />
+    case 'tabte-kunder':     return <TabteKunder data={payload.data as TabtKunde[]} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
+}
+
+// ─── Kontorskærm ─────────────────────────────────────────────────────────────
+
+const SLAGS = {
+  mail:   { navn: 'Mail',   farve: 'bg-sky-500/20 text-sky-300' },
+  sms:    { navn: 'SMS',    farve: 'bg-emerald-500/20 text-emerald-300' },
+  portal: { navn: 'Portal', farve: 'bg-violet-500/20 text-violet-300' },
+} as const
+
+function klokkeslaet(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const nu = new Date()
+  const sammeDag = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' })
+  return sammeDag.format(d) === sammeDag.format(nu)
+    ? new Intl.DateTimeFormat('da-DK', { timeZone: 'Europe/Copenhagen', hour: '2-digit', minute: '2-digit' }).format(d)
+    : new Intl.DateTimeFormat('da-DK', { timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit' }).format(d)
+}
+
+function Beskeder({ data }: { data: BeskedFeed }) {
+  return (
+    <Frame title="Beskeder">
+      <div className="flex h-full flex-col">
+        {data.beskeder.length === 0 && <p className="text-[2.5vh] text-slate-400">Ingen beskeder.</p>}
+        {data.beskeder.map((b, i) => {
+          const s = SLAGS[b.slags]
+          return (
+            <div key={i} className="flex items-baseline gap-[0.6vw] border-b border-white/10 py-[0.45vh]">
+              <span className={`shrink-0 rounded px-[0.4vw] text-[1.7vh] font-semibold ${s.farve}`}>{s.navn}</span>
+              <span className="w-[6.5vw] shrink-0 text-[1.9vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
+              <span className="w-[12vw] shrink-0 truncate text-[2.1vh] text-slate-300" title={b.fra}>{b.fra}</span>
+              <span className="min-w-0 flex-1 truncate text-[2.1vh] text-white">{b.tekst}</span>
+            </div>
+          )
+        })}
+        {data.mangler.length > 0 && (
+          <p className="mt-auto pt-[0.5vh] text-[1.8vh] text-amber-400">
+            Kunne ikke hentes: {data.mangler.join(', ')}
+          </p>
+        )}
+      </div>
+    </Frame>
+  )
+}
+
+function Afviste({ data }: { data: AfvistLinje[] }) {
+  return (
+    <Frame title="Afviste varer">
+      {data.length === 0 && <p className="text-[2.2vh] text-slate-400">Ingen afviste linjer.</p>}
+      {data.map((r, i) => (
+        <div key={i} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.35vh]">
+          <span className="w-[5vw] shrink-0 truncate text-[1.9vh] text-amber-300">{r.saelger}</span>
+          <span className="min-w-0 flex-1 truncate text-[2vh] text-white" title={`${r.kunde} · ${r.ordre}`}>{r.vare}</span>
+          <span className="shrink-0 text-[2vh] font-semibold tabular-nums text-rose-400">−{nf1.format(r.oversolgt)}</span>
+        </div>
+      ))}
+    </Frame>
+  )
+}
+
+function Reklamationer({ data }: { data: Reklamation[] }) {
+  return (
+    <Frame title="Reklamationer">
+      {data.length === 0 && <p className="text-[2.2vh] text-slate-400">Ingen.</p>}
+      {data.map((r, i) => (
+        <div key={i} className="border-b border-white/10 py-[0.4vh]">
+          <div className="truncate text-[2.1vh] text-white">{r.emne}</div>
+          <div className="truncate text-[1.8vh] text-slate-400">{r.kunde} · {klokkeslaet(r.tid)}</div>
+        </div>
+      ))}
+    </Frame>
+  )
+}
+
+function TabteKunder({ data }: { data: TabtKunde[] }) {
+  return (
+    <Frame title="Ikke købt i 7–21 dage">
+      {data.length === 0 && <p className="text-[2.2vh] text-slate-400">Ingen — alle har handlet.</p>}
+      {data.map(k => (
+        <div key={k.kundeNr} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.35vh]">
+          <span className="min-w-0 flex-1 truncate text-[2.1vh] text-white" title={k.kundeNr}>{k.navn}</span>
+          <span className={`shrink-0 text-[2.1vh] font-semibold tabular-nums ${k.dage >= 14 ? 'text-rose-400' : 'text-amber-300'}`}>
+            {k.dage} dg
+          </span>
+        </div>
+      ))}
+    </Frame>
+  )
 }
 
 const nf1 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 })

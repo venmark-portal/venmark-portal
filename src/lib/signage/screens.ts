@@ -11,14 +11,20 @@ import { getWidget, listWidgets } from './widgets'
 
 // ─── Typer ───────────────────────────────────────────────────────────────────
 
-export type Zone = 'main' | 'ticker' | 'venstre' | 'hoejre-top' | 'hoejre-bund'
-export type Layout = 'single' | 'split' | 'dashboard'
+export type Zone =
+  | 'main' | 'ticker'
+  | 'venstre' | 'hoejre-top' | 'hoejre-bund'
+  | 'beskeder' | 'kunder' | 'afvist' | 'reklamationer' | 'fri'
+export type Layout = 'single' | 'split' | 'dashboard' | 'kontor'
 
 /** Zoner der findes i det valgte layout. */
 export const ZONER: Record<Layout, Zone[]> = {
   single:    ['main'],
   split:     ['main', 'ticker'],
   dashboard: ['venstre', 'hoejre-top', 'hoejre-bund'],
+  // Kontor: 4x3-gitter = tolvtedele. Beskeder 4/12 øverst til venstre,
+  // kunder 2/12, afvist 2/12, reklamationer 1/12, fri 3/12 i reserve.
+  kontor:    ['beskeder', 'kunder', 'afvist', 'reklamationer', 'fri'],
 }
 export type SignageRole = 'viewer' | 'editor' | 'admin'
 
@@ -134,7 +140,7 @@ function mapRow(r: ScreenRow): Screen {
     name:          r.name,
     token:         r.token,
     orientation:   r.orientation === 'portrait' ? 'portrait' : 'landscape',
-    layout:        r.layout === 'split' || r.layout === 'dashboard' ? r.layout : 'single',
+    layout:        (['split', 'dashboard', 'kontor'] as string[]).includes(r.layout) ? r.layout as Layout : 'single',
     groupId:       r.groupId,
     slides:        sanitizeSlides(safeParse(r.slides)),
     active:        Boolean(r.active),

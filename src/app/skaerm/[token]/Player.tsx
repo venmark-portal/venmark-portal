@@ -23,7 +23,7 @@ export interface PlayerData {
   version:     string
   name:        string
   orientation: 'landscape' | 'portrait'
-  layout:      'single' | 'split' | 'dashboard'
+  layout:      'single' | 'split' | 'dashboard' | 'kontor'
   slides:      Slide[]
   widgets:     WidgetPayload[]
 }
@@ -127,6 +127,23 @@ export default function Player({ token, initial }: { token: string; initial: Pla
     )
   }
 
+  // Kontor: 4x3-gitter i tolvtedele. Beskeder er det vigtigste og ligger øverst
+  // til venstre; de tre frie celler venter på mere indhold.
+  if (state.layout === 'kontor') {
+    return (
+      <div className="relative grid h-screen w-screen grid-cols-4 grid-rows-3 overflow-hidden bg-slate-900
+                      [&>*]:border-white/15"
+           style={{ gridTemplateAreas: `"beskeder beskeder kunder kunder" "beskeder beskeder afvist afvist" "fri fri fri reklamationer"` }}>
+        <Zone items={iZone('beskeder')}      className="min-h-0 border-b border-r" style={{ gridArea: 'beskeder' }} />
+        <Zone items={iZone('kunder')}        className="min-h-0 border-b"          style={{ gridArea: 'kunder' }} />
+        <Zone items={iZone('afvist')}        className="min-h-0 border-b"          style={{ gridArea: 'afvist' }} />
+        <Zone items={iZone('fri')}           className="min-h-0 border-r"          style={{ gridArea: 'fri' }} />
+        <Zone items={iZone('reklamationer')} className="min-h-0"                    style={{ gridArea: 'reklamationer' }} />
+        <Ur klokken={klokken} items={alle} />
+      </div>
+    )
+  }
+
   const split  = state.layout === 'split'
   const main   = split ? alle.filter(x => x.slide.zone !== 'ticker') : alle
   const ticker = split ? iZone('ticker') : []
@@ -149,10 +166,11 @@ export default function Player({ token, initial }: { token: string; initial: Pla
 
 /** Én zone der roterer mellem sine egne slides. */
 function Zone({
-  items, className,
+  items, className, style,
 }: {
   items: { slide: Slide; payload: WidgetPayload | undefined }[]
   className?: string
+  style?: React.CSSProperties
 }) {
   const [idx, setIdx] = useState(0)
 
@@ -173,7 +191,7 @@ function Zone({
   const vist = idx < items.length ? idx : 0
 
   return (
-    <div className={`relative ${className ?? ''}`}>
+    <div className={`relative ${className ?? ''}`} style={style}>
       {/* Alle slides ligger i DOM'en og skiftes med opacity — intet sort blink. */}
       {items.map((x, i) => (
         <div
