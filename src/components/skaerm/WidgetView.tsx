@@ -3,6 +3,7 @@
 // Visning af de kode-definerede BC-widgets. Alt er skruet stort op: en skærm
 // læses på 3-5 meters afstand, ikke fra en kontorstol.
 
+import { useEffect, useRef } from 'react'
 import type { DagensSalgData, LeveringerIDagData } from '@/lib/signage/widgets'
 import type { ProduktionNu, UdbytteRaekke } from '@/lib/produktion'
 import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kontor'
@@ -69,11 +70,11 @@ function Beskeder({ data }: { data: BeskedFeed }) {
         {data.beskeder.map((b, i) => {
           const s = SLAGS[b.slags]
           return (
-            <div key={i} className="flex items-baseline gap-[0.6vw] border-b border-white/10 py-[0.45vh]">
-              <span className={`shrink-0 rounded px-[0.4vw] text-[1.7vh] font-semibold ${s.farve}`}>{s.navn}</span>
-              <span className="w-[6.5vw] shrink-0 text-[1.9vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
-              <span className="w-[12vw] shrink-0 truncate text-[2.1vh] text-slate-300" title={b.fra}>{b.fra}</span>
-              <span className="min-w-0 flex-1 truncate text-[2.1vh] text-white">{b.tekst}</span>
+            <div key={i} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.28vh]">
+              <span className={`shrink-0 rounded px-[0.35vw] text-[1.4vh] font-semibold ${s.farve}`}>{s.navn}</span>
+              <span className="w-[5.5vw] shrink-0 text-[1.6vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
+              <span className="w-[11vw] shrink-0 truncate text-[1.75vh] text-slate-300" title={b.fra}>{b.fra}</span>
+              <span className="min-w-0 flex-1 truncate text-[1.75vh] text-white">{b.tekst}</span>
             </div>
           )
         })}
@@ -118,18 +119,53 @@ function Reklamationer({ data }: { data: Reklamation[] }) {
 
 function TabteKunder({ data }: { data: TabtKunde[] }) {
   return (
-    <Frame title="Ikke købt i 7–21 dage">
-      {data.length === 0 && <p className="text-[2.2vh] text-slate-400">Ingen — alle har handlet.</p>}
-      {data.map(k => (
-        <div key={k.kundeNr} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.35vh]">
-          <span className="min-w-0 flex-1 truncate text-[2.1vh] text-white" title={k.kundeNr}>{k.navn}</span>
-          <span className={`shrink-0 text-[2.1vh] font-semibold tabular-nums ${k.dage >= 14 ? 'text-rose-400' : 'text-amber-300'}`}>
-            {k.dage} dg
-          </span>
-        </div>
-      ))}
+    <Frame title={`Ikke købt i 7–21 dage${data.length ? ` (${data.length})` : ''}`}>
+      {data.length === 0
+        ? <p className="text-[2.2vh] text-slate-400">Ingen — alle har handlet.</p>
+        : (
+          <Rullende>
+            {data.map(k => (
+              <div key={k.kundeNr} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.35vh]">
+                <span className="min-w-0 flex-1 truncate text-[2vh] text-white" title={k.kundeNr}>{k.navn}</span>
+                <span className={`shrink-0 text-[2vh] font-semibold tabular-nums ${k.dage >= 14 ? 'text-rose-400' : 'text-amber-300'}`}>
+                  {k.dage} dg
+                </span>
+              </div>
+            ))}
+          </Rullende>
+        )}
     </Frame>
   )
+}
+
+/**
+ * Ruller langsomt gennem indholdet når det er højere end pladsen, holder pause i
+ * hver ende og starter forfra. Passer ikke listen, står den bare stille — så
+ * bevæger skærmen sig kun når der faktisk er noget at se.
+ */
+function Rullende({ children }: { children: React.ReactNode }) {
+  const ydre = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ydre.current
+    if (!el) return
+    let stoppet = false
+    let retning = 1
+    let pause = 25          // ticks — lille ophold før den sætter i gang
+
+    const t = setInterval(() => {
+      if (stoppet) return
+      const plads = el.scrollHeight - el.clientHeight
+      if (plads <= 4) return                       // alt kan ses; lad være at rulle
+      if (pause > 0) { pause--; return }
+      el.scrollTop += retning
+      if (el.scrollTop >= plads - 1 || el.scrollTop <= 0) { retning *= -1; pause = 60 }
+    }, 50)
+
+    return () => { stoppet = true; clearInterval(t) }
+  }, [children])
+
+  return <div ref={ydre} className="h-full overflow-hidden">{children}</div>
 }
 
 const nf1 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 })
