@@ -51,6 +51,49 @@ async function run(): Promise<void> {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "DanTimeStempling_job_idx" ON "DanTimeStempling" ("jobNr", dato)
   `
+
+  // Medarbejdere: navn og lønnummer kommer fra Dan-Time, initialerne sætter vi selv.
+  // Fulde navne er for lange på en skærm — "Patrick Djurhuus Johansen" fylder en
+  // hel linje alene.
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "DanTimeMedarbejder" (
+      lonnr       TEXT PRIMARY KEY,
+      navn        TEXT NOT NULL,
+      initialer   TEXT NOT NULL,
+      "manueltSat" BOOLEAN NOT NULL DEFAULT false,
+      "opdateret" TIMESTAMP(3) NOT NULL DEFAULT NOW()
+    )
+  `
+}
+
+// ─── Initialer ───────────────────────────────────────────────────────────────
+
+/**
+ * Foreslår initialer ud fra navnet: "Anna Perek" → AP. Findes de allerede,
+ * udvides der med et bogstav mere fra efternavnet (APe), og til sidst med et tal.
+ * Forslaget er kun en start — de kan rettes i admin, og rettelsen overskrives aldrig.
+ */
+export function foreslaaInitialer(navn: string, taget: Set<string>): string {
+  const dele = navn.trim().split(/\s+/).filter(Boolean)
+  const stor = (s: string) => s.charAt(0).toLocaleUpperCase('da-DK')
+
+  const kandidater: string[] = []
+  if (dele.length >= 2) {
+    const f = dele[0], e = dele[dele.length - 1]
+    kandidater.push(stor(f) + stor(e))
+    kandidater.push(stor(f) + e.slice(0, 2).toLocaleUpperCase('da-DK'))
+    if (dele.length >= 3) kandidater.push(stor(f) + stor(dele[1]) + stor(e))
+  } else if (dele.length === 1) {
+    kandidater.push(dele[0].slice(0, 2).toLocaleUpperCase('da-DK'))
+  }
+  if (kandidater.length === 0) kandidater.push('??')
+
+  for (const k of kandidater) if (!taget.has(k)) return k
+  for (let n = 2; n < 99; n++) {
+    const k = kandidater[0] + n
+    if (!taget.has(k)) return k
+  }
+  return kandidater[0]
 }
 
 export function ensureDanTimeSchema(): Promise<void> {
@@ -162,6 +205,32 @@ export async function ingestDanTime(raekker: DanTimeRow[]): Promise<IngestResult
     if (r.ud) lukkede++
   }
 
+  // Medarbejder-kartoteket holdes ved lige samtidig: navnet følger Dan-Time,
+  // initialerne rører vi aldrig når de først er sat.
+  const kendte = await prisma.$queryRaw<{ lonnr: string; initialer: string }[]>`
+    SELECT lonnr, initialer FROM "DanTimeMedarbejder"
+  `
+  const harLonnr = new Set(kendte.map(k => k.lonnr))
+  const brugte   = new Set(kendte.map(k => k.initialer))
+
+  for (const r of raekker) {
+    if (harLonnr.has(r.lonnr)) {
+      await prisma.$executeRaw`
+        UPDATE "DanTimeMedarbejder" SET navn = ${r.navn}, "opdateret" = NOW()
+        WHERE lonnr = ${r.lonnr} AND navn <> ${r.navn}
+      `
+      continue
+    }
+    const init = foreslaaInitialer(r.navn, brugte)
+    brugte.add(init)
+    harLonnr.add(r.lonnr)
+    await prisma.$executeRaw`
+      INSERT INTO "DanTimeMedarbejder" (lonnr, navn, initialer)
+      VALUES (${r.lonnr}, ${r.navn}, ${init})
+      ON CONFLICT (lonnr) DO NOTHING
+    `
+  }
+
   // Sikkerhedsnet: rapporten viser kun SENESTE stempling pr. person, så skifter
   // nogen job uden at vi når at se udstemplingen, ville det gamle interval stå
   // åbent for evigt og tælle timer i det uendelige. Ingen kan være to steder på
@@ -237,7 +306,7 @@ export async function timerPrJob(dato: string): Promise<JobTimer[]> {
 // ─── Opslag ──────────────────────────────────────────────────────────────────
 
 export interface PaaJob {
-  lonnr: string; navn: string; gruppe: string
+  lonnr: string; navn: string; initialer: string; gruppe: string
   ind: string; ud: string | null
 }
 
@@ -245,9 +314,35 @@ export interface PaaJob {
 export async function hvemErPaaJobNu(jobNr: string): Promise<PaaJob[]> {
   await ensureDanTimeSchema()
   return prisma.$queryRaw<PaaJob[]>`
-    SELECT lonnr, navn, gruppe, ind, ud FROM "DanTimeStempling"
-    WHERE "jobNr" = ${jobNr} AND ud IS NULL
-    ORDER BY navn
+    SELECT s.lonnr, s.navn, COALESCE(m.initialer, '') AS initialer, s.gruppe, s.ind, s.ud
+    FROM "DanTimeStempling" s
+    LEFT JOIN "DanTimeMedarbejder" m ON m.lonnr = s.lonnr
+    WHERE s."jobNr" = ${jobNr} AND s.ud IS NULL
+    ORDER BY s.navn
+  `
+}
+
+// ─── Medarbejder-kartotek ────────────────────────────────────────────────────
+
+export interface Medarbejder {
+  lonnr: string; navn: string; initialer: string; manueltSat: boolean
+}
+
+export async function listMedarbejdere(): Promise<Medarbejder[]> {
+  await ensureDanTimeSchema()
+  return prisma.$queryRaw<Medarbejder[]>`
+    SELECT lonnr, navn, initialer, "manueltSat" FROM "DanTimeMedarbejder" ORDER BY navn
+  `
+}
+
+/** Initialer sat i hånden markeres, så samplingen aldrig skriver dem over. */
+export async function saetInitialer(lonnr: string, initialer: string): Promise<void> {
+  await ensureDanTimeSchema()
+  const rene = initialer.trim().slice(0, 6)
+  await prisma.$executeRaw`
+    UPDATE "DanTimeMedarbejder"
+    SET initialer = ${rene}, "manueltSat" = true, "opdateret" = NOW()
+    WHERE lonnr = ${lonnr}
   `
 }
 
@@ -261,9 +356,11 @@ export async function hvemErPaaJobNu(jobNr: string): Promise<PaaJob[]> {
 export async function hvemVarPaaJob(jobNr: string, dato: string, klokken: string): Promise<PaaJob[]> {
   await ensureDanTimeSchema()
   const rows = await prisma.$queryRaw<PaaJob[]>`
-    SELECT lonnr, navn, gruppe, ind, ud FROM "DanTimeStempling"
-    WHERE "jobNr" = ${jobNr} AND dato = ${dato}
-    ORDER BY navn
+    SELECT s.lonnr, s.navn, COALESCE(m.initialer, '') AS initialer, s.gruppe, s.ind, s.ud
+    FROM "DanTimeStempling" s
+    LEFT JOIN "DanTimeMedarbejder" m ON m.lonnr = s.lonnr
+    WHERE s."jobNr" = ${jobNr} AND s.dato = ${dato}
+    ORDER BY s.navn
   `
   return rows.filter(r => {
     if (!r.ud) return klokken >= r.ind              // stadig inde

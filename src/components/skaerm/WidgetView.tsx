@@ -84,9 +84,14 @@ function ProduktionNuView({ data }: { data: ProduktionNu }) {
                   {p.jobNavn ?? (p.jobNo ? `job ${p.jobNo}` : '— mangler linje')}
                 </span>
               </div>
-              <div className="text-[2.8vh] text-emerald-400">
+              <div className="flex flex-wrap gap-[0.5vw] text-[2.8vh]">
                 {p.folk.length > 0
-                  ? p.folk.map(f => f.navn).join(' · ')
+                  ? p.folk.map(f => (
+                      <span key={f.lonnr} title={f.navn}
+                            className="rounded bg-emerald-500/15 px-[0.7vw] font-semibold text-emerald-300">
+                        {f.initialer}
+                      </span>
+                    ))
                   : <span className="text-slate-500">ingen stemplet ind</span>}
               </div>
             </div>
