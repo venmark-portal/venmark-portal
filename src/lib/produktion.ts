@@ -1,7 +1,10 @@
 // Produktionsdata til skærmene: udbytte på lukkede montager, og hvad der kører nu.
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
-import { alleJobNavne, hvemErPaaJobNu, hvemVarPaaJob, timerPrJob, copenhagenDato, type PaaJob } from '@/lib/dantime'
+import {
+  alleJobNavne, hvemErPaaJobNu, hvemVarPaaJob, initialerPrLonnr, timerPrJob,
+  copenhagenDato, type PaaJob,
+} from '@/lib/dantime'
 
 /** BC leverer UTC; Dan-Time og skærmen arbejder i dansk tid. */
 function danskDel(iso: string, opt: Intl.DateTimeFormatOptions): string {
@@ -72,6 +75,12 @@ export interface UdbytteRaekke {
   ialtPct:      number
   /** true = ingen vare var markeret som Hoved; vi gættede på den største. */
   hovedGaettet: boolean
+  /** Hovedvarens varenummer. */
+  itemNo:       string
+  /** HH:MM da montagen blev afsluttet. Tom hvis vi ikke nåede at fange den. */
+  tid:          string
+  /** Initialer på dem der var på linjen ved afslutning. */
+  initialer:    string[]
 }
 
 /**
@@ -107,6 +116,25 @@ export async function sidsteUdbytter(antal = 10): Promise<UdbytteRaekke[]> {
     pr.set(r.productionNo, l)
   }
 
+  // Medarbejderne på hver montage. Produktionsnummeret er det samme før og efter
+  // bogføring, så snapshottet fra afslutningen kan slås direkte op her — og
+  // capturedAt er netop afslutningstidspunktet.
+  const folkPr = new Map<string, { tid: string; init: string[] }>()
+  try {
+    const initialer = await initialerPrLonnr()
+    const siden = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 19) + 'Z'
+    for (const r of await bcHent('prodEmployees', { '$filter': `capturedAt ge ${siden}`, '$top': '5000' })) {
+      const nr = String(r.productionNo ?? '')
+      if (!nr) continue
+      const e = folkPr.get(nr) ?? { tid: r.capturedAt ? danskKlokken(r.capturedAt) : '', init: [] }
+      const i = initialer.get(String(r.employeeNo)) || String(r.name ?? '').slice(0, 3)
+      if (i && !e.init.includes(i)) e.init.push(i)
+      folkPr.set(nr, e)
+    }
+  } catch (e) {
+    console.error('[produktion] prodEmployees:', e instanceof Error ? e.message : e)
+  }
+
   const ud: UdbytteRaekke[] = []
   const pct = (r: any) => Number(r.actualYieldPct)
   for (const [nr, rs] of Array.from(pr)) {
@@ -129,6 +157,9 @@ export async function sidsteUdbytter(antal = 10): Promise<UdbytteRaekke[]> {
       biproduktPct: ialt - hovedSum,
       ialtPct:      ialt,
       hovedGaettet: gaettet,
+      itemNo:       String(hoved[0].itemNo ?? ''),
+      tid:          folkPr.get(nr)?.tid ?? '',
+      initialer:    folkPr.get(nr)?.init ?? [],
     })
   }
 

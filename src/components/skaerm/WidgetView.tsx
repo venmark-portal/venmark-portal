@@ -52,14 +52,19 @@ const SLAGS = {
   portal: { navn: 'Portal', farve: 'bg-violet-500/20 text-violet-300' },
 } as const
 
+/** I dag: kun klokkeslæt. Ældre: dato OG klokkeslæt — tiden skal altid med. */
 function klokkeslaet(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  const nu = new Date()
-  const sammeDag = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' })
-  return sammeDag.format(d) === sammeDag.format(nu)
-    ? new Intl.DateTimeFormat('da-DK', { timeZone: 'Europe/Copenhagen', hour: '2-digit', minute: '2-digit' }).format(d)
-    : new Intl.DateTimeFormat('da-DK', { timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit' }).format(d)
+  const kl = new Intl.DateTimeFormat('da-DK', {
+    timeZone: 'Europe/Copenhagen', hour: '2-digit', minute: '2-digit',
+  }).format(d)
+  const dag = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' })
+  if (dag.format(d) === dag.format(new Date())) return kl
+  const dato = new Intl.DateTimeFormat('da-DK', {
+    timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit',
+  }).format(d)
+  return `${dato} ${kl}`
 }
 
 function Beskeder({ data }: { data: BeskedFeed }) {
@@ -70,11 +75,11 @@ function Beskeder({ data }: { data: BeskedFeed }) {
         {data.beskeder.map((b, i) => {
           const s = SLAGS[b.slags]
           return (
-            <div key={i} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.28vh]">
-              <span className={`shrink-0 rounded px-[0.35vw] text-[1.4vh] font-semibold ${s.farve}`}>{s.navn}</span>
-              <span className="w-[5.5vw] shrink-0 text-[1.6vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
-              <span className="w-[11vw] shrink-0 truncate text-[1.75vh] text-slate-300" title={b.fra}>{b.fra}</span>
-              <span className="min-w-0 flex-1 truncate text-[1.75vh] text-white">{b.tekst}</span>
+            <div key={i} className="flex items-baseline gap-[0.4vw] border-b border-white/10 py-[0.2vh]">
+              <span className={`shrink-0 rounded px-[0.3vw] text-[1.25vh] font-semibold ${s.farve}`}>{s.navn}</span>
+              <span className="w-[6vw] shrink-0 text-[1.45vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
+              <span className="w-[9vw] shrink-0 truncate text-[1.55vh] text-slate-300" title={b.fra}>{b.fra}</span>
+              <span className="min-w-0 flex-1 truncate text-[1.55vh] text-white">{b.tekst}</span>
             </div>
           )
         })}
@@ -180,22 +185,26 @@ function Udbytter({ data }: { data: UdbytteRaekke[] }) {
     <Frame title="Udbytter · senest lukkede montager">
       <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-white/25 text-[2vh] uppercase tracking-wide text-slate-400">
-            <th className="py-[0.6vh] text-left font-medium">Montage</th>
-            <th className="py-[0.6vh] text-left font-medium">Hovedvare</th>
-            <th className="py-[0.6vh] text-right font-medium">Råvare</th>
-            <th className="py-[0.6vh] text-right font-medium">Hoved</th>
-            <th className="py-[0.6vh] text-right font-medium">Biprod.</th>
-            <th className="py-[0.6vh] text-right font-medium">I alt</th>
+          <tr className="border-b border-white/25 text-[1.8vh] uppercase tracking-wide text-slate-400">
+            <th className="py-[0.5vh] text-left font-medium">Montage</th>
+            <th className="py-[0.5vh] text-left font-medium">Vare</th>
+            <th className="py-[0.5vh] text-left font-medium">Hovedvare</th>
+            <th className="py-[0.5vh] text-right font-medium">Råvare</th>
+            <th className="py-[0.5vh] text-right font-medium">Hoved</th>
+            <th className="py-[0.5vh] text-right font-medium">Biprod.</th>
+            <th className="py-[0.5vh] text-right font-medium">I alt</th>
+            <th className="py-[0.5vh] text-left font-medium">Hvem</th>
           </tr>
         </thead>
         <tbody>
           {data.map(r => (
             <tr key={r.productionNo} className="border-b border-white/10">
-              <td className="py-[0.7vh] pr-[0.8vw] text-[2.2vh] text-slate-400">
-                {dansk(r.postingDate)}<span className="ml-[0.5vw] text-slate-500">{r.productionNo}</span>
+              <td className="py-[0.6vh] pr-[0.6vw] text-[1.9vh] text-slate-400">
+                {dansk(r.postingDate)}{r.tid && <span className="ml-[0.3vw] text-slate-300">{r.tid}</span>}
+                <span className="ml-[0.4vw] text-slate-500">{r.productionNo}</span>
               </td>
-              <td className="max-w-0 truncate py-[0.7vh] pr-[0.8vw] text-[2.5vh] text-white"
+              <td className="py-[0.6vh] pr-[0.6vw] font-mono text-[1.9vh] text-slate-400">{r.itemNo}</td>
+              <td className="max-w-0 truncate py-[0.6vh] pr-[0.6vw] text-[2.2vh] text-white"
                   title={r.hovedGaettet ? r.hovedNavn + " (ikke markeret som hovedvare — største er valgt)" : r.hovedNavn}>
                 {r.hovedNavn}{r.hovedGaettet && <span className="text-slate-500"> *</span>}
               </td>
@@ -208,6 +217,9 @@ function Udbytter({ data }: { data: UdbytteRaekke[] }) {
               </td>
               <td className="py-[0.7vh] pl-[0.8vw] text-right text-[2.8vh] font-semibold tabular-nums text-sky-300">
                 {nf1.format(r.ialtPct)}%
+              </td>
+              <td className="py-[0.6vh] pl-[0.8vw] text-[1.9vh] text-emerald-300/90">
+                {r.initialer.join(' ') || <span className="text-slate-600">–</span>}
               </td>
             </tr>
           ))}

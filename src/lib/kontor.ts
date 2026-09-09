@@ -51,7 +51,7 @@ async function smsBeskeder(): Promise<Besked[]> {
       slags: 'sms' as const,
       tid:   String(r.loggedAt ?? ''),
       fra:   String(r.contactName || r.customerName || r.phone || 'ukendt'),
-      tekst: klip(r.body, 30),
+      tekst: klip(r.body, 50),
     }))
 }
 
@@ -69,7 +69,7 @@ async function portalBeskeder(): Promise<Besked[]> {
     slags: 'portal' as const,
     tid:   r.createdAt.toISOString(),
     fra:   r.senderName || r.navn,
-    tekst: klip(r.body, 60),
+    tekst: klip(r.body, 50),
   }))
 }
 
@@ -121,7 +121,7 @@ async function mailBeskeder(): Promise<Besked[]> {
       slags: 'mail' as const,
       tid:   String(m.receivedDateTime ?? ''),
       fra:   String(m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'ukendt'),
-      tekst: klip(m.subject, 60) || '(uden emne)',
+      tekst: klip(m.subject, 50) || '(uden emne)',
     }))
 }
 
