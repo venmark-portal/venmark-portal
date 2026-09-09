@@ -129,14 +129,41 @@ function tilDansk(iso: string): { dato: string; klokken: string } {
  * gentagne kørsler ikke dublerer. Genåbnes en ordre, nulstiller BC "Afsluttet
  * Kl.", og næste afslutning fanges forfra.
  */
-export async function fangMedarbejdere(timer = 24): Promise<FangResultat> {
+export async function fangMedarbejdere(timer = 72): Promise<FangResultat> {
   const graense = new Date(Date.now() - timer * 3600_000)
 
   const res = await bcFetch(`prodOrders?$filter=afsluttet eq true&$top=500`)
   if (!res.ok) throw new Error(`BC prodOrders fejl (${res.status}): ${await res.text()}`)
   const alle: ProdOrdre[] = (await res.json()).value ?? []
 
-  const nylige = alle.filter(o => o.afsluttetKl && new Date(o.afsluttetKl) >= graense)
+  // Bogførte montager tages med. Uden dem er der et hul: bliver en montage
+  // bogført inden næste kørsel, forsvinder den fra montageordrerne, og så var
+  // historikken tabt for altid. Både "Afsluttet Kl." og jobnummeret følger med
+  // til den bogførte tabel, så de kan altid regnes ud bagudrettet.
+  try {
+    const fra = graense.toISOString().slice(0, 10)
+    const pRes = await bcFetch(`postedProdOrders?$filter=postingDate ge ${fra}&$top=500`)
+    if (pRes.ok) {
+      for (const p of ((await pRes.json()).value ?? []) as any[]) {
+        if (!p.afsluttetKl) continue
+        alle.push({
+          id: p.id, no: String(p.orderNo || p.no),
+          danTimeJobNo: String(p.danTimeJobNo ?? ''),
+          afsluttet: true, afsluttetKl: p.afsluttetKl,
+        })
+      }
+    } else if (pRes.status !== 404) {
+      console.error('[dantime→bc] postedProdOrders:', (await pRes.text()).slice(0, 160))
+    }
+  } catch (e) {
+    // API'et findes først fra app .346 — indtil da kører vi videre på de åbne.
+    console.error('[dantime→bc] postedProdOrders:', e instanceof Error ? e.message : e)
+  }
+
+  const set = new Map<string, ProdOrdre>()
+  for (const o of alle) if (o.no && !set.has(o.no)) set.set(o.no, o)
+  const nylige = Array.from(set.values())
+    .filter(o => o.afsluttetKl && new Date(o.afsluttetKl) >= graense)
   const udenJob: string[] = [], udenFolk: string[] = []
   let behandlet = 0, skrevet = 0
 
