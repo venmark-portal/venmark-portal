@@ -47,7 +47,7 @@ export default function SkaermeAdmin({ baseUrl }: { baseUrl: string }) {
   const [katalog, setKatalog] = useState<WidgetDef[]>([])
   const [superadmin, setSuperadmin] = useState(false)
   const [henter, setHenter] = useState(true)
-  const [fane, setFane] = useState<'skaerme' | 'grupper' | 'adgang'>('skaerme')
+  const [fane, setFane] = useState<'skaerme' | 'grupper' | 'adgang' | 'medarbejdere'>('skaerme')
 
   async function hent() {
     const res = await fetch('/api/admin/skaerme', { cache: 'no-store' })
@@ -68,7 +68,7 @@ export default function SkaermeAdmin({ baseUrl }: { baseUrl: string }) {
     <div className="space-y-6">
       {superadmin && (
         <div className="flex gap-1 border-b border-gray-200">
-          {([['skaerme', 'Skærme'], ['grupper', 'Grupper'], ['adgang', 'Adgang']] as const).map(([id, navn]) => (
+          {([['skaerme', 'Skærme'], ['grupper', 'Grupper'], ['adgang', 'Adgang'], ['medarbejdere', 'Medarbejdere']] as const).map(([id, navn]) => (
             <button
               key={id}
               onClick={() => setFane(id)}
@@ -92,6 +92,7 @@ export default function SkaermeAdmin({ baseUrl }: { baseUrl: string }) {
       )}
       {fane === 'grupper' && superadmin && <Grupper grupper={grupper} screens={screens} onOpdater={hent} />}
       {fane === 'adgang'  && superadmin && <Adgang  grupper={grupper} screens={screens} />}
+      {fane === 'medarbejdere' && superadmin && <Medarbejdere />}
     </div>
   )
 }
@@ -588,6 +589,84 @@ function Adgang({ grupper, screens }: { grupper: Gruppe[]; screens: Screen[] }) 
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Medarbejdere ────────────────────────────────────────────────────────────
+
+interface MedarbejderRk { lonnr: string; navn: string; initialer: string; manueltSat: boolean }
+
+function Medarbejdere() {
+  const [folk, setFolk]     = useState<MedarbejderRk[]>([])
+  const [kladde, setKladde] = useState<Record<string, string>>({})
+  const [gemt, setGemt]     = useState<string | null>(null)
+  const [henter, setHenter] = useState(true)
+
+  async function hent() {
+    const res = await fetch('/api/admin/medarbejdere', { cache: 'no-store' })
+    if (res.ok) setFolk(await res.json())
+    setHenter(false)
+  }
+  useEffect(() => { hent() }, [])
+
+  async function gem(m: MedarbejderRk) {
+    const nye = (kladde[m.lonnr] ?? m.initialer).trim()
+    if (!nye || nye === m.initialer) return
+    const res = await fetch('/api/admin/medarbejdere', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lonnr: m.lonnr, initialer: nye }),
+    })
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Kunne ikke gemmes'); return }
+    setGemt(m.lonnr)
+    setTimeout(() => setGemt(null), 1500)
+    hent()
+  }
+
+  if (henter) return <p className="text-sm text-gray-500">Henter medarbejdere …</p>
+
+  const dubletter = new Set(
+    folk.map(m => m.initialer).filter((v, i, a) => a.indexOf(v) !== i))
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-gray-900">Initialer på skærmene</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Navn og lønnummer hentes fra Dan-Time og opdaterer sig selv. Initialerne vises på
+          produktionsskærmen i stedet for det fulde navn — «Patrick Djurhuus Johansen» fylder
+          ellers en hel linje. Forslaget er dannet automatisk; retter du det, bliver din
+          rettelse aldrig skrevet over.
+        </p>
+        {dubletter.size > 0 && (
+          <p className="mt-2 text-xs font-medium text-amber-700">
+            Flere har samme initialer ({Array.from(dubletter).join(', ')}) — så kan man ikke se
+            hvem der er hvem på skærmen.
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white">
+        {folk.length === 0 && <p className="p-4 text-sm text-gray-500">Ingen medarbejdere set endnu.</p>}
+        {folk.map(m => (
+          <div key={m.lonnr} className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 last:border-0">
+            <span className="w-16 shrink-0 font-mono text-xs text-gray-500">{m.lonnr}</span>
+            <span className="flex-1 text-sm text-gray-900">{m.navn}</span>
+            {!m.manueltSat && <span className="text-xs text-gray-400">foreslået</span>}
+            <input
+              value={kladde[m.lonnr] ?? m.initialer}
+              onChange={e => setKladde({ ...kladde, [m.lonnr]: e.target.value })}
+              onBlur={() => gem(m)}
+              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+              maxLength={6}
+              className={`w-20 rounded-lg border px-2 py-1 text-center text-sm font-semibold uppercase ${
+                dubletter.has(m.initialer) ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
+              } text-gray-900`}
+            />
+            {gemt === m.lonnr && <span className="text-xs text-emerald-600">gemt</span>}
+          </div>
+        ))}
       </div>
     </div>
   )

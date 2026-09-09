@@ -108,7 +108,7 @@ export async function sidsteUdbytter(antal = 10): Promise<UdbytteMontage[]> {
 
 // ─── Igangværende produktioner + folk ────────────────────────────────────────
 
-export interface Medarbejder { navn: string; lonnr: string }
+export interface Medarbejder { navn: string; lonnr: string; initialer: string }
 export interface AktivProduktion {
   no: string; description: string; jobNo: string | null; jobNavn: string | null
   familyCode: string | null; quantity: number; folk: Medarbejder[]
@@ -154,7 +154,9 @@ export async function produktionNu(): Promise<ProduktionNu> {
       jobNavn:     null,
       familyCode:  o.familyCode ? String(o.familyCode) : null,
       quantity:    Number(o.quantity ?? 0),
-      folk:        folk.map(p => ({ navn: p.navn, lonnr: p.lonnr })),
+      // Initialer på skærmen — fulde navne fylder for meget. Mangler de, falder
+      // vi tilbage på navnet, så en ny medarbejder ikke bare forsvinder.
+      folk:        folk.map(p => ({ navn: p.navn, lonnr: p.lonnr, initialer: p.initialer || p.navn })),
     })
     if (jobNo) jobNavne.set(jobNo, null)
   }
