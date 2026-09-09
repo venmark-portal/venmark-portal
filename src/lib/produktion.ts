@@ -1,7 +1,24 @@
 // Produktionsdata til skærmene: udbytte på lukkede montager, og hvad der kører nu.
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
-import { hvemErPaaJobNu, timerPrJob, copenhagenDato } from '@/lib/dantime'
+import { hvemErPaaJobNu, hvemVarPaaJob, timerPrJob, copenhagenDato, type PaaJob } from '@/lib/dantime'
+
+/** BC leverer UTC; Dan-Time og skærmen arbejder i dansk tid. */
+function danskDel(iso: string, opt: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Copenhagen', ...opt }).format(new Date(iso))
+}
+function danskDato(iso: string): string {
+  const [d, m, a] = danskDel(iso, { year: 'numeric', month: '2-digit', day: '2-digit' }).split('/')
+  return `${a}-${m}-${d}`
+}
+function danskKlokken(iso: string): string {
+  return danskDel(iso, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+}
+
+/** Initialer på skærmen — fulde navne fylder for meget. Mangler de, brug navnet. */
+function tilMedarbejdere(folk: PaaJob[]): Medarbejder[] {
+  return folk.map(p => ({ navn: p.navn, lonnr: p.lonnr, initialer: p.initialer || p.navn }))
+}
 
 // Venmark "snyder" systemet på nogle produktioner (fx råvare 0,1 kg for at tvinge
 // noget igennem), og der er fejlbehæftede rækker. Uden disse to filtre viser
@@ -43,135 +60,162 @@ async function bcHent(sti: string, params: Record<string, string>, maxSider = 20
 
 // ─── Udbytte på lukkede montager ─────────────────────────────────────────────
 
-export interface UdbytteProdukt {
-  itemNo: string; description: string; yieldPct: number; qty: number
-}
-export interface UdbytteMontage {
-  productionNo: string; postingDate: string; rawQty: number; produkter: UdbytteProdukt[]
+export interface UdbytteRaekke {
+  productionNo: string
+  postingDate:  string
+  rawQty:       number
+  /** Hovedvarens navn og udbytte. Er intet markeret som Hoved, tages den største. */
+  hovedNavn:    string
+  hovedPct:     number
+  /** Alle øvrige produkter lagt sammen til ét tal. */
+  biproduktPct: number
+  ialtPct:      number
+  /** true = ingen vare var markeret som Hoved; vi gættede på den største. */
+  hovedGaettet: boolean
 }
 
 /**
- * De seneste `antal` bogførte montager med udbytte pr. produkt.
+ * De seneste `antal` bogførte montager, én række pr. montage.
  *
- * Bemærk: kun produkter i varenummer-intervallet vises, så en montages produkter
- * her ikke nødvendigvis er ALLE dens produkter. Derfor viser skærmen udbytte pr.
- * produkt — ikke en sum, der ville se ud som om noget manglede.
+ * Bemærk: kun produkter i varenummer-intervallet tælles med, så "i alt" er
+ * udbyttet af DE viste produkter — ikke nødvendigvis hele montagen.
  */
-export async function sidsteUdbytter(antal = 10): Promise<UdbytteMontage[]> {
+export async function sidsteUdbytter(antal = 10): Promise<UdbytteRaekke[]> {
   // Én uge ad gangen, nyeste først, indtil vi har nok montager.
   //
-  // Hvorfor ikke bare ét stort kald: BC sider resultatet op uanset $top og
-  // returnerer i NØGLErækkefølge (produktionsnr.), og nextLinks udløber. Et bredt
-  // kald gav derfor de ÆLDSTE montager — skærmen viste 31. august som "senest
-  // lukkede", selvom der var bogført montager samme dag. Et vindue på en uge er
-  // ~500 rækker og passer i én side.
+  // Hvorfor ikke ét stort kald: BC sider resultatet op uanset $top og returnerer
+  // i NØGLErækkefølge (produktionsnr.), og nextLinks udløber. Et bredt kald gav
+  // derfor de ÆLDSTE montager — skærmen viste 31. august som "senest lukkede",
+  // selvom der var bogført montager samme dag.
   const dag = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10)
   const raekker: any[] = []
-  const pr = new Map<string, UdbytteMontage>()
+  const brugbar = (r: any) =>
+    iVaresortiment(r.itemNo) && Number(r.rawQty) >= MIN_RAAVARE_KG && Number(r.actualYieldPct) > 0
 
   for (let uge = 0; uge < 8; uge++) {
-    const side = await bcHent('prodYields', {
-      '$filter': `postingDate ge ${dag(7 * (uge + 1))} and postingDate le ${dag(7 * uge)}`,
-      '$top':    '1000',
-    })
-    raekker.push(...side)
-    const nok = new Set(raekker
-      .filter(r => iVaresortiment(r.itemNo) && Number(r.rawQty) >= MIN_RAAVARE_KG && Number(r.actualYieldPct) > 0)
-      .map(r => r.productionNo)).size
-    if (nok >= antal) break
+    raekker.push(...await bcHent("prodYields", {
+      "$filter": `postingDate ge ${dag(7 * (uge + 1))} and postingDate le ${dag(7 * uge)}`,
+      "$top":    "1000",
+    }))
+    if (new Set(raekker.filter(brugbar).map(r => r.productionNo)).size >= antal) break
   }
 
-  const brugbare = raekker.filter(r =>
-    iVaresortiment(r.itemNo) && Number(r.rawQty) >= MIN_RAAVARE_KG && Number(r.actualYieldPct) > 0)
+  const pr = new Map<string, any[]>()
+  for (const r of raekker.filter(brugbar)) {
+    const l = pr.get(r.productionNo) ?? []
+    l.push(r)
+    pr.set(r.productionNo, l)
+  }
 
-  for (const r of brugbare) {
-    let m = pr.get(r.productionNo)
-    if (!m) {
-      m = { productionNo: r.productionNo, postingDate: String(r.postingDate).slice(0, 10), rawQty: Number(r.rawQty), produkter: [] }
-      pr.set(r.productionNo, m)
+  const ud: UdbytteRaekke[] = []
+  const pct = (r: any) => Number(r.actualYieldPct)
+  for (const [nr, rs] of Array.from(pr)) {
+    let hoved: any[] = rs.filter((r: any) => r.outputType === 'Hoved')
+    let gaettet = false
+    if (hoved.length === 0) {
+      // Tre ud af fire montager har INGEN vare markeret som Hoved — så ville
+      // kolonnen stå tom. Vi tager den største og markerer at det er et gæt.
+      hoved = [rs.reduce((a: any, b: any) => (pct(a) >= pct(b) ? a : b))]
+      gaettet = true
     }
-    m.produkter.push({
-      itemNo:      String(r.itemNo),
-      description: String(r.description ?? ''),
-      yieldPct:    Number(r.actualYieldPct),
-      qty:         Number(r.actualQty),
+    const hovedSum = hoved.reduce((s: number, r: any) => s + pct(r), 0)
+    const ialt     = rs.reduce((s: number, r: any) => s + pct(r), 0)
+    ud.push({
+      productionNo: nr,
+      postingDate:  String(rs[0].postingDate).slice(0, 10),
+      rawQty:       Number(rs[0].rawQty),
+      hovedNavn:    String(hoved[0].description ?? hoved[0].itemNo),
+      hovedPct:     hovedSum,
+      biproduktPct: ialt - hovedSum,
+      ialtPct:      ialt,
+      hovedGaettet: gaettet,
     })
   }
 
-  return Array.from(pr.values())
-    .sort((a, b) =>
-      b.postingDate.localeCompare(a.postingDate) ||
-      b.productionNo.localeCompare(a.productionNo))
+  return ud
+    .sort((a, b) => b.postingDate.localeCompare(a.postingDate) || b.productionNo.localeCompare(a.productionNo))
     .slice(0, antal)
-    .map(m => ({ ...m, produkter: m.produkter.sort((a, b) => b.yieldPct - a.yieldPct) }))
 }
 
 // ─── Igangværende produktioner + folk ────────────────────────────────────────
 
 export interface Medarbejder { navn: string; lonnr: string; initialer: string }
-export interface AktivProduktion {
-  no: string; description: string; jobNo: string | null; jobNavn: string | null
-  familyCode: string | null; quantity: number; folk: Medarbejder[]
+
+export interface LinjeProduktion {
+  no: string; description: string
+  afsluttet: boolean
+  /** Kun på afsluttede: hvem der var på linjen da ordren blev afsluttet. */
+  folk: Medarbejder[]
 }
+export interface ProduktionLinje {
+  jobNo: string; jobNavn: string
+  produktioner: LinjeProduktion[]
+  /** Hvem der er stemplet ind på linjen lige nu — vi skelner ikke pr. produktion. */
+  folk: Medarbejder[]
+}
+export interface ProduktionNu {
+  linjer:    ProduktionLinje[]
+  udenLinje: LinjeProduktion[]
+}
+
 export interface LinjeTimer {
   jobNo: string; jobNavn: string | null; timer: number; personer: number
   loenKr: number | null
 }
-export interface ProduktionNu {
-  produktioner: AktivProduktion[]
-  udenJob:      number
-  linjer:       LinjeTimer[]
-  timepris:     number
-}
 
 export async function produktionNu(): Promise<ProduktionNu> {
-  const alle = await bcHent('prodOrders', {
-    '$filter': 'productionStarted eq true and afsluttet eq false', '$top': '200',
+  const alle = await bcHent("prodOrders", { "$filter": "productionStarted eq true", "$top": "500" })
+
+  // Samme varenummer-interval som udbytterne. Røgeri ligger over 40000 og skal
+  // IKKE med: det står som "startet" i dagevis, fordi det først færdiggøres
+  // dagen efter (Claus 2026-09-08).
+  const idag = copenhagenDato()
+  const ordrer = alle.filter(o => {
+    if (!iVaresortiment(o.itemNo)) return false
+    if (!o.afsluttet) return true
+    // Afsluttede tages kun med samme dag — ellers vokser skærmen i det uendelige.
+    return o.afsluttetKl ? danskDato(o.afsluttetKl) === idag : false
   })
 
-  // Samme varenummer-interval som udbytterne. Røgeri-varerne ligger over 40000 og
-  // skal IKKE med: de står som "startet" i dagevis, fordi de først færdiggøres
-  // dagen efter, og ville ellers fylde skærmen med produktioner ingen arbejder på
-  // lige nu (Claus 2026-09-08).
-  const ordrer = alle.filter(o => iVaresortiment(o.itemNo))
+  const navne = new Map<string, string>()
+  for (const t of await timerPrJob(idag)) if (t.jobNavn) navne.set(t.jobNr, t.jobNavn)
 
-  // Timeprisen kommer fra Virksomhedsoplysninger — samme sats som styklisteberegningen.
-  let timepris = 0
-  try {
-    const c = await bcHent('costSetups', { '$top': '1' })
-    timepris = Number(c[0]?.avgHourlyWage ?? 0)
-  } catch { /* satsen er pynt på skærmen — den må ikke vælte resten */ }
+  const linjer = new Map<string, ProduktionLinje>()
+  const udenLinje: LinjeProduktion[] = []
 
-  const jobNavne = new Map<string, string | null>()
-  const produktioner: AktivProduktion[] = []
   for (const o of ordrer) {
-    const jobNo = o.danTimeJobNo ? String(o.danTimeJobNo) : null
-    const folk  = jobNo ? await hvemErPaaJobNu(jobNo) : []
-    produktioner.push({
-      no:          String(o.no),
-      description: String(o.description ?? ''),
-      jobNo,
-      jobNavn:     null,
-      familyCode:  o.familyCode ? String(o.familyCode) : null,
-      quantity:    Number(o.quantity ?? 0),
-      // Initialer på skærmen — fulde navne fylder for meget. Mangler de, falder
-      // vi tilbage på navnet, så en ny medarbejder ikke bare forsvinder.
-      folk:        folk.map(p => ({ navn: p.navn, lonnr: p.lonnr, initialer: p.initialer || p.navn })),
-    })
-    if (jobNo) jobNavne.set(jobNo, null)
+    const jobNo = o.danTimeJobNo ? String(o.danTimeJobNo) : ""
+    const afsluttet = Boolean(o.afsluttet)
+
+    // Kun afsluttede bærer egne initialer — hvem der stod på linjen da ordren
+    // blev lukket. De aktive deler linjens folk, for vi skelner ikke pr. produktion.
+    let folk: Medarbejder[] = []
+    if (afsluttet && jobNo && o.afsluttetKl) {
+      folk = tilMedarbejdere(await hvemVarPaaJob(jobNo, danskDato(o.afsluttetKl), danskKlokken(o.afsluttetKl)))
+    }
+
+    const prod: LinjeProduktion = {
+      no: String(o.no), description: String(o.description ?? ""), afsluttet, folk,
+    }
+    if (!jobNo) { udenLinje.push(prod); continue }
+
+    let l = linjer.get(jobNo)
+    if (!l) {
+      l = { jobNo, jobNavn: navne.get(jobNo) ?? `job ${jobNo}`, produktioner: [], folk: [] }
+      linjer.set(jobNo, l)
+    }
+    l.produktioner.push(prod)
   }
 
-  const timer = await timerPrJob(copenhagenDato())
-  for (const t of timer) jobNavne.set(t.jobNr, t.jobNavn)
-  for (const p of produktioner) if (p.jobNo) p.jobNavn = jobNavne.get(p.jobNo) ?? null
+  // Linjens folk = dem der er stemplet ind lige nu. Ét opslag pr. linje.
+  for (const l of Array.from(linjer.values())) {
+    l.folk = tilMedarbejdere(await hvemErPaaJobNu(l.jobNo))
+    l.produktioner.sort((a, b) => Number(a.afsluttet) - Number(b.afsluttet) || a.no.localeCompare(b.no))
+  }
 
   return {
-    produktioner: produktioner.sort((a, b) => b.folk.length - a.folk.length),
-    udenJob:      produktioner.filter(p => !p.jobNo).length,
-    linjer: timer.map(t => ({
-      jobNo: t.jobNr, jobNavn: t.jobNavn, timer: t.timer, personer: t.personer,
-      loenKr: timepris > 0 ? Math.round(t.timer * timepris) : null,
-    })),
-    timepris,
+    linjer: Array.from(linjer.values()).sort((a, b) => b.folk.length - a.folk.length ||
+                                                      a.jobNavn.localeCompare(b.jobNavn, "da")),
+    udenLinje,
   }
 }

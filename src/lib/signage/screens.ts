@@ -11,8 +11,15 @@ import { getWidget, listWidgets } from './widgets'
 
 // ─── Typer ───────────────────────────────────────────────────────────────────
 
-export type Zone = 'main' | 'ticker'
-export type Layout = 'single' | 'split'
+export type Zone = 'main' | 'ticker' | 'venstre' | 'hoejre-top' | 'hoejre-bund'
+export type Layout = 'single' | 'split' | 'dashboard'
+
+/** Zoner der findes i det valgte layout. */
+export const ZONER: Record<Layout, Zone[]> = {
+  single:    ['main'],
+  split:     ['main', 'ticker'],
+  dashboard: ['venstre', 'hoejre-top', 'hoejre-bund'],
+}
 export type SignageRole = 'viewer' | 'editor' | 'admin'
 
 export interface SlideSchedule {
@@ -69,6 +76,7 @@ interface ScreenRow {
 
 const MIN_DURATION = 5
 const MAX_DURATION = 600
+const ZONE_NAVNE = new Set<string>(Object.values(ZONER).flat())
 
 // ─── Dansk tid ───────────────────────────────────────────────────────────────
 
@@ -126,7 +134,7 @@ function mapRow(r: ScreenRow): Screen {
     name:          r.name,
     token:         r.token,
     orientation:   r.orientation === 'portrait' ? 'portrait' : 'landscape',
-    layout:        r.layout === 'split' ? 'split' : 'single',
+    layout:        r.layout === 'split' || r.layout === 'dashboard' ? r.layout : 'single',
     groupId:       r.groupId,
     slides:        sanitizeSlides(safeParse(r.slides)),
     active:        Boolean(r.active),
@@ -187,7 +195,7 @@ export function sanitizeSlides(input: unknown): Slide[] {
       widgetId:    widget.id,
       params,
       durationSec: Number.isFinite(d) ? Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(d))) : 20,
-      zone:        (raw as any).zone === 'ticker' ? 'ticker' : 'main',
+      zone:        ZONE_NAVNE.has(String((raw as any).zone)) ? String((raw as any).zone) as Zone : 'main',
       schedule:    sanitizeSchedule((raw as any).schedule),
     })
   }

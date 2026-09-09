@@ -6,7 +6,7 @@
 // widget, tilføjes den her (og en visning i src/components/skaerm/WidgetView).
 
 import { getSalgsliste, getSalesOrdersForDelivery } from '@/lib/businesscentral'
-import { produktionNu, sidsteUdbytter, type ProduktionNu, type UdbytteMontage } from '@/lib/produktion'
+import { produktionNu, sidsteUdbytter, type ProduktionNu, type UdbytteRaekke } from '@/lib/produktion'
 
 export interface WidgetParamDef {
   key:     string
@@ -114,22 +114,22 @@ DEFS.push(
   {
     id:          'udbytte-montager',
     name:        'Udbytter, sidste lukkede montager',
-    description: 'Udbytte pr. produkt på de senest bogførte montager. Viser kun varenumre 10000-25000 og montager med mindst 25 kg råvare — resten er fejl eller produktioner hvor systemet er "snydt".',
+    description: 'Én række pr. montage: hovedvarens udbytte, biprodukter samlet, og i alt. Viser kun varenumre 10000-25000 og montager med mindst 25 kg råvare — resten er fejl eller produktioner hvor systemet er "snydt".',
     ttlSec:      300,
     params: [
-      { key: 'antal', label: 'Antal montager', type: 'number', default: 10, min: 3, max: 15 },
+      { key: 'antal', label: 'Antal montager', type: 'number', default: 12, min: 3, max: 25 },
     ],
-    async fetch(params): Promise<UdbytteMontage[]> {
-      return sidsteUdbytter(params.antal ?? 10)
+    async fetch(params): Promise<UdbytteRaekke[]> {
+      return sidsteUdbytter(params.antal ?? 12)
     },
   },
   {
     id:          'produktion-nu',
     name:        'Produktion nu',
-    description: 'Igangværende produktioner med hvilke folk der er stemplet ind på linjen, plus timer og anslået lønkroner pr. linje i dag. Viser kun varenumre 10000-25000 — røgeri (over 40000) færdiggøres først dagen efter og hører ikke til på dagens skærm.',
+    description: 'Produktionslinjerne med dagens produktioner under hver, og initialerne på dem der er stemplet ind på linjen. Afsluttede produktioner fra i dag bærer deres egne initialer. Viser kun varenumre 10000-25000 — røgeri (over 40000) færdiggøres først dagen efter.',
     ttlSec:      60,
     params: [
-      { key: 'topLinjer', label: 'Antal linjer i tabellen', type: 'number', default: 6, min: 3, max: 12 },
+      { key: 'topLinjer', label: 'Antal linjer', type: 'number', default: 6, min: 3, max: 12 },
     ],
     async fetch(params): Promise<ProduktionNu> {
       const d = await produktionNu()
