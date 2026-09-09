@@ -16,14 +16,14 @@ import WidgetView, { type WidgetPayload } from '@/components/skaerm/WidgetView'
 interface Slide {
   widgetId:    string
   durationSec: number
-  zone:        'main' | 'ticker'
+  zone:        string
 }
 
 export interface PlayerData {
   version:     string
   name:        string
   orientation: 'landscape' | 'portrait'
-  layout:      'single' | 'split'
+  layout:      'single' | 'split' | 'dashboard'
   slides:      Slide[]
   widgets:     WidgetPayload[]
 }
@@ -109,10 +109,27 @@ export default function Player({ token, initial }: { token: string; initial: Pla
   }, [])
 
   // Indeksér slides med deres payload, så de to aldrig kan komme ud af trit.
-  const alle   = state.slides.map((s, i) => ({ slide: s, payload: state.widgets[i] }))
+  const alle = state.slides.map((s, i) => ({ slide: s, payload: state.widgets[i] }))
+  const iZone = (navn: string) => alle.filter(x => x.slide.zone === navn)
+
+  // Dashboard: venstre halvdel + to kvadranter til højre. Faste felter, ikke
+  // rotation — tallene skal kunne læses uden at vente på et skift.
+  if (state.layout === 'dashboard') {
+    return (
+      <div className="relative flex h-screen w-screen overflow-hidden bg-slate-900">
+        <Zone items={iZone('venstre')} className="min-h-0 w-1/2 shrink-0 border-r border-white/15" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Zone items={iZone('hoejre-top')}  className="min-h-0 flex-1" />
+          <Zone items={iZone('hoejre-bund')} className="min-h-0 flex-1 border-t border-white/15" />
+        </div>
+        <Ur klokken={klokken} items={alle} />
+      </div>
+    )
+  }
+
   const split  = state.layout === 'split'
   const main   = split ? alle.filter(x => x.slide.zone !== 'ticker') : alle
-  const ticker = split ? alle.filter(x => x.slide.zone === 'ticker') : []
+  const ticker = split ? iZone('ticker') : []
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-slate-900">
