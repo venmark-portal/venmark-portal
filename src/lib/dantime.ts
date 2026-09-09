@@ -328,6 +328,20 @@ export interface Medarbejder {
   lonnr: string; navn: string; initialer: string; manueltSat: boolean
 }
 
+/**
+ * Alle kendte jobnavne — også for linjer hvor ingen er stemplet ind i dag.
+ * Ellers kom der til at stå "JOB 4" på skærmen i stedet for "Skrabe linjen".
+ */
+export async function alleJobNavne(): Promise<Map<string, string>> {
+  await ensureDanTimeSchema()
+  const rows = await prisma.$queryRaw<{ jobNr: string; jobNavn: string | null }[]>`
+    SELECT "jobNr", MAX("jobNavn") AS "jobNavn" FROM "DanTimeStempling"
+    WHERE "jobNr" IS NOT NULL AND "jobNavn" IS NOT NULL
+    GROUP BY "jobNr"
+  `
+  return new Map(rows.filter(r => r.jobNavn).map(r => [r.jobNr, r.jobNavn as string]))
+}
+
 export async function listMedarbejdere(): Promise<Medarbejder[]> {
   await ensureDanTimeSchema()
   return prisma.$queryRaw<Medarbejder[]>`
