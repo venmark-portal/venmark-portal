@@ -113,8 +113,10 @@ function ProduktionNuView({ data }: { data: ProduktionNu }) {
 
             {l.produktioner.map(p => (
               <div key={p.no} className="flex items-baseline gap-[0.6vw] pl-[1vw]">
-                {p.afsluttet && p.itemNo && (
-                  <span className="shrink-0 font-mono text-[2.1vh] text-slate-500">{p.itemNo}</span>
+                {p.afsluttet && (
+                  <span className="shrink-0 font-mono text-[2.1vh] text-slate-500">
+                    {p.afsluttetKl}{p.itemNo && ` ${p.itemNo}`}
+                  </span>
                 )}
                 <span className={`truncate text-[2.4vh] ${p.afsluttet ? 'text-slate-500 line-through' : 'text-white'}`}>
                   {p.description || p.no}

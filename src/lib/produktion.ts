@@ -146,6 +146,8 @@ export interface LinjeProduktion {
   /** Ordrens varenr. — på familieproduktioner er det familiekoden. */
   itemNo: string
   afsluttet: boolean
+  /** HH:MM i dansk tid — hvornår ordren blev afsluttet. Tom på igangværende. */
+  afsluttetKl: string
   /** Kun på afsluttede: hvem der var på linjen da ordren blev afsluttet. */
   folk: Medarbejder[]
 }
@@ -199,6 +201,7 @@ export async function produktionNu(): Promise<ProduktionNu> {
     const prod: LinjeProduktion = {
       no: String(o.no), description: String(o.description ?? ''),
       itemNo: String(o.itemNo ?? ''), afsluttet, folk,
+      afsluttetKl: afsluttet && o.afsluttetKl ? danskKlokken(o.afsluttetKl) : '',
     }
     if (!jobNo) { udenLinje.push(prod); continue }
 
