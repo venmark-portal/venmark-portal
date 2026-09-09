@@ -94,17 +94,51 @@ async function mailBeskeder(): Promise<Besked[]> {
   if (!tRes.ok) throw new Error(`Graph-token ${tRes.status}`)
   const token = (await tRes.json()).access_token
 
+  // Vi henter flere end vi skal bruge, fordi støjen sorteres fra bagefter.
+  // 'String 0x001A' = beskedklassen (PidTagMessageClass) — den afslører kvitteringer.
   const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(bruger)}` +
-              `/mailFolders/Inbox/messages?$top=25&$select=subject,receivedDateTime,from&$orderby=receivedDateTime desc`
+              `/mailFolders/Inbox/messages?$top=60` +
+              `&$select=subject,receivedDateTime,from,internetMessageHeaders` +
+              `&$expand=singleValueExtendedProperties($filter=id eq 'String 0x001A')` +
+              `&$orderby=receivedDateTime desc`
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
   if (!res.ok) throw new Error(`Graph mail ${res.status}: ${(await res.text()).slice(0, 120)}`)
 
-  return ((await res.json()).value ?? []).map((m: any) => ({
-    slags: 'mail' as const,
-    tid:   String(m.receivedDateTime ?? ''),
-    fra:   String(m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'ukendt'),
-    tekst: klip(m.subject, 60),
-  }))
+  return ((await res.json()).value ?? [])
+    .filter((m: any) => !erMaskinsvar(m))
+    .map((m: any) => ({
+      slags: 'mail' as const,
+      tid:   String(m.receivedDateTime ?? ''),
+      fra:   String(m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'ukendt'),
+      tekst: klip(m.subject, 60) || '(uden emne)',
+    }))
+}
+
+/**
+ * Er mailen et maskinsvar? Bedømmes KUN på tekniske kendetegn — aldrig på
+ * emneteksten, for "Automatic reply" kan sagtens stå i en rigtig henvendelse.
+ *
+ * Bevidst IKKE filtreret: `Precedence: bulk` og `Auto-Submitted: auto-generated`
+ * alene. Coops kvittering på en følgeseddel bærer begge dele, men indeholder et
+ * sagsnummer man skal kunne se. Det er en for grov kam.
+ */
+function erMaskinsvar(m: any): boolean {
+  // 1) Beskedklassen: REPORT.* er afvisninger og læse-/leveringskvitteringer.
+  //    En rigtig mail fra et menneske er altid IPM.Note.
+  const klasse = String((m.singleValueExtendedProperties ?? [])[0]?.value ?? '')
+  if (klasse.toUpperCase().startsWith('REPORT.')) return true
+
+  const h: { name: string; value: string }[] = m.internetMessageHeaders ?? []
+  const find = (navn: string) =>
+    h.find(x => x.name?.toLowerCase() === navn.toLowerCase())?.value?.toLowerCase() ?? ''
+
+  // 2) RFC 3834: 'auto-replied' sættes af autosvar. Mennesker sætter den aldrig.
+  if (find('auto-submitted').includes('auto-replied')) return true
+
+  // 3) Exchange sætter denne på fraværsassistentens svar.
+  if (h.some(x => x.name?.toLowerCase() === 'x-auto-response-suppress')) return true
+
+  return false
 }
 
 /** Mail, SMS og portal-beskeder blandet sammen efter tid. */
