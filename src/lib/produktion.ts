@@ -1,7 +1,7 @@
 // Produktionsdata til skærmene: udbytte på lukkede montager, og hvad der kører nu.
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
-import { hvemErPaaJobNu, hvemVarPaaJob, timerPrJob, copenhagenDato, type PaaJob } from '@/lib/dantime'
+import { alleJobNavne, hvemErPaaJobNu, hvemVarPaaJob, timerPrJob, copenhagenDato, type PaaJob } from '@/lib/dantime'
 
 /** BC leverer UTC; Dan-Time og skærmen arbejder i dansk tid. */
 function danskDel(iso: string, opt: Intl.DateTimeFormatOptions): string {
@@ -181,8 +181,9 @@ export async function produktionNu(): Promise<ProduktionNu> {
     return o.afsluttetKl ? danskDato(o.afsluttetKl) === idag : false
   })
 
-  const navne = new Map<string, string>()
-  for (const t of await timerPrJob(idag)) if (t.jobNavn) navne.set(t.jobNr, t.jobNavn)
+  // Navnene tages fra ALLE kendte stemplinger, ikke kun dagens — ellers stod der
+  // "job 4" på en linje hvor ingen er stemplet ind i dag.
+  const navne = await alleJobNavne()
 
   const linjer = new Map<string, ProduktionLinje>()
   const udenLinje: LinjeProduktion[] = []
