@@ -35,7 +35,9 @@ const HEARTBEAT_MS = 30_000
 export default function Player({ token, initial }: { token: string; initial: PlayerData }) {
   const [state, setState]     = useState<PlayerData>(initial)
   const [klokken, setKlokken] = useState<string | null>(null)
-  const version = useRef(initial.version)
+  const version  = useRef(initial.version)
+  const serverId = useRef<string | null>(null)
+  const startet  = useRef(Date.now())
 
   const hentAlt = useCallback(async () => {
     const res = await fetch(`/api/skaerm/${token}/data`, { cache: 'no-store' })
@@ -53,6 +55,19 @@ export default function Player({ token, initial }: { token: string; initial: Pla
         const res = await fetch(`/api/skaerm/${token}/manifest`, { cache: 'no-store' })
         if (!res.ok) return
         const m = await res.json()
+
+        // Nyt serverId = der er deployet. Skærmen kører stadig den gamle
+        // JavaScript-kode, fordi den aldrig navigerer — så hent siden forfra.
+        // Grænsen på et minut er en spærre mod en genindlæsnings-løkke, hvis
+        // serveren mod forventning svarer med skiftende id.
+        if (serverId.current === null) {
+          serverId.current = m.serverId ?? null
+        } else if (m.serverId && m.serverId !== serverId.current &&
+                   Date.now() - startet.current > 60_000) {
+          location.reload()
+          return
+        }
+
         if (m.version !== version.current) await hentAlt()
       } catch { /* netfejl — vi kører videre på det vi har */ }
     }, MANIFEST_MS)
@@ -62,6 +77,15 @@ export default function Player({ token, initial }: { token: string; initial: Pla
   useEffect(() => {
     const t = setInterval(() => { hentAlt().catch(() => {}) }, DATA_MS)
     return () => clearInterval(t)
+  }, [hentAlt])
+
+  // Browsere struber timere kraftigt i en baggrundsfane, så en skærm der har
+  // ligget bagved kan vise gamle tal i minutter. Hent forfra så snart den er
+  // synlig igen.
+  useEffect(() => {
+    const vaagn = () => { if (!document.hidden) hentAlt().catch(() => {}) }
+    document.addEventListener('visibilitychange', vaagn)
+    return () => document.removeEventListener('visibilitychange', vaagn)
   }, [hentAlt])
 
   useEffect(() => {
