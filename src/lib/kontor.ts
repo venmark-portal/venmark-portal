@@ -22,7 +22,7 @@ const klip = (s: string, n: number) => {
 
 // ─── Samlet besked-feed ──────────────────────────────────────────────────────
 
-export type BeskedSlags = 'mail' | 'sms' | 'portal'
+export type BeskedSlags = 'mail' | 'sms' | 'portal' | 'webordre'
 export interface Besked {
   slags: BeskedSlags
   tid:   string     // ISO
@@ -71,6 +71,34 @@ async function portalBeskeder(): Promise<Besked[]> {
     fra:   r.senderName || r.navn,
     tekst: klip(r.body, 50),
   }))
+}
+
+/** Ordrer afgivet i portalen/app'en — kladder tæller ikke, de er ikke sendt. */
+async function webordrer(): Promise<Besked[]> {
+  const rows = await prisma.$queryRaw<{
+    nr: string | null; navn: string; bestiltAf: string | null
+    levering: Date; oprettet: Date; linjer: bigint
+  }[]>`
+    SELECT o."bcOrderNumber" AS nr, c.name AS navn, o."orderedByName" AS "bestiltAf",
+           o."deliveryDate" AS levering, o."createdAt" AS oprettet,
+           (SELECT count(*) FROM "OrderLine" l WHERE l."orderId" = o.id) AS linjer
+    FROM "Order" o
+    JOIN "Customer" c ON c.id = o."customerId"
+    WHERE o.status <> 'DRAFT'
+    ORDER BY o."createdAt" DESC
+    LIMIT 40
+  `
+  return rows.map(r => {
+    const lev = new Intl.DateTimeFormat('da-DK', {
+      timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit',
+    }).format(r.levering)
+    return {
+      slags: 'webordre' as const,
+      tid:   r.oprettet.toISOString(),
+      fra:   r.bestiltAf || r.navn,
+      tekst: klip(`${r.nr ? r.nr + ' · ' : ''}${Number(r.linjer)} linjer · levering ${lev}`, 50),
+    }
+  })
 }
 
 /**
@@ -155,9 +183,10 @@ function erMaskinsvar(m: any): boolean {
 /** Mail, SMS og portal-beskeder blandet sammen efter tid. */
 export async function beskedFeed(antal = 20): Promise<BeskedFeed> {
   const kilder: [string, Promise<Besked[]>][] = [
-    ['mail',   mailBeskeder()],
-    ['sms',    smsBeskeder()],
-    ['portal', portalBeskeder()],
+    ['mail',     mailBeskeder()],
+    ['sms',      smsBeskeder()],
+    ['portal',   portalBeskeder()],
+    ['webordre', webordrer()],
   ]
 
   const perKilde = new Map<string, Besked[]>()
@@ -198,7 +227,8 @@ export async function beskedFeed(antal = 20): Promise<BeskedFeed> {
 // ─── Afviste salgslinjer ─────────────────────────────────────────────────────
 
 export interface AfvistLinje {
-  tid: string; saelger: string; kunde: string; vare: string; oversolgt: number; ordre: string
+  tid: string; saelger: string; kunde: string
+  vareNr: string; vare: string; oversolgt: number; ordre: string
 }
 
 export async function afvisteLinjer(antal = 15): Promise<AfvistLinje[]> {
@@ -208,6 +238,7 @@ export async function afvisteLinjer(antal = 15): Promise<AfvistLinje[]> {
       tid:       `${String(r.entryDate ?? '').slice(0, 10)}T${String(r.entryTime ?? '').slice(11, 19) || '00:00:00'}`,
       saelger:   String(r.sellerUserId ?? ''),
       kunde:     String(r.customerName || r.customerNo || ''),
+      vareNr:    String(r.itemNo ?? ''),
       vare:      String(r.itemDescription || r.itemNo || ''),
       oversolgt: Number(r.qtyOversold ?? 0),
       ordre:     String(r.orderNo ?? ''),
