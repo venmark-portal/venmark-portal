@@ -15,9 +15,36 @@ async function bcHent(sti: string, params: Record<string, string>): Promise<any[
   return (await res.json()).value ?? []
 }
 
-const klip = (s: string, n: number) => {
+/** Så mange tegn er der plads til på skærmen (Claus, målt på den rigtige skærm). */
+const MAX_TEGN = 75
+
+const klip = (s: string, n: number = MAX_TEGN) => {
   const r = String(s ?? '').replace(/\s+/g, ' ').trim()
   return r.length > n ? r.slice(0, n) + '…' : r
+}
+
+const MAANEDER = [
+  'januar', 'februar', 'marts', 'april', 'maj', 'juni',
+  'juli', 'august', 'september', 'oktober', 'november', 'december',
+]
+
+/**
+ * Portal-beskeder kommer med 49 tegn fast tekst foran:
+ * "Besked ved ordre (levering tirsdag 8. september): ". Den åd pladsen, så det
+ * kunden faktisk skrev blev klippet væk. Vi beholder leveringsdatoen i kort form
+ * — den er reel information — og smider resten af indpakningen.
+ */
+function afkortOrdrebesked(body: string): string {
+  const m = String(body ?? '').match(/^Besked ved ordre \(levering ([^)]*)\):\s*([\s\S]*)$/i)
+  if (!m) return String(body ?? '')
+
+  const resten = m[2].trim()
+  const dato   = m[1].match(/(\d{1,2})\.\s*([a-zæøå]+)/i)
+  if (dato) {
+    const nr = MAANEDER.indexOf(dato[2].toLowerCase())
+    if (nr >= 0) return `${dato[1]}/${nr + 1} · ${resten}`
+  }
+  return resten
 }
 
 // ─── Samlet besked-feed ──────────────────────────────────────────────────────
@@ -51,7 +78,7 @@ async function smsBeskeder(): Promise<Besked[]> {
       slags: 'sms' as const,
       tid:   String(r.loggedAt ?? ''),
       fra:   String(r.contactName || r.customerName || r.phone || 'ukendt'),
-      tekst: klip(r.body, 50),
+      tekst: klip(r.body),
     }))
 }
 
@@ -69,7 +96,7 @@ async function portalBeskeder(): Promise<Besked[]> {
     slags: 'portal' as const,
     tid:   r.createdAt.toISOString(),
     fra:   r.senderName || r.navn,
-    tekst: klip(r.body, 50),
+    tekst: klip(afkortOrdrebesked(r.body)),
   }))
 }
 
@@ -149,7 +176,7 @@ async function mailBeskeder(): Promise<Besked[]> {
       slags: 'mail' as const,
       tid:   String(m.receivedDateTime ?? ''),
       fra:   String(m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'ukendt'),
-      tekst: klip(m.subject, 50) || '(uden emne)',
+      tekst: klip(m.subject) || '(uden emne)',
     }))
 }
 
