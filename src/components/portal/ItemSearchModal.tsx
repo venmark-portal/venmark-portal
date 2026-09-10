@@ -118,17 +118,22 @@ interface Props {
   getDisplayPrice?: (item: EnrichedItem) => number
   /** Antals-loft pr. vare (samme logik som favoritlisten). null = ubegrænset. Uden denne cappes der ikke i søgningen. */
   getMaxQty?:      (itemNo: string) => number | null
+  /** Forudfyldt søgetekst — fra det faste søgefelt på bestillingssiden. */
+  initialQuery?:   string
 }
 
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
   itemAvailabilities, deliveryDate, getFristDayLabel, onResults, getDisplayPrice, getMaxQty,
+  initialQuery = '',
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
 
-  const [query,      setQuery]      = useState('')
+  // Starter på det der allerede er tastet i det faste søgefelt, så man ikke skal
+  // skrive det igen når modalen åbner.
+  const [query,      setQuery]      = useState(initialQuery)
   const [results,    setResults]    = useState<EnrichedItem[]>([])
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')

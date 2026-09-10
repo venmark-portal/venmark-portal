@@ -1249,6 +1249,7 @@ export default function OrderList({
     return it.unitPrice
   }, [priceTiers, categoryPriceTiers, estimatedPrices])
   const [showSearch, setShowSearch]     = useState(false)
+  const [quickSearch, setQuickSearch]   = useState('')
   const [showPromos, setShowPromos]     = useState(true)
   const [showStanding, setShowStanding] = useState(true)
   const [submitting, setSubmitting]     = useState(false)
@@ -1849,7 +1850,24 @@ export default function OrderList({
               <span className="h-2 w-2 rounded-full bg-blue-400 inline-block animate-pulse" />Genberegner disponibel…
             </span>
           )}
-          <span className="flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
+          <span className="hidden sm:flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
+
+          {/* Søgning skal altid være ved hånden — ikke gemt bag en knap længere nede.
+              Feltet er kun indgangen: første tegn åbner søgemodalen med teksten med. */}
+          <span className="ml-auto sm:ml-3 flex items-center gap-1 rounded-full bg-white px-2 py-1 ring-1 ring-gray-200">
+            <Search size={12} className="text-gray-400" />
+            <input
+              value={quickSearch}
+              onChange={e => {
+                const v = e.target.value
+                setQuickSearch(v)
+                if (v.trim().length >= 1) setShowSearch(true)
+              }}
+              onKeyDown={e => { if (e.key === 'Enter' && quickSearch.trim()) setShowSearch(true) }}
+              placeholder="Søg i alle varer…"
+              className="w-32 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400 sm:w-44"
+            />
+          </span>
         </div>
 
         {/* Katalog-navigation */}
@@ -2207,7 +2225,7 @@ export default function OrderList({
               <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
             )}
             {!categoryLoading && categoryItems.length === 0 && (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen priser på varer i denne kategori</div>
+              <div className="px-4 py-6 text-center text-sm text-gray-400">Vælg underkategori</div>
             )}
             {!categoryLoading && categoryItems.length > 0 && (
               <div className="divide-y divide-blue-200">
@@ -2441,8 +2459,9 @@ export default function OrderList({
       {/* Søgning/katalog modal */}
       {showSearch && (
         <ItemSearchModal
+          initialQuery={quickSearch}
           onAddItems={addSearchedItems}
-          onClose={() => setShowSearch(false)}
+          onClose={() => { setShowSearch(false); setQuickSearch('') }}
           favNos={favSet}
           onToggleFav={toggleFavorite}
           itemAvailabilities={itemAvailabilities}
