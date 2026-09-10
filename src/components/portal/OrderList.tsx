@@ -1836,6 +1836,18 @@ export default function OrderList({
       {/* Leveringsdato */}
       <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} />
 
+      {/* Advarsel ved fremtidig afgang (i morgen eller senere): priser kan ændre sig,
+          især auktionsfisk → opfordr til maks. pris i bemærkning. */}
+      {deliveryDate && localYmd(deliveryDate) > localYmd(new Date()) && (
+        <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] leading-snug text-amber-900">
+          <span className="text-base leading-none">⚠️</span>
+          <span>
+            <strong>OBS:</strong> Priser fra i morgen og frem kan blive ændret — <strong>især auktionsfisk</strong>.
+            Skriv evt. din maks. pris i bemærkning.
+          </span>
+        </div>
+      )}
+
       {/* Vareliste */}
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
 
