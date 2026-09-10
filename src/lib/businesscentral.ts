@@ -237,12 +237,13 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
     }
   }
 
-  // Ingen søgning: enkelt kald med evt. kategorifilter
-  const filters: string[] = [`not startswith(number,'X') and not startswith(number,'x')`]
-  if (category) filters.push(`itemCategoryCode eq '${category}'`)
-
-  const params = new URLSearchParams({ ...selectExpand, $top: String(top), $skip: String(skip) })
-  if (filters.length) params.set('$filter', filters.join(' and '))
+  // Ingen søgning: enkelt kald med evt. kategorifilter.
+  //
+  // X-varer frasorteres HER i koden, ikke i filteret. BC's OData understøtter ikke
+  // 'not', så `not startswith(number,'X')` gav 501 BadRequest_MethodNotImplemented
+  // — og dermed fejlede ETHVERT kategoriklik på portalen.
+  const params = new URLSearchParams({ ...selectExpand, $top: String(top + 40), $skip: String(skip) })
+  if (category) params.set('$filter', `itemCategoryCode eq '${category}'`)
 
   const res = await fetch(`${base}/items?${params}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -254,7 +255,13 @@ export async function getItems(opts: GetItemsOptions = {}): Promise<BCItemsRespo
     throw new Error(`BC API fejl: ${res.status} ${err}`)
   }
 
-  return res.json()
+  const data = await res.json()
+  return {
+    ...data,
+    value: (data.value ?? [])
+      .filter((i: BCItem) => !String(i.number ?? '').toUpperCase().startsWith('X'))
+      .slice(0, top),
+  }
 }
 
 // ─── Hent varegrupper (til filter-menu) ──────────────────────────────────────
@@ -777,7 +784,11 @@ export async function getWebshopVisibleItemNos(): Promise<Set<string> | null> {
     // (skjulPaaPortal = true) samt X-præfiks-varer. Vi bygger "synlig"-sættet = alt der IKKE
     // er skjult/X. Cachet (revalidate) så det er hurtigt + pålideligt og ikke fail-opener til
     // "vis alt" ved en tilfældig timeout.
-    let url: string | null = `${base}/itemCutoffs?$select=itemNo,skjulPaaPortal&$top=1000`
+    // INGEN $top: beder man om præcis 1000, returnerer BC 1000 rækker UDEN nextLink
+    // — for klienten fik jo det den bad om. Løkken stoppede derfor efter én side,
+    // og af 4221 varer blev kun de første 1000 vurderet. Alt med højere varenummer
+    // var dermed usynligt på portalen, også i søgning. Uden $top kommer alle med.
+    let url: string | null = `${base}/itemCutoffs?$select=itemNo,skjulPaaPortal`
     while (url) {
       const res: Response = await fetch(url, { headers, next: { revalidate: 300 } } as any)
       if (!res.ok) return null   // BC-fejl → null = fail open (vis alt)
