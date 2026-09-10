@@ -81,6 +81,8 @@ export interface UdbytteRaekke {
   tid:          string
   /** Initialer på dem der var på linjen ved afslutning. */
   initialer:    string[]
+  /** Forbrugte mandeminutter — summen over medarbejderne på montagen. */
+  minutter:     number
 }
 
 /**
@@ -119,16 +121,17 @@ export async function sidsteUdbytter(antal = 10): Promise<UdbytteRaekke[]> {
   // Medarbejderne på hver montage. Produktionsnummeret er det samme før og efter
   // bogføring, så snapshottet fra afslutningen kan slås direkte op her — og
   // capturedAt er netop afslutningstidspunktet.
-  const folkPr = new Map<string, { tid: string; init: string[] }>()
+  const folkPr = new Map<string, { tid: string; init: string[]; min: number }>()
   try {
     const initialer = await initialerPrLonnr()
     const siden = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 19) + 'Z'
     for (const r of await bcHent('prodEmployees', { '$filter': `capturedAt ge ${siden}`, '$top': '5000' })) {
       const nr = String(r.productionNo ?? '')
       if (!nr) continue
-      const e = folkPr.get(nr) ?? { tid: r.capturedAt ? danskKlokken(r.capturedAt) : '', init: [] }
+      const e = folkPr.get(nr) ?? { tid: r.capturedAt ? danskKlokken(r.capturedAt) : '', init: [], min: 0 }
       const i = initialer.get(String(r.employeeNo)) || String(r.name ?? '').slice(0, 3)
       if (i && !e.init.includes(i)) e.init.push(i)
+      e.min += Number(r.minutes ?? 0)
       folkPr.set(nr, e)
     }
   } catch (e) {
@@ -160,6 +163,7 @@ export async function sidsteUdbytter(antal = 10): Promise<UdbytteRaekke[]> {
       itemNo:       String(hoved[0].itemNo ?? ''),
       tid:          folkPr.get(nr)?.tid ?? '',
       initialer:    folkPr.get(nr)?.init ?? [],
+      minutter:     folkPr.get(nr)?.min ?? 0,
     })
   }
 

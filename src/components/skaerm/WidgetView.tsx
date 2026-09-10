@@ -196,6 +196,7 @@ function Udbytter({ data }: { data: UdbytteRaekke[] }) {
             <th className="py-[0.5vh] text-right font-medium">Hoved</th>
             <th className="py-[0.5vh] text-right font-medium">Biprod.</th>
             <th className="py-[0.5vh] text-right font-medium">I alt</th>
+            <th className="py-[0.5vh] text-right font-medium">Tid</th>
             <th className="py-[0.5vh] text-left font-medium">Hvem</th>
           </tr>
         </thead>
@@ -220,6 +221,10 @@ function Udbytter({ data }: { data: UdbytteRaekke[] }) {
               </td>
               <td className="py-[0.7vh] pl-[0.8vw] text-right text-[2.8vh] font-semibold tabular-nums text-sky-300">
                 {nf1.format(r.ialtPct)}%
+              </td>
+              <td className="py-[0.6vh] pl-[0.8vw] text-right text-[1.9vh] tabular-nums text-slate-300"
+                  title="Forbrugte mandetimer — summen over medarbejderne på linjen">
+                {r.minutter > 0 ? timerMin(r.minutter) : <span className="text-slate-600">–</span>}
               </td>
               <td className="py-[0.6vh] pl-[0.8vw] text-[1.9vh] text-emerald-300/90">
                 {r.initialer.join(' ') || <span className="text-slate-600">–</span>}
@@ -296,6 +301,13 @@ function Init({ f, dæmpet }: { f: { navn: string; initialer: string }; dæmpet?
       {f.initialer}
     </span>
   )
+}
+
+/** 138 → "2:18" — mandetimer:minutter. */
+function timerMin(minutter: number): string {
+  const t = Math.floor(minutter / 60)
+  const m = Math.round(minutter % 60)
+  return `${t}:${String(m).padStart(2, '0')}`
 }
 
 function dansk(iso: string): string {
