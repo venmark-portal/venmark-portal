@@ -1,5 +1,27 @@
 # Venmark Portal — Claude Code kontekst
 
+## LÆS FØRST: flere sessioner deler dette repo
+Der kører typisk **flere VS Code-/Claude-sessioner samtidig på samme PC** mod den samme
+git-klon. Et `git checkout` i én session river grundlaget væk under de andre — deres
+ændringer ser ud til at forsvinde, og en commit kan ende på den forkerte branch.
+
+**Regel: den fælles klon `C:\Users\241cib01\dev\venmark-portal` bliver på `main`.**
+Skal du arbejde på en anden branch, så tag dit eget arbejdstræ:
+
+```powershell
+.\nyt-worktree.ps1 skaerme staging   # -> ..\venmark-portal-skaerme på staging
+.\nyt-worktree.ps1 fragt             # -> ..\venmark-portal-fragt på ny branch arbejde/fragt
+```
+
+Worktrees deler samme `.git` (samme commits og remote), men har hvert sit arbejdstræ og
+sin egen branch, så sessionerne ikke rører hinanden. Scriptet junction'er `node_modules`
+fra hovedklonen, så du undgår et nyt `npm install`.
+
+`git worktree list` viser hvem der har hvad · ryd op med `git worktree remove <sti>`.
+
+Ser du ændringer i `git status` du ikke selv har lavet: **de tilhører en anden session.**
+Commit dem ikke — læg kun dine egne filer i din commit.
+
 ## Projektbeskrivelse
 Kundeportal for Venmark Fisk A/S bygget med Next.js 14 App Router + PostgreSQL.
 Kunder kan bestille varer, se fakturaer, reklamere og se leveringsstatus.
@@ -60,11 +82,24 @@ cd /var/www/venmark && npm run build && pm2 restart venmark
 BC_TENANT_ID=ac081190-c3c1-4e72-966b-2d57f362306e
 BC_CLIENT_ID=2fc221a4-b295-4980-a9f5-6c9e75649148
 BC_CLIENT_SECRET=...
-BC_ENVIRONMENT_NAME=Sandbox-Test
-BC_COMPANY_ID=d4938cd7-52ed-f011-8405-000d3abfb7df
+BC_ENVIRONMENT_NAME=Sandbox_20260820
+BC_COMPANY_ID=1b249b0b-6f5e-f111-ab09-7ced8d42a969
 NEXTAUTH_SECRET=...
 DATABASE_URL=postgresql://...
 ```
+
+> **BC-miljøer (rettet 2026-09-07).** `Sandbox-Test` findes ikke længere — den svarer
+> `NoEnvironment: Environment does not exist`. Den nuværende sandkasse hedder
+> **`Sandbox_20260820`**, og selskabet "Venmark Fisk AS" har dér samme id som i
+> Production (`1b249b0b-…`). Den gamle `d4938cd7-…` var den døde sandkasses selskab.
+>
+> | Miljø | BC_ENVIRONMENT_NAME | Data |
+> |---|---|---|
+> | Prod (`/var/www/venmark`, port 3000) | `Production` | live |
+> | Test (`/var/www/venmark-test`, port 3002) | `Sandbox_20260820` | kopi, salgsdata t.o.m. 2026-09-02 |
+>
+> Skifter du BC-miljø: husk `rm -rf .next/cache` før restart — Next cacher BC-svar
+> (inkl. 401/404) på disk, og de overlever ellers en `pm2 restart`.
 
 ## Vigtig arkitektur
 - **`src/lib/businesscentral.ts`** — alle BC API-kald

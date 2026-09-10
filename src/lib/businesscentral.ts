@@ -1304,6 +1304,7 @@ export async function createBCSalesOrder(
   poNumber?: string,
   driverNote?: string,
   orderNote?: string,
+  shipmentMethodCode?: string,
 ): Promise<BCCreateOrderResult> {
   const token      = await getAccessToken()
   const portalBase = bcPortalBaseUrl()
@@ -1324,6 +1325,12 @@ export async function createBCSalesOrder(
   // page 50391). Skrives på selve ordren, så sælger ser den direkte i BC (ud over besked-systemet).
   if (orderNote?.trim()) {
     orderBody.orderNote = orderNote.trim()
+  }
+  // Kundens VALGTE leveringskode (ikke debitorkortets standard). BC bruger den til at
+  // sætte Shipment Method Code + beregne afsendelsesdato = leveringsdato − transitdage.
+  // Tom = BC beholder kundens standard.
+  if (shipmentMethodCode?.trim()) {
+    orderBody.shipmentMethodCode = shipmentMethodCode.trim()
   }
 
   const orderRes = await fetch(`${portalBase}/portalSalesOrders`, {

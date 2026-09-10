@@ -194,6 +194,7 @@ export async function POST(req: NextRequest) {
         poNumber ?? undefined,
         driverNote ?? undefined,
         notes ?? undefined,
+        shipmentMethodCode ?? undefined,   // kundens VALGTE leveringskode → BC (transit/afsendelse)
       )
 
       // Opdater til SENT_TO_BC med BC-referencer
