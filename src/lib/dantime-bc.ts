@@ -11,7 +11,7 @@
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
 import { prisma } from '@/lib/prisma'
-import { ensureDanTimeSchema, hvemVarPaaJob } from '@/lib/dantime'
+import { ensureDanTimeSchema, stemplingerPaaJob } from '@/lib/dantime'
 
 async function bcFetch(sti: string, init: RequestInit = {}): Promise<Response> {
   const token = await getAccessToken()
@@ -167,38 +167,68 @@ export async function fangMedarbejdere(timer = 72): Promise<FangResultat> {
   const udenJob: string[] = [], udenFolk: string[] = []
   let behandlet = 0, skrevet = 0
 
+  // Grupper efter linje og dag. Tiden fordeles MELLEM produktionerne, så hvert
+  // mandeminut tælles én gang: en produktions interval går fra den FORRIGE
+  // afslutning på samme linje frem til dens egen. Uden det fik tre produktioner
+  // efter hinanden på samme linje hele dagens bemanding hver — ubrugeligt til
+  // kostpriser.
+  const grupper = new Map<string, ProdOrdre[]>()
   for (const o of nylige) {
     if (!o.danTimeJobNo) { udenJob.push(o.no); continue }
+    const noegle = `${o.danTimeJobNo}|${tilDansk(o.afsluttetKl!).dato}`
+    grupper.set(noegle, (grupper.get(noegle) ?? []).concat(o))
+  }
 
-    // Allerede fanget? Så lad den være.
-    const fandtes = await bcFetch(
-      `prodEmployees?$filter=productionNo eq '${o.no.replace(/'/g, "''")}'&$top=1`)
-    if (fandtes.ok && ((await fandtes.json()).value ?? []).length > 0) continue
+  const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 
-    const { dato, klokken } = tilDansk(o.afsluttetKl!)
-    const folk = await hvemVarPaaJob(o.danTimeJobNo, dato, klokken)
-    behandlet++
-    if (folk.length === 0) { udenFolk.push(o.no); continue }
+  for (const [noegle, ordrer] of Array.from(grupper)) {
+    const [jobNo, dato] = noegle.split('|')
+    ordrer.sort((x, y) => String(x.afsluttetKl).localeCompare(String(y.afsluttetKl)))
+    const stemplinger = await stemplingerPaaJob(jobNo, dato)
 
-    for (const p of folk) {
-      const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
-      let minutter = min(p.ud ?? klokken) - min(p.ind)
-      if (minutter < 0) minutter += 24 * 60
+    let forrigeSlut = 0                     // minutter siden midnat; 0 = dagens start
+    for (const o of ordrer) {
+      const slut = min(tilDansk(o.afsluttetKl!).klokken)
+      const fra  = forrigeSlut
+      forrigeSlut = slut
+      behandlet++
 
-      const r = await bcFetch('prodEmployees', {
-        method: 'POST',
-        body: JSON.stringify({
-          productionNo: o.no,
-          employeeNo:   p.lonnr,
-          name:         p.navn.slice(0, 100),
-          jobNo:        o.danTimeJobNo,
-          jobName:      (p.gruppe ?? '').slice(0, 50),
-          minutes:      Math.max(0, minutter),
-          capturedAt:   o.afsluttetKl,
-        }),
-      })
-      if (r.ok) skrevet++
-      else console.error(`[dantime→bc] ${o.no}/${p.lonnr}:`, (await r.text()).slice(0, 200))
+      // Overlap mellem hver medarbejders stempling og produktionens interval.
+      const folk = stemplinger
+        .map(p => {
+          const ind = min(p.ind)
+          const ud  = p.ud ? min(p.ud) : slut     // stadig inde = tæl frem til afslutning
+          return { p, minutter: Math.min(ud, slut) - Math.max(ind, fra) }
+        })
+        .filter(x => x.minutter > 0)
+
+      if (folk.length === 0) { udenFolk.push(o.no); continue }
+
+      // Skriv altid forfra, så en ændret beregning også retter gamle rækker.
+      const gamle = await bcFetch(
+        `prodEmployees?$filter=productionNo eq '${o.no.replace(/'/g, "''")}'&$top=100`)
+      if (gamle.ok) {
+        for (const r of ((await gamle.json()).value ?? []) as any[]) {
+          await bcFetch(`prodEmployees(${r.id})`, { method: 'DELETE', headers: { 'If-Match': '*' } })
+        }
+      }
+
+      for (const { p, minutter } of folk) {
+        const r = await bcFetch('prodEmployees', {
+          method: 'POST',
+          body: JSON.stringify({
+            productionNo: o.no,
+            employeeNo:   p.lonnr,
+            name:         p.navn.slice(0, 100),
+            jobNo,
+            jobName:      (p.gruppe ?? '').slice(0, 50),
+            minutes:      Math.round(minutter),
+            capturedAt:   o.afsluttetKl,
+          }),
+        })
+        if (r.ok) skrevet++
+        else console.error(`[dantime→bc] ${o.no}/${p.lonnr}:`, (await r.text()).slice(0, 200))
+      }
     }
   }
 

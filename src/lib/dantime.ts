@@ -342,6 +342,18 @@ export async function alleJobNavne(): Promise<Map<string, string>> {
   return new Map(rows.filter(r => r.jobNavn).map(r => [r.jobNr, r.jobNavn as string]))
 }
 
+/** Alle stemplinger på ét job en bestemt dag — grundlaget for tidsfordeling. */
+export async function stemplingerPaaJob(jobNr: string, dato: string): Promise<PaaJob[]> {
+  await ensureDanTimeSchema()
+  return prisma.$queryRaw<PaaJob[]>`
+    SELECT s.lonnr, s.navn, COALESCE(m.initialer, '') AS initialer, s.gruppe, s.ind, s.ud
+    FROM "DanTimeStempling" s
+    LEFT JOIN "DanTimeMedarbejder" m ON m.lonnr = s.lonnr
+    WHERE s."jobNr" = ${jobNr} AND s.dato = ${dato}
+    ORDER BY s.ind
+  `
+}
+
 /** Lønnr → initialer, til opslag når vi kun har nummeret fra BC. */
 export async function initialerPrLonnr(): Promise<Map<string, string>> {
   await ensureDanTimeSchema()
