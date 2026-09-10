@@ -131,9 +131,13 @@ export default function Player({ token, initial }: { token: string; initial: Pla
   // til venstre; de tre frie celler venter på mere indhold.
   if (state.layout === 'kontor') {
     return (
-      <div className="relative grid h-screen w-screen grid-cols-4 grid-rows-3 overflow-hidden bg-slate-900
+      <div className="relative grid h-screen w-screen grid-rows-3 overflow-hidden bg-slate-900
                       [&>*]:border-white/15"
-           style={{ gridTemplateAreas: `"beskeder beskeder kunder kunder" "beskeder beskeder afvist afvist" "fri fri fri reklamationer"` }}>
+           style={{
+             // Beskeder er det vigtigste og går 20 % ind over højre side (Claus).
+             gridTemplateColumns: '70% 30%',
+             gridTemplateAreas: `"beskeder kunder" "beskeder afvist" "fri reklamationer"`,
+           }}>
         <Zone items={iZone('beskeder')}      className="min-h-0 border-b border-r" style={{ gridArea: 'beskeder' }} />
         <Zone items={iZone('kunder')}        className="min-h-0 border-b"          style={{ gridArea: 'kunder' }} />
         <Zone items={iZone('afvist')}        className="min-h-0 border-b"          style={{ gridArea: 'afvist' }} />

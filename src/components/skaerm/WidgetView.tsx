@@ -47,9 +47,10 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
 // ─── Kontorskærm ─────────────────────────────────────────────────────────────
 
 const SLAGS = {
-  mail:   { navn: 'Mail',   farve: 'bg-sky-500/20 text-sky-300' },
-  sms:    { navn: 'SMS',    farve: 'bg-emerald-500/20 text-emerald-300' },
-  portal: { navn: 'Portal', farve: 'bg-violet-500/20 text-violet-300' },
+  mail:     { navn: 'Mail',   farve: 'bg-sky-500/20 text-sky-300' },
+  sms:      { navn: 'SMS',    farve: 'bg-emerald-500/20 text-emerald-300' },
+  portal:   { navn: 'Portal', farve: 'bg-violet-500/20 text-violet-300' },
+  webordre: { navn: 'Ordre',  farve: 'bg-amber-500/20 text-amber-300' },
 } as const
 
 /** I dag: kun klokkeslæt. Ældre: dato OG klokkeslæt — tiden skal altid med. */
@@ -77,8 +78,8 @@ function Beskeder({ data }: { data: BeskedFeed }) {
           return (
             <div key={i} className="flex items-baseline gap-[0.4vw] border-b border-white/10 py-[0.2vh]">
               <span className={`shrink-0 rounded px-[0.3vw] text-[1.25vh] font-semibold ${s.farve}`}>{s.navn}</span>
-              <span className="w-[6vw] shrink-0 text-[1.45vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
-              <span className="w-[9vw] shrink-0 truncate text-[1.55vh] text-slate-300" title={b.fra}>{b.fra}</span>
+              <span className="w-[4.5vw] shrink-0 text-[1.45vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
+              <span className="w-[7vw] shrink-0 truncate text-[1.55vh] text-slate-300" title={b.fra}>{b.fra}</span>
               <span className="min-w-0 flex-1 truncate text-[1.55vh] text-white">{b.tekst}</span>
             </div>
           )
@@ -98,10 +99,12 @@ function Afviste({ data }: { data: AfvistLinje[] }) {
     <Frame title="Afviste varer">
       {data.length === 0 && <p className="text-[2.2vh] text-slate-400">Ingen afviste linjer.</p>}
       {data.map((r, i) => (
-        <div key={i} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.35vh]">
-          <span className="w-[5vw] shrink-0 truncate text-[1.9vh] text-amber-300">{r.saelger}</span>
-          <span className="min-w-0 flex-1 truncate text-[2vh] text-white" title={`${r.kunde} · ${r.ordre}`}>{r.vare}</span>
-          <span className="shrink-0 text-[2vh] font-semibold tabular-nums text-rose-400">−{nf1.format(r.oversolgt)}</span>
+        <div key={i} className="flex items-baseline gap-[0.4vw] border-b border-white/10 py-[0.3vh]">
+          <span className="w-[4.5vw] shrink-0 truncate text-[1.7vh] text-amber-300">{r.saelger}</span>
+          <span className="shrink-0 font-mono text-[1.6vh] text-slate-500">{r.vareNr}</span>
+          <span className="min-w-0 flex-1 truncate text-[1.8vh] text-white" title={r.kunde}>{r.vare}</span>
+          <span className="shrink-0 font-mono text-[1.6vh] text-slate-500">{r.ordre}</span>
+          <span className="shrink-0 text-[1.8vh] font-semibold tabular-nums text-rose-400">−{nf1.format(r.oversolgt)}</span>
         </div>
       ))}
     </Frame>
