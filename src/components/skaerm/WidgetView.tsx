@@ -77,10 +77,14 @@ function Beskeder({ data }: { data: BeskedFeed }) {
           const s = SLAGS[b.slags]
           return (
             <div key={i} className="flex items-baseline gap-[0.4vw] border-b border-white/10 py-[0.2vh]">
-              <span className={`shrink-0 rounded px-[0.3vw] text-[1.25vh] font-semibold ${s.farve}`}>{s.navn}</span>
+              {/* Webordre med "besked til Venmark" er den ene slags ordre nogen skal
+                  reagere på — den får kraftigere farve, så den ikke drukner. */}
+              <span className={`shrink-0 rounded px-[0.3vw] text-[1.25vh] font-semibold ${
+                b.harBesked ? 'bg-amber-400/40 text-amber-100' : s.farve
+              }`}>{s.navn}</span>
               <span className="w-[4.5vw] shrink-0 text-[1.45vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
               <span className="w-[7vw] shrink-0 truncate text-[1.55vh] text-slate-300" title={b.fra}>{b.fra}</span>
-              <span className="min-w-0 flex-1 truncate text-[1.55vh] text-white">{b.tekst}</span>
+              <span className={`min-w-0 flex-1 truncate text-[1.55vh] ${b.harBesked ? 'text-amber-100' : 'text-white'}`}>{b.tekst}</span>
             </div>
           )
         })}

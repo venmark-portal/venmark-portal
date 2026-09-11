@@ -55,6 +55,8 @@ export interface Besked {
   tid:   string     // ISO
   fra:   string
   tekst: string
+  /** Webordre med "besked til Venmark" — fremhæves, så den ikke drukner i feeden. */
+  harBesked?: boolean
 }
 export interface BeskedFeed {
   beskeder: Besked[]
@@ -104,10 +106,10 @@ async function portalBeskeder(): Promise<Besked[]> {
 async function webordrer(): Promise<Besked[]> {
   const rows = await prisma.$queryRaw<{
     nr: string | null; navn: string; bestiltAf: string | null
-    levering: Date; oprettet: Date; linjer: bigint
+    levering: Date; oprettet: Date; linjer: bigint; besked: string | null
   }[]>`
     SELECT o."bcOrderNumber" AS nr, c.name AS navn, o."orderedByName" AS "bestiltAf",
-           o."deliveryDate" AS levering, o."createdAt" AS oprettet,
+           o."deliveryDate" AS levering, o."createdAt" AS oprettet, o.notes AS besked,
            (SELECT count(*) FROM "OrderLine" l WHERE l."orderId" = o.id) AS linjer
     FROM "Order" o
     JOIN "Customer" c ON c.id = o."customerId"
@@ -119,11 +121,16 @@ async function webordrer(): Promise<Besked[]> {
     const lev = new Intl.DateTimeFormat('da-DK', {
       timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit',
     }).format(r.levering)
+    const hoved  = `${r.nr ? r.nr + ' · ' : ''}${Number(r.linjer)} linjer · levering ${lev}`
+    // "Besked til Venmark" fra bestillingen er det eneste på en webordre nogen
+    // rent faktisk skal reagere på — vis så meget af den som der er plads til.
+    const besked = String(r.besked ?? '').replace(/\s+/g, ' ').trim()
     return {
       slags: 'webordre' as const,
       tid:   r.oprettet.toISOString(),
       fra:   r.bestiltAf || r.navn,
-      tekst: klip(`${r.nr ? r.nr + ' · ' : ''}${Number(r.linjer)} linjer · levering ${lev}`, 50),
+      tekst: besked ? klip(`${hoved} · 💬 ${besked}`) : klip(hoved, 50),
+      harBesked: Boolean(besked),
     }
   })
 }
