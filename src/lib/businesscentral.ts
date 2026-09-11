@@ -286,20 +286,31 @@ export async function getItemCategories(): Promise<BCItemCategory[]> {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   const cacheOpt = { next: { revalidate: 3600 } } as const
 
-  const [itemsRes, catRes] = await Promise.all([
-    fetch(`${base}/items?$select=itemCategoryCode&$top=1000`, { headers, ...cacheOpt }),
+  // INGEN $top på items: med $top=1000 returnerer BC præcis 1000 rækker UDEN nextLink,
+  // så løkken stopper efter én side. Af 4221 varer blev kun de 1000 laveste varenumre
+  // set, og de 17 kategorier der kun bruges højere oppe (bl.a. FROST1 og ROGNFROST)
+  // forsvandt fra kategoritræet. Følg nextLink i stedet.
+  async function alleVarekategorier(): Promise<Set<string>> {
+    const koder = new Set<string>()
+    let url: string | null = `${base}/items?$select=itemCategoryCode`
+    while (url) {
+      const res: Response = await fetch(url, { headers, ...cacheOpt } as any)
+      if (!res.ok) return koder
+      const data = await res.json()
+      for (const item of (data.value ?? [])) {
+        if (item.itemCategoryCode) koder.add(item.itemCategoryCode)
+      }
+      url = data['@odata.nextLink'] ?? null
+    }
+    return koder
+  }
+
+  const [usedCodes, catRes] = await Promise.all([
+    alleVarekategorier(),
     fetch(`${customBase}/portalItemCategories?$select=code,displayName,parentCategory,presentationOrder,visibleInWebshop&$top=500`, { headers, ...cacheOpt }),
   ])
 
-  if (!itemsRes.ok) return []
-
-  const itemsData = await itemsRes.json()
-
-  // Find alle distinkte kategori-koder der rent faktisk er brugt på varer
-  const usedCodes = new Set<string>()
-  for (const item of (itemsData.value ?? [])) {
-    if (item.itemCategoryCode) usedCodes.add(item.itemCategoryCode)
-  }
+  if (!usedCodes.size) return []
 
   // Byg opslag: kode → feltdata
   type CatMeta = { displayName: string; parentCategory: string; presentationOrder: number; visibleInWebshop: boolean }
@@ -2024,7 +2035,10 @@ export async function getItemAvailabilities(locationCode?: string, itemNos?: str
 
     async function fetchPages(filterClause: string) {
       const f = filterClause ? `&$filter=${encodeURIComponent(filterClause)}` : ''
-      let url: string | null = `${base}/itemAvailabilities?${select}&$top=1000${f}`
+      // INGEN $top — det afkorter tavst ved 1000 og dræber nextLink (se getItemCategories).
+      // Uden filter er der 4221 varer, så alt over de 1000 laveste varenumre stod uden
+      // disponibel-data på ordredetaljer og "tilføj linjer".
+      let url: string | null = `${base}/itemAvailabilities?${select}${f}`
       while (url) {
         const res: Response = await fetch(url, { headers, cache: 'no-store' } as any)
         if (!res.ok) break
@@ -2139,7 +2153,7 @@ export async function getSalgsliste(
     // 1) Forsyning pr. vare (lager / i produktion / i køb) — alle varer
     type Supply = { description: string; baseUoM: string; lager: number; iProduktion: number; iKoeb: number }
     const supply = new Map<string, Supply>()
-    let aurl: string | null = `${base}/itemAvailabilities?$top=1000`
+    let aurl: string | null = `${base}/itemAvailabilities`   // intet $top — se getItemCategories
     while (aurl) {
       const res: Response = await fetch(aurl, { headers, cache: 'no-store' } as any)
       if (!res.ok) {
@@ -2163,7 +2177,7 @@ export async function getSalgsliste(
     // 2) Åbne salgsordrelinjer for datoen → summér pr. vare + enhed + kunde
     const rows = new Map<string, SalgslisteRow>()   // key = itemNo|uom
     const filter = encodeURIComponent(`type eq 'Item' and shipmentDate eq ${salesDate}`)
-    let surl: string | null = `${base}/portalSalesLines?$filter=${filter}&$top=1000`
+    let surl: string | null = `${base}/portalSalesLines?$filter=${filter}`   // intet $top
     while (surl) {
       const res: Response = await fetch(surl, { headers, cache: 'no-store' } as any)
       if (!res.ok) {
