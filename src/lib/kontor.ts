@@ -266,7 +266,13 @@ export interface AfvistLinje {
 }
 
 export async function afvisteLinjer(antal = 15): Promise<AfvistLinje[]> {
-  const raekker = await bcHent('afvistLines', { '$top': '500' })
+  // $orderby er ikke pynt: BC svarer i NØGLErækkefølge, så `$top=500` gav de 500
+  // ÆLDSTE afvisninger (entryNo 1-501 af 950). Skærmen har vist de allerførste
+  // afvisninger siden systemet blev taget i brug og så aldrig ud til at opdatere.
+  const raekker = await bcHent('afvistLines', {
+    '$orderby': 'entryNo desc',
+    '$top':     String(Math.max(antal, 50)),
+  })
   return raekker
     .map(r => ({
       tid:       `${String(r.entryDate ?? '').slice(0, 10)}T${String(r.entryTime ?? '').slice(11, 19) || '00:00:00'}`,

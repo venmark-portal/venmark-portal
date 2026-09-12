@@ -181,10 +181,13 @@ DEFS.push(
     params: [
       { key: 'fra',   label: 'Fra dage',  type: 'number', default: 7,  min: 1,  max: 60 },
       { key: 'til',   label: 'Til dage',  type: 'number', default: 21, min: 2,  max: 120 },
-      { key: 'antal', label: 'Antal',     type: 'number', default: 10, min: 3,  max: 25 },
+      // Loftet var 10, men der er ~85 kunder i intervallet. Skærmen viste derfor
+      // kun de ældste (17-21 dage) og aldrig dem på 8-16 dage, hvor man stadig
+      // kan nå at redde handlen. Listen ruller, så alle skal med.
+      { key: 'antal', label: 'Maks antal', type: 'number', default: 300, min: 3, max: 500 },
     ],
     async fetch(params): Promise<TabtKunde[]> {
-      return tabteKunder(params.fra ?? 7, params.til ?? 21, params.antal ?? 10)
+      return tabteKunder(params.fra ?? 7, params.til ?? 21, params.antal ?? 300)
     },
   },
 )
