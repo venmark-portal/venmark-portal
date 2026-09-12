@@ -9,6 +9,7 @@ import type { ProduktionNu, UdbytteRaekke } from '@/lib/produktion'
 import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kontor'
 import type { PakkeriStatus } from '@/lib/pakkeri'
 import type { SaelgerStat } from '@/lib/saelgere'
+import type { TelefoniStat } from '@/lib/telefoni'
 
 export interface WidgetPayload {
   widgetId:  string
@@ -44,6 +45,7 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
     case 'tabte-kunder':     return <TabteKunder data={payload.data as TabtKunde[]} />
     case 'pakkeri-status':   return <Pakkeri data={payload.data as PakkeriStatus} />
     case 'saelger-linjer':   return <Saelgere data={payload.data as SaelgerStat} />
+    case 'telefoni':         return <Telefoni data={payload.data as TelefoniStat} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
 }
@@ -416,6 +418,40 @@ function Saelgere({ data }: { data: SaelgerStat }) {
                 </span>
               </div>
             ))}
+          </Rullende>
+        )}
+    </Frame>
+  )
+}
+
+function Telefoni({ data }: { data: TelefoniStat }) {
+  const min = (sek: number) => Math.round(sek / 60)
+
+  return (
+    <Frame title={`Telefon i dag${data.mangler ? '' : ` (${nf.format(data.ind + data.ud)} kald · ${nf.format(min(data.sekunder))} min)`}`}>
+      {data.mangler
+        ? <p className="text-[1.9vh] text-amber-400">Afventer tilladelse: {data.mangler}</p>
+        : data.personer.length === 0
+        ? <p className="text-[2vh] text-slate-400">Ingen opkald endnu i dag.</p>
+        : (
+          <Rullende>
+            <div className="flex items-baseline gap-[0.5vw] border-b border-white/20 pb-[0.3vh] text-[1.5vh] uppercase tracking-wide text-slate-400">
+              <span className="min-w-0 flex-1">Person</span>
+              <span className="w-[3.5vw] shrink-0 text-right">Ind</span>
+              <span className="w-[3.5vw] shrink-0 text-right">Ud</span>
+              <span className="w-[4.5vw] shrink-0 text-right">Min</span>
+            </div>
+            {data.personer.map(p => (
+              <div key={p.navn} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.3vh]">
+                <span className="min-w-0 flex-1 truncate text-[2vh] text-white">{p.navn}</span>
+                <span className="w-[3.5vw] shrink-0 text-right text-[2vh] tabular-nums text-emerald-300">{nf.format(p.ind)}</span>
+                <span className="w-[3.5vw] shrink-0 text-right text-[2vh] tabular-nums text-sky-300">{nf.format(p.ud)}</span>
+                <span className="w-[4.5vw] shrink-0 text-right text-[2vh] font-semibold tabular-nums text-white">{nf.format(min(p.sekunder))}</span>
+              </div>
+            ))}
+            {data.ubesvarede > 0 && (
+              <p className="pt-[0.5vh] text-[1.7vh] text-amber-400">{nf.format(data.ubesvarede)} ubesvarede</p>
+            )}
           </Rullende>
         )}
     </Frame>

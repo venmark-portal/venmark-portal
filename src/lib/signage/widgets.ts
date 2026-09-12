@@ -13,6 +13,7 @@ import {
 } from '@/lib/kontor'
 import { pakkeriStatus, type PakkeriStatus } from '@/lib/pakkeri'
 import { saelgerStat, type SaelgerStat } from '@/lib/saelgere'
+import { telefoniStat, type TelefoniStat } from '@/lib/telefoni'
 
 export interface WidgetParamDef {
   key:     string
@@ -209,6 +210,14 @@ DEFS.push(
     ttlSec:      120,
     params: [],
     async fetch(): Promise<SaelgerStat> { return saelgerStat() },
+  },
+  {
+    id:          'telefoni',
+    name:        'Telefon i dag',
+    description: 'Teams-telefoni (Direct Routing): antal ind- og udgående opkald, ubesvarede og samlet taletid — i alt og pr. person.',
+    ttlSec:      300,
+    params: [],
+    async fetch(): Promise<TelefoniStat> { return telefoniStat() },
   },
 )
 
