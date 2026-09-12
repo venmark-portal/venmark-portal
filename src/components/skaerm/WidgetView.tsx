@@ -8,6 +8,7 @@ import type { DagensSalgData, LeveringerIDagData } from '@/lib/signage/widgets'
 import type { ProduktionNu, UdbytteRaekke } from '@/lib/produktion'
 import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kontor'
 import type { PakkeriStatus } from '@/lib/pakkeri'
+import type { SaelgerStat } from '@/lib/saelgere'
 
 export interface WidgetPayload {
   widgetId:  string
@@ -42,6 +43,7 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
     case 'reklamationer':    return <Reklamationer data={payload.data as Reklamation[]} />
     case 'tabte-kunder':     return <TabteKunder data={payload.data as TabtKunde[]} />
     case 'pakkeri-status':   return <Pakkeri data={payload.data as PakkeriStatus} />
+    case 'saelger-linjer':   return <Saelgere data={payload.data as SaelgerStat} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
 }
@@ -385,6 +387,37 @@ function Pakkeri({ data }: { data: PakkeriStatus }) {
             )}
         </div>
       </div>
+    </Frame>
+  )
+}
+
+function Saelgere({ data }: { data: SaelgerStat }) {
+  const pct = (d: number, i: number) => (i === 0 ? 0 : Math.round((d / i) * 100))
+
+  return (
+    <Frame title={`Sælgere i dag${data.linjerIAlt ? ` (${nf.format(data.linjerIAlt)} linjer · ${pct(data.hurtigeIAlt, data.linjerIAlt)}% hurtig)` : ''}`}>
+      {data.mangler
+        ? <p className="text-[1.9vh] text-amber-400">Afventer BC-opdatering: {data.mangler}</p>
+        : data.saelgere.length === 0
+        ? <p className="text-[2vh] text-slate-400">Ingen linjer lagt ind endnu i dag.</p>
+        : (
+          <Rullende>
+            <div className="flex items-baseline gap-[0.5vw] border-b border-white/20 pb-[0.3vh] text-[1.5vh] uppercase tracking-wide text-slate-400">
+              <span className="min-w-0 flex-1">Sælger</span>
+              <span className="w-[4.5vw] shrink-0 text-right">Linjer</span>
+              <span className="w-[6vw] shrink-0 text-right">Hurtig</span>
+            </div>
+            {data.saelgere.map(s => (
+              <div key={s.saelger} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.3vh]">
+                <span className="min-w-0 flex-1 truncate text-[2vh] text-white">{s.saelger}</span>
+                <span className="w-[4.5vw] shrink-0 text-right text-[2vh] font-semibold tabular-nums text-white">{nf.format(s.linjer)}</span>
+                <span className="w-[6vw] shrink-0 text-right text-[2vh] font-semibold tabular-nums text-sky-300">
+                  {pct(s.hurtige, s.linjer)}%
+                </span>
+              </div>
+            ))}
+          </Rullende>
+        )}
     </Frame>
   )
 }

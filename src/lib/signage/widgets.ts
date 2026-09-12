@@ -12,6 +12,7 @@ import {
   type AfvistLinje, type BeskedFeed, type Reklamation, type TabtKunde,
 } from '@/lib/kontor'
 import { pakkeriStatus, type PakkeriStatus } from '@/lib/pakkeri'
+import { saelgerStat, type SaelgerStat } from '@/lib/saelgere'
 
 export interface WidgetParamDef {
   key:     string
@@ -200,6 +201,14 @@ DEFS.push(
     async fetch(): Promise<PakkeriStatus> {
       return pakkeriStatus(todayCopenhagen())
     },
+  },
+  {
+    id:          'saelger-linjer',
+    name:        'Sælgere i dag',
+    description: 'Antal salgslinjer hver sælger har lagt ind i dag, og hvor stor en del der kom via hurtig indtastning.',
+    ttlSec:      120,
+    params: [],
+    async fetch(): Promise<SaelgerStat> { return saelgerStat() },
   },
 )
 
