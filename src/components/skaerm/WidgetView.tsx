@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react'
 import type { DagensSalgData, LeveringerIDagData } from '@/lib/signage/widgets'
 import type { ProduktionNu, UdbytteRaekke } from '@/lib/produktion'
 import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kontor'
+import type { PakkeriStatus } from '@/lib/pakkeri'
 
 export interface WidgetPayload {
   widgetId:  string
@@ -40,6 +41,7 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
     case 'afvist-linjer':    return <Afviste data={payload.data as AfvistLinje[]} />
     case 'reklamationer':    return <Reklamationer data={payload.data as Reklamation[]} />
     case 'tabte-kunder':     return <TabteKunder data={payload.data as TabtKunde[]} />
+    case 'pakkeri-status':   return <Pakkeri data={payload.data as PakkeriStatus} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
 }
@@ -317,6 +319,74 @@ function timerMin(minutter: number): string {
 function dansk(iso: string): string {
   const [a, m, d] = iso.split('-')
   return d && m ? `${d}/${m}` : iso
+}
+
+// ─── Pakkeriskærm ────────────────────────────────────────────────────────────
+
+function Noegletal({ vaerdi, tekst, farve = 'text-white' }: { vaerdi: number; tekst: string; farve?: string }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col items-center justify-center rounded-lg bg-white/5 py-[1.4vh]">
+      <span className={`text-[7vh] font-bold leading-none tabular-nums ${farve}`}>{nf.format(vaerdi)}</span>
+      <span className="mt-[0.6vh] text-center text-[1.9vh] uppercase tracking-wide text-slate-400">{tekst}</span>
+    </div>
+  )
+}
+
+function Pakkeri({ data }: { data: PakkeriStatus }) {
+  // Pakkerne skal kunne stå på én side uden at rulle — skriftstørrelsen falder
+  // med antallet, så 3 pakkere fylder skærmen og 10 stadig kan være der.
+  const n     = data.pakkere.length
+  const raekke = n <= 4 ? '5vh' : n <= 7 ? '3.6vh' : n <= 10 ? '2.8vh' : '2.2vh'
+
+  return (
+    <Frame title="Pakkeri i dag">
+      <div className="flex h-full flex-col gap-[1.6vh]">
+
+        <div className="flex shrink-0 gap-[1vw]">
+          <Noegletal vaerdi={data.ordrerIAlt} tekst="Ordrer i alt" />
+          <Noegletal
+            vaerdi={data.ordrerUdenPakker}
+            tekst="Ordrer uden pakker"
+            farve={data.ordrerUdenPakker > 0 ? 'text-amber-300' : 'text-emerald-400'}
+          />
+          <Noegletal
+            vaerdi={data.aabneLinjer}
+            tekst="Åbne linjer"
+            farve={data.aabneLinjer > 0 ? 'text-amber-300' : 'text-emerald-400'}
+          />
+          <Noegletal vaerdi={data.linjerIAlt} tekst="Linjer i alt" />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {n === 0
+            ? <p className="text-[2.5vh] text-slate-400">Ingen linjer er pakket endnu i dag.</p>
+            : (
+              <>
+                <div className="flex items-baseline gap-[1vw] border-b border-white/20 pb-[0.4vh] text-[1.9vh] uppercase tracking-wide text-slate-400">
+                  <span className="min-w-0 flex-1">Pakker</span>
+                  <span className="w-[10vw] shrink-0 text-right">Linjer pakket</span>
+                  <span className="w-[10vw] shrink-0 text-right">Heraf scannet</span>
+                </div>
+                {data.pakkere.map(p => {
+                  // En linje uden scanning er sat pakket i hånden. Det er ikke
+                  // forbudt, men det er det man skal kunne se herfra.
+                  const mangler = p.linjer - p.scannet
+                  return (
+                    <div key={p.pakker} className="flex items-baseline gap-[1vw] border-b border-white/10 py-[0.5vh]" style={{ fontSize: raekke }}>
+                      <span className="min-w-0 flex-1 truncate font-medium text-white">{p.pakker}</span>
+                      <span className="w-[10vw] shrink-0 text-right font-semibold tabular-nums text-white">{nf.format(p.linjer)}</span>
+                      <span className={`w-[10vw] shrink-0 text-right font-semibold tabular-nums ${mangler > 0 ? 'text-amber-300' : 'text-emerald-400'}`}>
+                        {nf.format(p.scannet)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+        </div>
+      </div>
+    </Frame>
+  )
 }
 
 function Frame({ title, children }: { title: string; children: React.ReactNode }) {

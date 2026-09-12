@@ -11,6 +11,7 @@ import {
   afvisteLinjer, beskedFeed, nyesteReklamationer, tabteKunder,
   type AfvistLinje, type BeskedFeed, type Reklamation, type TabtKunde,
 } from '@/lib/kontor'
+import { pakkeriStatus, type PakkeriStatus } from '@/lib/pakkeri'
 
 export interface WidgetParamDef {
   key:     string
@@ -188,6 +189,16 @@ DEFS.push(
     ],
     async fetch(params): Promise<TabtKunde[]> {
       return tabteKunder(params.fra ?? 7, params.til ?? 21, params.antal ?? 300)
+    },
+  },
+  {
+    id:          'pakkeri-status',
+    name:        'Pakkeristatus',
+    description: 'Dagens ordrer og linjer — hvor mange der mangler pakker, og pr. pakker hvor mange linjer der er pakket og hvor mange af dem der er scannet.',
+    ttlSec:      60,
+    params: [],
+    async fetch(): Promise<PakkeriStatus> {
+      return pakkeriStatus(todayCopenhagen())
     },
   },
 )
