@@ -39,13 +39,79 @@ export interface TelefoniStat {
   dato:       string
   ind:        number
   ud:         number
-  /** Opkald der aldrig blev besvaret. */
+  /** Indgående opkald hvor ingen nåede at tage den. */
   ubesvarede: number
   sekunder:   number
+  /** Median svartid i sekunder på indgående opkald — null hvis intet er målt endnu. */
+  ventMedian: number | null
+  /** Den langsomste tiendedel. Gennemsnit skjuler netop de opkald der gør ondt. */
+  ventP90:    number | null
   personer:   TelefoniPerson[]
   timer:      TelefoniTime[]
   /** Sat når tilladelsen mangler — så siger skærmen det i stedet for at vise 0. */
   mangler?:   string
+}
+
+/** Dagsstatistik til historik — én række pr. dag. */
+export interface TelefoniDag {
+  dag:        string
+  opkald:     number
+  ind:        number
+  ud:         number
+  minutter:   number
+  ubesvarede: number
+  ventMedian: number | null
+}
+
+function median(tal: number[]): number | null {
+  if (tal.length === 0) return null
+  const s = [...tal].sort((a, b) => a - b)
+  return Math.round(s[Math.floor(s.length / 2)])
+}
+
+function percentil(tal: number[], p: number): number | null {
+  if (tal.length === 0) return null
+  const s = [...tal].sort((a, b) => a - b)
+  return Math.round(s[Math.min(s.length - 1, Math.floor(s.length * p))])
+}
+
+/**
+ * Svartid pr. dag, til historik og udvikling over tid. Regnes på tværs af
+ * begge kilder — direkte opkald (trunk) og hovednummer-opkald (sessioner).
+ */
+export async function telefoniDage(antalDage = 30): Promise<TelefoniDag[]> {
+  await ensureSignageSchema()
+  const fra = new Date(Date.now() - antalDage * 864e5)
+
+  const raekker = await prisma.$queryRaw<{
+    dag: string; retning: string; sekunder: number; ventSek: number | null; ventKilde: string | null
+  }[]>`
+    SELECT "dagDk" AS dag, retning, sekunder, "ventSek", "ventKilde"
+    FROM "TeamsCall"
+    WHERE "startTime" >= ${fra}
+  `
+
+  const pr = new Map<string, { ind: number; ud: number; sek: number; ubes: number; vent: number[] }>()
+  for (const r of raekker) {
+    const d = pr.get(r.dag) ?? { ind: 0, ud: 0, sek: 0, ubes: 0, vent: [] }
+    if (r.retning === 'ind') d.ind++; else d.ud++
+    d.sek += r.sekunder
+    if (r.ventKilde === 'ubesvaret') d.ubes++
+    else if (r.ventSek !== null && r.retning === 'ind') d.vent.push(r.ventSek)
+    pr.set(r.dag, d)
+  }
+
+  return Array.from(pr.entries())
+    .map(([dag, d]) => ({
+      dag,
+      opkald:     d.ind + d.ud,
+      ind:        d.ind,
+      ud:         d.ud,
+      minutter:   Math.round(d.sek / 60),
+      ubesvarede: d.ubes,
+      ventMedian: median(d.vent),
+    }))
+    .sort((a, b) => a.dag.localeCompare(b.dag))
 }
 
 // ─── Graph ───────────────────────────────────────────────────────────────────
@@ -143,9 +209,16 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
         if (!id || isNaN(d.getTime())) continue
 
         const type = String(k.callType ?? '')
-        // duration sættes kun når opkaldet blev forbundet. Er det tomt, blev der
-        // aldrig taget telefonen — det tal er mindst lige så interessant som minutterne.
-        const sek = Number(k.duration ?? 0)
+        const sek  = Number(k.duration ?? 0)
+
+        // Svartid fra trunk-loggen: fra INVITE kom ind til opkaldet blev etableret.
+        // Det er den rigtige ventetid for DIREKTE opkald. For opkald via
+        // hovednummeret måler den kun at omstillingen svarede (~1 sek), så dem
+        // lader vi stå tomme — berigVentetid() henter den rigtige bagefter.
+        const invite = new Date(String(k.inviteDateTime ?? ''))
+        const vent = !viaBotAf(type) && !isNaN(invite.getTime())
+          ? Math.max(0, Math.round((d.getTime() - invite.getTime()) / 1000))
+          : null
 
         // DO UPDATE frem for DO NOTHING: kører vi perioden igen efter en rettelse
         // i klassificeringen, skal de rækker der allerede ligger repareres — ikke
@@ -153,22 +226,32 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
         await prisma.$executeRaw`
           INSERT INTO "TeamsCall"
             (id, "startTime", "dagDk", "timeDk", retning, "callType", navn, upn,
-             sekunder, besvaret, "viaBot", "sipKode", "slutAarsag")
+             sekunder, besvaret, "viaBot", "sipKode", "slutAarsag",
+             "correlationId", "ventSek", "ventKilde")
           VALUES (
             ${id}, ${d}, ${dkFormat.format(d)}, ${Number(dkTime.format(d))},
             ${retningAf(type)}, ${type},
             ${String(k.userDisplayName || k.userPrincipalName || 'ukendt').trim()},
             ${k.userPrincipalName ? String(k.userPrincipalName) : null},
             ${sek}, ${k.successfulCall === true && sek > 0}, ${viaBotAf(type)},
-            ${k.finalSipCode ?? null}, ${k.callEndSubReason ?? null}
+            ${k.finalSipCode ?? null}, ${k.callEndSubReason ?? null},
+            ${k.correlationId ? String(k.correlationId) : null},
+            ${vent}, ${vent === null ? null : 'trunk'}
           )
           ON CONFLICT (id) DO UPDATE SET
-            retning      = EXCLUDED.retning,
-            "viaBot"     = EXCLUDED."viaBot",
-            sekunder     = EXCLUDED.sekunder,
-            besvaret     = EXCLUDED.besvaret,
-            "sipKode"    = EXCLUDED."sipKode",
-            "slutAarsag" = EXCLUDED."slutAarsag"
+            retning         = EXCLUDED.retning,
+            "viaBot"        = EXCLUDED."viaBot",
+            sekunder        = EXCLUDED.sekunder,
+            besvaret        = EXCLUDED.besvaret,
+            "sipKode"       = EXCLUDED."sipKode",
+            "slutAarsag"    = EXCLUDED."slutAarsag",
+            "correlationId" = EXCLUDED."correlationId",
+            -- Rør IKKE en svartid der allerede er beriget fra sessionerne; den er
+            -- den rigtige, og trunk-tallet ville overskrive den med ~1 sekund.
+            "ventSek"       = CASE WHEN "TeamsCall"."ventKilde" = 'trunk' OR "TeamsCall"."ventKilde" IS NULL
+                                   THEN EXCLUDED."ventSek" ELSE "TeamsCall"."ventSek" END,
+            "ventKilde"     = CASE WHEN "TeamsCall"."ventKilde" = 'trunk' OR "TeamsCall"."ventKilde" IS NULL
+                                   THEN EXCLUDED."ventKilde" ELSE "TeamsCall"."ventKilde" END
         `
         gemt++
       }
@@ -177,6 +260,114 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
   }
 
   return { hentet, gemt }
+}
+
+// ─── Ventetid på hovednummer-opkald ─────────────────────────────────────────
+
+/** Navne der er systemer, ikke mennesker — omstilling og kø. */
+function erSystemnavn(navn: string): boolean {
+  return /_AA$|_CQ$/i.test(navn) || /^hovednummer/i.test(navn)
+}
+
+/** Første identitet i sættet der har et rigtigt navn — Graph fylder resten med null. */
+function navnFra(identitet: any): string | null {
+  for (const v of Object.values(identitet ?? {})) {
+    const o = v as any
+    if (o && typeof o === 'object' && typeof o.displayName === 'string' && o.displayName.trim()) {
+      return o.displayName.trim()
+    }
+  }
+  return null
+}
+
+/**
+ * Henter den RIGTIGE svartid for opkald gennem hovednummeret.
+ *
+ * Trunk-loggen viser kun at omstillingen svarede efter ~1 sekund. Kundens
+ * faktiske ventetid — menu + kø + ringetid hos medarbejderen — står i
+ * callRecord'ets sessioner: opkaldet går først til Hovednummer_AA, så til
+ * Hovednummer_CQ, og til sidst dukker der en session op hvor et MENNESKE er på.
+ * Tidsforskellen dertil er svaret. Samme session fortæller hvem der tog den,
+ * hvilket trunk-loggen heller ikke gør.
+ *
+ * VIGTIGT: callRecords opbevares kun i 30 dage, mens trunk-loggen har 150. Der
+ * kan derfor ikke beriges bagud ud over en måned — men fremad samler det sig,
+ * fordi cron kører hver time.
+ */
+export async function berigVentetid(maksAntal = 400): Promise<{ forsoegt: number; beriget: number; ubesvarede: number }> {
+  await ensureSignageSchema()
+
+  const graense = new Date(Date.now() - 29 * 864e5)
+  const emner = await prisma.$queryRaw<{ id: string; correlationId: string; startTime: Date }[]>`
+    SELECT id, "correlationId", "startTime"
+    FROM "TeamsCall"
+    WHERE "viaBot" = true
+      AND "ventKilde" IS NULL
+      AND "correlationId" IS NOT NULL
+      AND "startTime" >= ${graense}
+    ORDER BY "startTime" DESC
+    LIMIT ${maksAntal}
+  `
+  if (emner.length === 0) return { forsoegt: 0, beriget: 0, ubesvarede: 0 }
+
+  const token = await graphToken()
+  let beriget = 0
+  let ubesvarede = 0
+
+  for (const e of emner) {
+    const res = await fetch(
+      `https://graph.microsoft.com/v1.0/communications/callRecords/${e.correlationId}?$expand=sessions`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' } as any,
+    )
+    if (res.status === 401 || res.status === 403) {
+      throw new TilladelseMangler('CallRecords.Read.All mangler administrator-samtykke')
+    }
+    if (res.status === 404) {
+      // Ude af Microsofts 30-dages vindue, eller aldrig gemt. Markér den, så vi
+      // ikke prøver igen i al evighed.
+      await prisma.$executeRaw`UPDATE "TeamsCall" SET "ventKilde" = 'utilgaengelig' WHERE id = ${e.id}`
+      continue
+    }
+    if (!res.ok) continue
+
+    const rec = await res.json()
+    const sessioner = (rec.sessions ?? []) as any[]
+    if (sessioner.length === 0) continue
+
+    const start = Math.min(...sessioner.map(s => +new Date(s.startDateTime)))
+
+    // Den tidligste session hvor et menneske er på. Omstilling og kø hedder
+    // Hovednummer_AA/_CQ og skal ikke tælle som "taget telefonen".
+    let svar: number | null = null
+    let hvem: string | null = null
+    for (const s of sessioner) {
+      const navn = navnFra(s.caller?.identity) ?? navnFra(s.callee?.identity)
+      if (!navn || erSystemnavn(navn)) continue
+      // Telefonnumre har intet displayName, så de er allerede sorteret fra.
+      const t = +new Date(s.startDateTime)
+      if (isNaN(t)) continue
+      if (svar === null || t < svar) { svar = t; hvem = navn }
+    }
+
+    if (svar === null) {
+      await prisma.$executeRaw`
+        UPDATE "TeamsCall" SET "ventKilde" = 'ubesvaret' WHERE id = ${e.id}
+      `
+      ubesvarede++
+      continue
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "TeamsCall"
+      SET "ventSek" = ${Math.max(0, Math.round((svar - start) / 1000))},
+          "ventKilde" = 'session',
+          "besvaretAf" = ${hvem}
+      WHERE id = ${e.id}
+    `
+    beriget++
+  }
+
+  return { forsoegt: emner.length, beriget, ubesvarede }
 }
 
 // ─── Skærmen ────────────────────────────────────────────────────────────────
@@ -188,12 +379,16 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
 export async function telefoniStat(dato = idagDk()): Promise<TelefoniStat> {
   await ensureSignageSchema()
 
-  const tom: TelefoniStat = { dato, ind: 0, ud: 0, ubesvarede: 0, sekunder: 0, personer: [], timer: [] }
+  const tom: TelefoniStat = {
+    dato, ind: 0, ud: 0, ubesvarede: 0, sekunder: 0,
+    ventMedian: null, ventP90: null, personer: [], timer: [],
+  }
 
   const raekker = await prisma.$queryRaw<{
-    navn: string; retning: string; sekunder: number; besvaret: boolean; timeDk: number
+    navn: string; besvaretAf: string | null; retning: string; sekunder: number
+    timeDk: number; ventSek: number | null; ventKilde: string | null
   }[]>`
-    SELECT navn, retning, sekunder, besvaret, "timeDk"
+    SELECT navn, "besvaretAf", retning, sekunder, "timeDk", "ventSek", "ventKilde"
     FROM "TeamsCall"
     WHERE "dagDk" = ${dato}
   `
@@ -211,22 +406,29 @@ export async function telefoniStat(dato = idagDk()): Promise<TelefoniStat> {
 
   const pr    = new Map<string, TelefoniPerson>()
   const timer = new Map<number, number>()
+  const vent: number[] = []
   const ud: TelefoniStat = { ...tom, personer: [], timer: [] }
 
   for (const r of raekker) {
     const indgaaende = r.retning === 'ind'
     if (indgaaende) ud.ind++; else ud.ud++
-    if (!r.besvaret) ud.ubesvarede++
+    if (r.ventKilde === 'ubesvaret') ud.ubesvarede++
+    else if (indgaaende && r.ventSek !== null) vent.push(r.ventSek)
     ud.sekunder += r.sekunder
     timer.set(r.timeDk, (timer.get(r.timeDk) ?? 0) + 1)
 
-    const p = pr.get(r.navn) ?? { navn: r.navn, ind: 0, ud: 0, sekunder: 0 }
+    // besvaretAf er den der FAKTISK tog den. På hovednummer-opkald er `navn`
+    // bare "Hovednummer_AA" og siger intet om hvem der passede telefonen.
+    const navn = (r.besvaretAf ?? r.navn).trim() || 'ukendt'
+    const p = pr.get(navn) ?? { navn, ind: 0, ud: 0, sekunder: 0 }
     if (indgaaende) p.ind++; else p.ud++
     p.sekunder += r.sekunder
-    pr.set(r.navn, p)
+    pr.set(navn, p)
   }
 
-  ud.personer = Array.from(pr.values()).sort((a, b) => (b.ind + b.ud) - (a.ind + a.ud))
+  ud.ventMedian = median(vent)
+  ud.ventP90    = percentil(vent, 0.9)
+  ud.personer   = Array.from(pr.values()).sort((a, b) => (b.ind + b.ud) - (a.ind + a.ud))
   ud.timer    = Array.from(timer.entries())
     .map(([time, opkald]) => ({ time, opkald }))
     .sort((a, b) => a.time - b.time)

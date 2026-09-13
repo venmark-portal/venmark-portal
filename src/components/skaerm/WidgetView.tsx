@@ -459,7 +459,10 @@ function Telefoni({ data }: { data: TelefoniStat }) {
   const min = (sek: number) => Math.round(sek / 60)
 
   return (
-    <Frame title={`Telefon i dag${data.mangler ? '' : ` (${nf.format(data.ind + data.ud)} kald · ${nf.format(min(data.sekunder))} min)`}`}>
+    <Frame title={
+      `Telefon i dag${data.mangler ? '' : ` (${nf.format(data.ind + data.ud)} kald · ${nf.format(min(data.sekunder))} min` +
+        (data.ventMedian !== null ? ` · svar ${nf.format(data.ventMedian)}s` : '') + ')'}`
+    }>
       {data.mangler
         ? <p className="text-[1.9vh] text-amber-400">Afventer tilladelse: {data.mangler}</p>
         : data.personer.length === 0
@@ -480,10 +483,21 @@ function Telefoni({ data }: { data: TelefoniStat }) {
                 <span className="w-[4.5vw] shrink-0 text-right text-[2vh] font-semibold tabular-nums text-white">{nf.format(min(p.sekunder))}</span>
               </div>
             ))}
-            {/* "Ubesvarede" vises IKKE: Direct Routing måler hele trunk-benet
-                inklusive ringetid, så et ubesvaret opkald også har varighed.
-                Tallet ville se præcist ud og være forkert. SIP-koderne gemmes nu,
-                så det kan regnes rigtigt når vi har set hvad de indeholder. */}
+            {/* Ubesvarede kan IKKE tages fra trunk-loggen — dér svarer omstillingen
+                altid, så hvert opkald ser besvaret ud. Tallet her kommer fra
+                callRecord'ets sessioner: fandtes der ingen session hvor et menneske
+                var på, nåede ingen at tage den. */}
+            {(data.ubesvarede > 0 || data.ventP90 !== null) && (
+              <p className="pt-[0.5vh] text-[1.7vh]">
+                {data.ubesvarede > 0 && (
+                  <span className="text-amber-400">{nf.format(data.ubesvarede)} ubesvarede</span>
+                )}
+                {data.ubesvarede > 0 && data.ventP90 !== null && <span className="text-slate-500"> · </span>}
+                {data.ventP90 !== null && (
+                  <span className="text-slate-400">langsomste 10 %: {nf.format(data.ventP90)}s</span>
+                )}
+              </p>
+            )}
             {/* Hvornår telefonen kimer. Kun timer hvor der faktisk var opkald. */}
             {data.timer.length > 0 && (() => {
               const top = Math.max(...data.timer.map(t => t.opkald))

@@ -104,6 +104,21 @@ async function run(): Promise<void> {
   // svaret ligger.
   await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "sipKode" INTEGER`
   await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "slutAarsag" INTEGER`
+
+  // Svartid: sekunder fra opkaldet kom ind til nogen tog det.
+  //  ventKilde='trunk'   — direkte opkald: startDateTime minus inviteDateTime.
+  //  ventKilde='session' — opkald via hovednummeret: trunk-loggen viser kun at
+  //                        omstillingen svarede efter ~1 sek. Den rigtige ventetid
+  //                        ligger i callRecord'ets sessioner, hvor man kan se
+  //                        hvornår et MENNESKE kom på. Hentes af berigVentetid().
+  //  ventKilde='ubesvaret' — ingen nåede at tage den.
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "ventSek" INTEGER`
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "ventKilde" TEXT`
+  // Hvem der reelt tog den. På hovednummer-opkald er `navn` bare "Hovednummer_AA"
+  // — det siger intet om hvem der passede telefonen.
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "besvaretAf" TEXT`
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "correlationId" TEXT`
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_berig_idx" ON "TeamsCall" ("viaBot", "ventKilde", "startTime")`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_dagDk_idx" ON "TeamsCall" ("dagDk")`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_startTime_idx" ON "TeamsCall" ("startTime")`
 }
