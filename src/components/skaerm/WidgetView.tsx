@@ -346,6 +346,10 @@ function Pakkeri({ data }: { data: PakkeriStatus }) {
     <Frame title="Pakkeri i dag">
       <div className="flex h-full flex-col gap-[1.6vh]">
 
+        {data.mangler && (
+          <p className="shrink-0 text-[1.9vh] text-amber-400">Afventer BC-opdatering: {data.mangler}</p>
+        )}
+
         <div className="flex shrink-0 gap-[1vw]">
           <Noegletal vaerdi={data.ordrerIAlt} tekst="Ordrer i alt" />
           <Noegletal

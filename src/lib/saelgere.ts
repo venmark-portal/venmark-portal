@@ -1,14 +1,16 @@
 // Sælgerstatistik til kontorskærmen: hvor mange salgslinjer hver sælger har lagt
 // ind i dag, og hvor stor en del af dem der kom via Hurtig ordreindtastning.
 //
-// Kilden er BC-API'et `salesEntries` (side 50451), som er LÆSE-KUN og adskilt fra
-// den API-side portalen skriver ordrer igennem.
+// Kilden er BC-API'et `salesEntries` (side 50451) over logtabellen "VM Salgslinje
+// Log". Den er LÆSE-KUN og adskilt fra den API-side portalen skriver ordrer igennem.
 //
-// To ting værd at vide om tallene:
-//  1. Kun ÅBNE salgslinjer findes i Sales Line. Er ordren leveret og bogført, er
-//     linjerne væk — derfor er det "lagt ind i dag og står endnu", ikke historik.
-//  2. quickEntry sættes først fra den BC-version der indfører feltet. Linjer fra
-//     før det står som ikke-hurtig, så procenten er kun retvisende fremad.
+// Hvorfor en logtabel og ikke salgslinjerne selv: Sales Line indeholder kun ÅBNE
+// linjer. Bogføres en ordre midt på dagen, forsvinder dens linjer — så ville
+// dagens tal falde hen over dagen, og der ville ingen historik være bagud.
+// Logrækken skrives når linjen oprettes og bliver stående.
+//
+// Ét forbehold: quickEntry sættes først fra den BC-version der indfører feltet,
+// så procenten er kun retvisende fremad.
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
 
@@ -28,26 +30,17 @@ export interface SaelgerStat {
   mangler?:    string
 }
 
-function startenAfDagen(): string {
-  // Midnat dansk tid udtrykt i UTC, så filteret rammer den rigtige arbejdsdag.
-  const nu    = new Date()
-  const dansk = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(nu)
-  // Danmark er UTC+1/+2. Vi trækker offsettet fra ved at lade JS regne det ud på
-  // selve datoen frem for at hardkode sommertid.
-  const midnatLokalt = new Date(`${dansk}T00:00:00`)
-  const offsetMin    = midnatLokalt.getTimezoneOffset()
-  return new Date(midnatLokalt.getTime() - offsetMin * 60000).toISOString().slice(0, 19) + 'Z'
-}
-
 export async function saelgerStat(): Promise<SaelgerStat> {
+  // Logrækkens dato er BC's Today() — altså dansk arbejdsdag. Vi sammenligner
+  // med dansk dato, ikke UTC, så døgnet ikke skifter en time for tidligt.
   const dato = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date())
   const tom: SaelgerStat = { dato, linjerIAlt: 0, hurtigeIAlt: 0, saelgere: [] }
 
   const token  = await getAccessToken()
-  const filter = encodeURIComponent(`createdDateTime ge ${startenAfDagen()}`)
+  const filter = encodeURIComponent(`createdDate eq ${dato} and deleted eq false`)
   // Intet $top — BC svarer med præcis det antal man beder om og INGEN nextLink,
   // så et loft ville afkorte tavst. Vi følger nextLink i stedet.
-  let url: string | null = `${bcPortalBaseUrl()}/salesEntries?$filter=${filter}&$select=createdBy,salespersonCode,quickEntry,createdDateTime`
+  let url: string | null = `${bcPortalBaseUrl()}/salesEntries?$filter=${filter}&$select=userId,salespersonCode,quickEntry`
 
   const raekker: any[] = []
   let sider = 0
@@ -69,7 +62,7 @@ export async function saelgerStat(): Promise<SaelgerStat> {
   const pr = new Map<string, SaelgerRaekke>()
   for (const r of raekker) {
     // Sælgerkoden er det folk kender hinanden på; brugernavnet er nødløsningen.
-    const navn = String(r.salespersonCode || r.createdBy || '').trim() || 'ukendt'
+    const navn = String(r.salespersonCode || r.userId || '').trim() || 'ukendt'
     const s = pr.get(navn) ?? { saelger: navn, linjer: 0, hurtige: 0 }
     s.linjer++
     if (r.quickEntry === true) s.hurtige++
