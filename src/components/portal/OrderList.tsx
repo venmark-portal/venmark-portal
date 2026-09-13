@@ -855,7 +855,11 @@ export function OrderRow({
                 e.preventDefault()
                 const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-qty-input]'))
                 const idx = inputs.indexOf(e.currentTarget)
-                if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
+                // Spring blokerede/ikke-bestilbare linjer over (deres input er disabled) →
+                // fokusér næste AKTIVE vare, så man ikke sidder fast på en udsolgt linje.
+                for (let i = idx + 1; i < inputs.length; i++) {
+                  if (!inputs[i].disabled) { inputs[i].focus(); break }
+                }
               }
             }}
             className="w-16 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40 disabled:bg-gray-50"
