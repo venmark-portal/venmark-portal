@@ -1391,7 +1391,12 @@ export default function OrderList({
         (!avail.daekketFra || effectiveStr >= avail.daekketFra)) return null
     // Kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
     if (effectiveStr > todayStr) {
-      if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
+      // naesteLevering kan nu afspejle en ÅBEN MONTAGE (FINIT mængde) — ikke kun ubegrænset
+      // genforsyning. Har BC-coverage en finit værdi, er DEN autoritativ (montage-loftet), så vi
+      // uncapper KUN på naesteLevering når coverage mangler/er stale. daekketFra (ægte ubegrænset
+      // genbestil) beskytter stadig producerede varer mod stale coverage nedenfor.
+      const covFinite = cov !== undefined && cov >= 0
+      if (!covFinite && avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
       if (avail.daekketFra && effectiveStr >= avail.daekketFra) return null
       const cutoff = itemCutoffs.get(itemNo)
       if (cutoff && cutoff.cutoffWeekday > 0) {
