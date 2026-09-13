@@ -76,6 +76,30 @@ async function run(): Promise<void> {
   // marketing: for dem gælder udelukkende det ScreenAccess giver.
   // Default false, så eksisterende admins er uændrede.
   await prisma.$executeRaw`ALTER TABLE "AdminUser" ADD COLUMN IF NOT EXISTS "signageLimited" BOOLEAN NOT NULL DEFAULT false`
+
+  // ── Teams-opkald ────────────────────────────────────────────────────────────
+  // Microsoft gemmer KUN Direct Routing-opkald i 150 dage. Henter vi live, mister
+  // vi historikken løbende bagfra. Derfor kopieres opkaldene herind og bliver
+  // stående — så samler statistikken sig fremad uanset Microsofts vindue.
+  // `id` er Graphs eget opkalds-id, så gentagne synkroniseringer ikke dublerer.
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "TeamsCall" (
+      id          TEXT PRIMARY KEY,
+      "startTime" TIMESTAMP(3) NOT NULL,
+      "dagDk"     TEXT NOT NULL,
+      "timeDk"    INTEGER NOT NULL,
+      retning     TEXT NOT NULL,
+      "callType"  TEXT,
+      navn        TEXT NOT NULL,
+      upn         TEXT,
+      sekunder    INTEGER NOT NULL DEFAULT 0,
+      besvaret    BOOLEAN NOT NULL DEFAULT false,
+      "viaBot"    BOOLEAN NOT NULL DEFAULT false,
+      "hentetAt"  TIMESTAMP(3) NOT NULL DEFAULT NOW()
+    )
+  `
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_dagDk_idx" ON "TeamsCall" ("dagDk")`
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_startTime_idx" ON "TeamsCall" ("startTime")`
 }
 
 /** Idempotent — DDL'en køres kun én gang pr. proces. */

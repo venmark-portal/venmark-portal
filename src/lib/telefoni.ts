@@ -1,16 +1,23 @@
-// Teams-telefoni til kontorskærmen: antal opkald og minutter i dag.
+// Teams-telefoni til kontorskærmen: antal opkald og minutter.
 //
 // Venmark kører Direct Routing (bekræftet i Teams Admin Center → Usage reports →
 // PSTN usage → fanen "Direct Routing"). Derfor `getDirectRoutingCalls` og ikke
-// `getPstnCalls` — sidstnævnte dækker Calling Plan/Operator Connect og ville
-// svare tomt hos os.
+// `getPstnCalls`, som dækker Calling Plan/Operator Connect og ville svare tomt.
 //
-// Kræver APPLIKATIONS-tilladelsen CallRecords.Read.PstnCalls med administrator-
-// samtykke. Mangler den, svarer Graph 403 og skærmen siger det, i stedet for at
-// vise nul opkald som om telefonen stod stille.
+// KERNEBESLUTNING: opkaldene KOPIERES ind i vores egen tabel og læses derfra.
+// Microsoft gemmer kun Direct Routing-data i 150 dage, så henter man live, ruller
+// historikken væk bagfra hver eneste dag. Med kopien samler statistikken sig
+// fremad for altid, og skærmen bliver samtidig hurtig — den rører ikke Graph.
+//
+// Kræver APPLIKATIONS-tilladelsen CallRecords.Read.All med administrator-samtykke
+// (det er den Microsoft kræver til netop denne funktion). Mangler den, svarer
+// Graph 403, og skærmen siger det i stedet for at vise nul opkald.
 //
 // Opkaldstyper fra Graph: dr_in / dr_out er direkte opkald, dr_in_bot / dr_out_bot
 // går gennem omstilling eller kø (fx Hovednummer_AA).
+
+import { prisma } from '@/lib/prisma'
+import { ensureSignageSchema } from '@/lib/signage/schema'
 
 export interface TelefoniPerson {
   navn:     string
@@ -20,17 +27,25 @@ export interface TelefoniPerson {
   sekunder: number
 }
 
-export interface TelefoniStat {
-  dato:         string
-  ind:          number
-  ud:           number
-  /** Opkald der aldrig blev besvaret. */
-  ubesvarede:   number
-  sekunder:     number
-  personer:     TelefoniPerson[]
-  /** Sat når tilladelsen mangler — så siger skærmen det i stedet for at vise 0. */
-  mangler?:     string
+export interface TelefoniTime {
+  time:   number   // 0-23, dansk tid
+  opkald: number
 }
+
+export interface TelefoniStat {
+  dato:       string
+  ind:        number
+  ud:         number
+  /** Opkald der aldrig blev besvaret. */
+  ubesvarede: number
+  sekunder:   number
+  personer:   TelefoniPerson[]
+  timer:      TelefoniTime[]
+  /** Sat når tilladelsen mangler — så siger skærmen det i stedet for at vise 0. */
+  mangler?:   string
+}
+
+// ─── Graph ───────────────────────────────────────────────────────────────────
 
 async function graphToken(): Promise<string> {
   const tenant = process.env.BC_TENANT_ID!
@@ -50,63 +65,136 @@ async function graphToken(): Promise<string> {
   return (await res.json()).access_token
 }
 
-/** Midnat dansk tid, udtrykt i UTC — så døgnet følger arbejdsdagen, ikke UTC. */
-function doegnet(): { fra: string; til: string; dato: string } {
-  const nu    = new Date()
-  const dato  = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(nu)
-  const lokal = new Date(`${dato}T00:00:00`)
-  const fra   = new Date(lokal.getTime() - lokal.getTimezoneOffset() * 60000)
-  return {
-    dato,
-    fra: fra.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-    til: new Date(fra.getTime() + 864e5).toISOString().replace(/\.\d{3}Z$/, 'Z'),
-  }
+const dkFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' })
+const dkTime   = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Copenhagen', hour: '2-digit', hour12: false,
+})
+
+export function idagDk(): string {
+  return dkFormat.format(new Date())
 }
 
-export async function telefoniStat(): Promise<TelefoniStat> {
-  const { fra, til, dato } = doegnet()
-  const tom: TelefoniStat = { dato, ind: 0, ud: 0, ubesvarede: 0, sekunder: 0, personer: [] }
+export class TilladelseMangler extends Error {}
 
+/**
+ * Henter opkald i et tidsrum fra Graph og gemmer dem. Kan køres igen på samme
+ * periode uden at dublere — `id` er Graphs eget opkalds-id.
+ *
+ * Perioden deles i bidder, fordi lange spænd både er tunge og lettere rammer
+ * Graphs egne grænser. Returnerer hvor mange rækker der blev rørt.
+ */
+export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise<{ hentet: number; gemt: number }> {
+  await ensureSignageSchema()
   const token = await graphToken()
-  let url: string | null =
-    `https://graph.microsoft.com/v1.0/communications/callRecords/getDirectRoutingCalls` +
-    `(fromDateTime=${fra},toDateTime=${til})`
 
-  const kald: any[] = []
-  let sider = 0
-  while (url && sider++ < 40) {
-    const res: Response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      cache: 'no-store',
-    } as any)
-    if (res.status === 403 || res.status === 401) {
-      return { ...tom, mangler: 'CallRecords.Read.PstnCalls mangler administrator-samtykke' }
+  let hentet = 0
+  let gemt   = 0
+
+  for (let start = new Date(fra); start < til; start = new Date(start.getTime() + dagePrBid * 864e5)) {
+    const slut = new Date(Math.min(start.getTime() + dagePrBid * 864e5, til.getTime()))
+
+    let url: string | null =
+      `https://graph.microsoft.com/v1.0/communications/callRecords/getDirectRoutingCalls` +
+      `(fromDateTime=${start.toISOString().slice(0, 19)}Z,toDateTime=${slut.toISOString().slice(0, 19)}Z)`
+
+    let sider = 0
+    while (url && sider++ < 200) {
+      const res: Response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        cache: 'no-store',
+      } as any)
+      if (res.status === 401 || res.status === 403) {
+        throw new TilladelseMangler('CallRecords.Read.All mangler administrator-samtykke')
+      }
+      if (!res.ok) {
+        throw new Error(`Graph getDirectRoutingCalls ${res.status}: ${(await res.text()).slice(0, 200)}`)
+      }
+      const data = await res.json()
+      const raekker = data.value ?? []
+      hentet += raekker.length
+
+      for (const k of raekker) {
+        const id = String(k.id ?? '')
+        const startIso = String(k.startDateTime ?? '')
+        const d = new Date(startIso)
+        if (!id || isNaN(d.getTime())) continue
+
+        const type = String(k.callType ?? '')
+        // duration sættes kun når opkaldet blev forbundet. Er det tomt, blev der
+        // aldrig taget telefonen — det tal er mindst lige så interessant som minutterne.
+        const sek = Number(k.duration ?? 0)
+
+        await prisma.$executeRaw`
+          INSERT INTO "TeamsCall"
+            (id, "startTime", "dagDk", "timeDk", retning, "callType", navn, upn, sekunder, besvaret, "viaBot")
+          VALUES (
+            ${id}, ${d}, ${dkFormat.format(d)}, ${Number(dkTime.format(d))},
+            ${type.startsWith('dr_in') ? 'ind' : 'ud'}, ${type},
+            ${String(k.userDisplayName || k.userPrincipalName || 'ukendt').trim()},
+            ${k.userPrincipalName ? String(k.userPrincipalName) : null},
+            ${sek}, ${k.successfulCall === true && sek > 0}, ${type.endsWith('_bot')}
+          )
+          ON CONFLICT (id) DO NOTHING
+        `
+        gemt++
+      }
+      url = data['@odata.nextLink'] ?? null
     }
-    if (!res.ok) throw new Error(`Graph getDirectRoutingCalls ${res.status}: ${(await res.text()).slice(0, 160)}`)
-    const data = await res.json()
-    kald.push(...(data.value ?? []))
-    url = data['@odata.nextLink'] ?? null
   }
 
-  const pr = new Map<string, TelefoniPerson>()
-  const ud: TelefoniStat = { ...tom, personer: [] }
+  return { hentet, gemt }
+}
 
-  for (const k of kald) {
-    const indgaaende = String(k.callType ?? '').startsWith('dr_in')
-    // duration sættes kun når opkaldet blev forbundet. Er det tomt, blev der
-    // aldrig taget telefonen — det tal er mindst lige så interessant som minutterne.
-    const sek = Number(k.duration ?? 0)
-    if (k.successfulCall === false || !sek) ud.ubesvarede++
+// ─── Skærmen ────────────────────────────────────────────────────────────────
+
+/**
+ * Læser fra VORES tabel — ikke fra Graph. Skærmen skal være hurtig, og tallene
+ * skal blive ved med at findes når Microsofts 150-dages vindue er rullet forbi.
+ */
+export async function telefoniStat(dato = idagDk()): Promise<TelefoniStat> {
+  await ensureSignageSchema()
+
+  const tom: TelefoniStat = { dato, ind: 0, ud: 0, ubesvarede: 0, sekunder: 0, personer: [], timer: [] }
+
+  const raekker = await prisma.$queryRaw<{
+    navn: string; retning: string; sekunder: number; besvaret: boolean; timeDk: number
+  }[]>`
+    SELECT navn, retning, sekunder, besvaret, "timeDk"
+    FROM "TeamsCall"
+    WHERE "dagDk" = ${dato}
+  `
+
+  if (raekker.length === 0) {
+    // Har vi ALDRIG hentet noget, er det tilladelsen der mangler — ikke en stille dag.
+    const [{ antal }] = await prisma.$queryRaw<{ antal: bigint }[]>`
+      SELECT count(*) AS antal FROM "TeamsCall"
+    `
+    if (Number(antal) === 0) {
+      return { ...tom, mangler: 'Ingen opkald hentet endnu — mangler CallRecords.Read.All' }
+    }
+    return tom
+  }
+
+  const pr    = new Map<string, TelefoniPerson>()
+  const timer = new Map<number, number>()
+  const ud: TelefoniStat = { ...tom, personer: [], timer: [] }
+
+  for (const r of raekker) {
+    const indgaaende = r.retning === 'ind'
     if (indgaaende) ud.ind++; else ud.ud++
-    ud.sekunder += sek
+    if (!r.besvaret) ud.ubesvarede++
+    ud.sekunder += r.sekunder
+    timer.set(r.timeDk, (timer.get(r.timeDk) ?? 0) + 1)
 
-    const navn = String(k.userDisplayName || k.userPrincipalName || 'ukendt').trim()
-    const p = pr.get(navn) ?? { navn, ind: 0, ud: 0, sekunder: 0 }
+    const p = pr.get(r.navn) ?? { navn: r.navn, ind: 0, ud: 0, sekunder: 0 }
     if (indgaaende) p.ind++; else p.ud++
-    p.sekunder += sek
-    pr.set(navn, p)
+    p.sekunder += r.sekunder
+    pr.set(r.navn, p)
   }
 
   ud.personer = Array.from(pr.values()).sort((a, b) => (b.ind + b.ud) - (a.ind + a.ud))
+  ud.timer    = Array.from(timer.entries())
+    .map(([time, opkald]) => ({ time, opkald }))
+    .sort((a, b) => a.time - b.time)
   return ud
 }

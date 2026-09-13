@@ -483,6 +483,23 @@ function Telefoni({ data }: { data: TelefoniStat }) {
             {data.ubesvarede > 0 && (
               <p className="pt-[0.5vh] text-[1.7vh] text-amber-400">{nf.format(data.ubesvarede)} ubesvarede</p>
             )}
+            {/* Hvornår telefonen kimer. Kun timer hvor der faktisk var opkald. */}
+            {data.timer.length > 0 && (() => {
+              const top = Math.max(...data.timer.map(t => t.opkald))
+              return (
+                <div className="mt-[0.6vh] flex items-end gap-[0.3vw]" style={{ height: '6vh' }}>
+                  {data.timer.map(t => (
+                    <div key={t.time} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-[0.2vh]">
+                      <div
+                        className="w-full rounded-t bg-emerald-500/60"
+                        style={{ height: `${Math.max(8, (t.opkald / top) * 100)}%` }}
+                      />
+                      <span className="text-[1.3vh] tabular-nums text-slate-400">{String(t.time).padStart(2, '0')}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </Rullende>
         )}
     </Frame>
