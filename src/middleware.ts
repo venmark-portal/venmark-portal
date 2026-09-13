@@ -4,9 +4,15 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
 
-  // Login-sider er altid åbne
+  // Sider man skal kunne nå UDEN at være logget ind. Glemt/nulstil adgangskode
+  // hører med: uden dem sendte middlewaren brugeren tilbage til login, så
+  // "Glemt adgangskode?" så ud til ikke at gøre noget — og nulstillingslinket i
+  // mailen endte samme sted. Man kan pr. definition ikke logge ind for at komme
+  // til den side der skal give én adgang igen.
   if (
     pathname === '/portal/login' ||
+    pathname === '/portal/forgot-password' ||
+    pathname === '/portal/reset-password' ||
     pathname === '/admin/login' ||
     pathname === '/chauffeur/login'
   ) return NextResponse.next()
