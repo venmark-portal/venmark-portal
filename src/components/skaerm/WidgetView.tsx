@@ -372,8 +372,9 @@ function Pakkeri({ data }: { data: PakkeriStatus }) {
               <>
                 <div className="flex items-baseline gap-[1vw] border-b border-white/20 pb-[0.4vh] text-[1.9vh] uppercase tracking-wide text-slate-400">
                   <span className="min-w-0 flex-1">Pakker</span>
-                  <span className="w-[10vw] shrink-0 text-right">Linjer pakket</span>
-                  <span className="w-[10vw] shrink-0 text-right">Heraf scannet</span>
+                  <span className="w-[8vw] shrink-0 text-right">Linjer pakket</span>
+                  <span className="w-[8vw] shrink-0 text-right">Heraf scannet</span>
+                  <span className="w-[7vw] shrink-0 text-right">Pr. time</span>
                 </div>
                 {data.pakkere.map(p => {
                   // En linje uden scanning er sat pakket i hånden. Det er ikke
@@ -382,9 +383,12 @@ function Pakkeri({ data }: { data: PakkeriStatus }) {
                   return (
                     <div key={p.pakker} className="flex items-baseline gap-[1vw] border-b border-white/10 py-[0.5vh]" style={{ fontSize: raekke }}>
                       <span className="min-w-0 flex-1 truncate font-medium text-white">{p.pakker}</span>
-                      <span className="w-[10vw] shrink-0 text-right font-semibold tabular-nums text-white">{nf.format(p.linjer)}</span>
-                      <span className={`w-[10vw] shrink-0 text-right font-semibold tabular-nums ${mangler > 0 ? 'text-amber-300' : 'text-emerald-400'}`}>
+                      <span className="w-[8vw] shrink-0 text-right font-semibold tabular-nums text-white">{nf.format(p.linjer)}</span>
+                      <span className={`w-[8vw] shrink-0 text-right font-semibold tabular-nums ${mangler > 0 ? 'text-amber-300' : 'text-emerald-400'}`}>
                         {nf.format(p.scannet)}
+                      </span>
+                      <span className="w-[7vw] shrink-0 text-right font-semibold tabular-nums text-sky-300">
+                        {p.prTime === null ? '–' : nf.format(p.prTime)}
                       </span>
                     </div>
                   )
@@ -392,6 +396,29 @@ function Pakkeri({ data }: { data: PakkeriStatus }) {
               </>
             )}
         </div>
+
+        {/* Hvornår på dagen linjerne bliver pakket. Kun timer hvor der faktisk
+            skete noget — tomme søjler fortæller ingenting og æder plads. */}
+        {data.timer.length > 0 && (() => {
+          const top = Math.max(...data.timer.map(t => t.linjer))
+          return (
+            <div className="shrink-0">
+              <div className="mb-[0.4vh] text-[1.7vh] uppercase tracking-wide text-slate-400">Pakket pr. time</div>
+              <div className="flex items-end gap-[0.5vw]" style={{ height: '9vh' }}>
+                {data.timer.map(t => (
+                  <div key={t.time} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-[0.3vh]">
+                    <span className="text-[1.6vh] font-semibold tabular-nums text-white">{nf.format(t.linjer)}</span>
+                    <div
+                      className="w-full rounded-t bg-sky-500/70"
+                      style={{ height: `${Math.max(6, (t.linjer / top) * 100)}%` }}
+                    />
+                    <span className="text-[1.5vh] tabular-nums text-slate-400">{String(t.time).padStart(2, '0')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
       </div>
     </Frame>
   )
