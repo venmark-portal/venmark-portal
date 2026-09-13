@@ -98,6 +98,12 @@ async function run(): Promise<void> {
       "hentetAt"  TIMESTAMP(3) NOT NULL DEFAULT NOW()
     )
   `
+  // SIP-koderne gemmes fordi `duration` IKKE afslører om nogen tog telefonen:
+  // Direct Routing måler hele trunk-benet inklusive ringetid, så et ubesvaret
+  // opkald har også varighed. Skal vi kunne tælle mistede opkald, er det her
+  // svaret ligger.
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "sipKode" INTEGER`
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "slutAarsag" INTEGER`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_dagDk_idx" ON "TeamsCall" ("dagDk")`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_startTime_idx" ON "TeamsCall" ("startTime")`
 }

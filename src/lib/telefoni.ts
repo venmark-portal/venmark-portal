@@ -13,8 +13,11 @@
 // (det er den Microsoft kræver til netop denne funktion). Mangler den, svarer
 // Graph 403, og skærmen siger det i stedet for at vise nul opkald.
 //
-// Opkaldstyper fra Graph: dr_in / dr_out er direkte opkald, dr_in_bot / dr_out_bot
-// går gennem omstilling eller kø (fx Hovednummer_AA).
+// OPKALDSTYPER: Graph svarer `ByotIn`, `ByotOut`, `ByotInUcap`,
+// `ByotOutUserTransfer`. Det er IKKE de samme navne som Teams Admin Center viser
+// i sin egen brugerflade (`dr_in`, `dr_in_bot`) — dem findes kun i UI'et. Matcher
+// man på dem, falder hvert eneste opkald igennem til "udgående".
+// "Ucap" = opkaldet gik gennem omstilling eller kø (fx Hovednummer_AA).
 
 import { prisma } from '@/lib/prisma'
 import { ensureSignageSchema } from '@/lib/signage/schema'
@@ -77,6 +80,26 @@ export function idagDk(): string {
 export class TilladelseMangler extends Error {}
 
 /**
+ * Ind- eller udgående ud fra Graphs callType.
+ *
+ * Både Graphs egne navne (`ByotIn`, `ByotOutUserTransfer`) og admin-centerets
+ * UI-navne (`dr_in`) håndteres, så vi ikke bliver ramt igen hvis Microsoft
+ * skifter skrivemåde.
+ */
+export function retningAf(callType: string): 'ind' | 'ud' {
+  const t = String(callType ?? '').toLowerCase().replace(/^byot/, '').replace(/^dr_/, '')
+  if (t.startsWith('in'))  return 'ind'
+  if (t.startsWith('out')) return 'ud'
+  return t.includes('in') ? 'ind' : 'ud'
+}
+
+/** Gik opkaldet gennem omstilling/kø i stedet for direkte til en person? */
+export function viaBotAf(callType: string): boolean {
+  const t = String(callType ?? '').toLowerCase()
+  return t.includes('ucap') || t.includes('bot')
+}
+
+/**
  * Henter opkald i et tidsrum fra Graph og gemmer dem. Kan køres igen på samme
  * periode uden at dublere — `id` er Graphs eget opkalds-id.
  *
@@ -124,17 +147,28 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
         // aldrig taget telefonen — det tal er mindst lige så interessant som minutterne.
         const sek = Number(k.duration ?? 0)
 
+        // DO UPDATE frem for DO NOTHING: kører vi perioden igen efter en rettelse
+        // i klassificeringen, skal de rækker der allerede ligger repareres — ikke
+        // springes over. Selve opkaldet er stadig kun gemt én gang (id er Graphs).
         await prisma.$executeRaw`
           INSERT INTO "TeamsCall"
-            (id, "startTime", "dagDk", "timeDk", retning, "callType", navn, upn, sekunder, besvaret, "viaBot")
+            (id, "startTime", "dagDk", "timeDk", retning, "callType", navn, upn,
+             sekunder, besvaret, "viaBot", "sipKode", "slutAarsag")
           VALUES (
             ${id}, ${d}, ${dkFormat.format(d)}, ${Number(dkTime.format(d))},
-            ${type.startsWith('dr_in') ? 'ind' : 'ud'}, ${type},
+            ${retningAf(type)}, ${type},
             ${String(k.userDisplayName || k.userPrincipalName || 'ukendt').trim()},
             ${k.userPrincipalName ? String(k.userPrincipalName) : null},
-            ${sek}, ${k.successfulCall === true && sek > 0}, ${type.endsWith('_bot')}
+            ${sek}, ${k.successfulCall === true && sek > 0}, ${viaBotAf(type)},
+            ${k.finalSipCode ?? null}, ${k.callEndSubReason ?? null}
           )
-          ON CONFLICT (id) DO NOTHING
+          ON CONFLICT (id) DO UPDATE SET
+            retning      = EXCLUDED.retning,
+            "viaBot"     = EXCLUDED."viaBot",
+            sekunder     = EXCLUDED.sekunder,
+            besvaret     = EXCLUDED.besvaret,
+            "sipKode"    = EXCLUDED."sipKode",
+            "slutAarsag" = EXCLUDED."slutAarsag"
         `
         gemt++
       }

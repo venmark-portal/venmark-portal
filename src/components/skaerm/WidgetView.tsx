@@ -480,9 +480,10 @@ function Telefoni({ data }: { data: TelefoniStat }) {
                 <span className="w-[4.5vw] shrink-0 text-right text-[2vh] font-semibold tabular-nums text-white">{nf.format(min(p.sekunder))}</span>
               </div>
             ))}
-            {data.ubesvarede > 0 && (
-              <p className="pt-[0.5vh] text-[1.7vh] text-amber-400">{nf.format(data.ubesvarede)} ubesvarede</p>
-            )}
+            {/* "Ubesvarede" vises IKKE: Direct Routing måler hele trunk-benet
+                inklusive ringetid, så et ubesvaret opkald også har varighed.
+                Tallet ville se præcist ud og være forkert. SIP-koderne gemmes nu,
+                så det kan regnes rigtigt når vi har set hvad de indeholder. */}
             {/* Hvornår telefonen kimer. Kun timer hvor der faktisk var opkald. */}
             {data.timer.length > 0 && (() => {
               const top = Math.max(...data.timer.map(t => t.opkald))
