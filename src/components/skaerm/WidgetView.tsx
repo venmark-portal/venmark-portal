@@ -157,31 +157,55 @@ function TabteKunder({ data }: { data: TabtKunde[] }) {
 }
 
 /**
- * Ruller langsomt gennem indholdet når det er højere end pladsen, holder pause i
- * hver ende og starter forfra. Passer ikke listen, står den bare stille — så
- * bevæger skærmen sig kun når der faktisk er noget at se.
+ * Ruller gennem indholdet når det er højere end pladsen. Passer listen, står den
+ * stille — så bevæger skærmen sig kun når der faktisk er noget at se.
+ *
+ * To ting var galt i den første udgave, og begge betød at man aldrig nåede at se
+ * hele listen med 85 kunder:
+ *
+ *  1. Farten var 1 px pr. 50 ms = 20 px/sek. Med ~2200 px at rulle tog det knap
+ *     to minutter at nå bunden. Nu 50 px/sek, altså under et minut.
+ *  2. Ved bunden vendte den og rullede BAGLÆNS op igen. Det betyder at midten
+ *     vises dobbelt så ofte som enderne, og det er svært at følge. Nu springer
+ *     den tilbage til toppen som et rulletekst-forløb.
+ *
+ * Effekten afhænger IKKE af `children`: listen hentes forfra hvert 30. sekund, og
+ * med children som afhængighed blev rulningen nulstillet hver gang.
  */
-function Rullende({ children }: { children: React.ReactNode }) {
+function Rullende({ children, pxPrSek = 50 }: { children: React.ReactNode; pxPrSek?: number }) {
   const ydre = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = ydre.current
     if (!el) return
-    let stoppet = false
-    let retning = 1
-    let pause = 25          // ticks — lille ophold før den sætter i gang
+
+    const TICK = 40
+    const skridt = (pxPrSek * TICK) / 1000
+    let pos = 0
+    let pause = Math.round(1500 / TICK)     // lille ophold i toppen før den starter
+    let vedBunden = false
 
     const t = setInterval(() => {
-      if (stoppet) return
       const plads = el.scrollHeight - el.clientHeight
-      if (plads <= 4) return                       // alt kan ses; lad være at rulle
-      if (pause > 0) { pause--; return }
-      el.scrollTop += retning
-      if (el.scrollTop >= plads - 1 || el.scrollTop <= 0) { retning *= -1; pause = 60 }
-    }, 50)
+      if (plads <= 4) { pos = 0; el.scrollTop = 0; return }
 
-    return () => { stoppet = true; clearInterval(t) }
-  }, [children])
+      if (pause > 0) {
+        pause--
+        if (pause === 0 && vedBunden) { vedBunden = false; pos = 0; el.scrollTop = 0; pause = Math.round(1200 / TICK) }
+        return
+      }
+
+      pos += skridt
+      if (pos >= plads) {
+        pos = plads
+        vedBunden = true
+        pause = Math.round(2500 / TICK)     // hold stille i bunden, så det sidste kan læses
+      }
+      el.scrollTop = pos
+    }, TICK)
+
+    return () => clearInterval(t)
+  }, [pxPrSek])
 
   return <div ref={ydre} className="h-full overflow-hidden">{children}</div>
 }
