@@ -148,6 +148,12 @@ export async function pakkeriStatus(dato: string, jobNr = '16'): Promise<Pakkeri
     ordrer.set(nr, (ordrer.get(nr) ?? false) || l.pakker !== '')
   }
 
+  // "Uden pakker" skal betyde "ikke taget fat på endnu", altså noget der ligger
+  // og venter. En ordre der allerede er bogført er per definition færdig, uanset
+  // hvad loggen nåede at fange — så den tæller kun med hvis den stadig har åbne
+  // linjer. Uden det tog gamle, bogførte ordrer plads i tallet for evigt.
+  const ordrerMedAabne = new Set((aabne ?? []).map(l => String(l.documentNo ?? '')))
+
   // ── Pr. pakker ─────────────────────────────────────────────────────────────
   const pr      = new Map<string, PakkerRaekke>()
   const timerPr = new Map<string, Set<number>>()   // pakker → klokketimer i gang
@@ -186,7 +192,8 @@ export async function pakkeriStatus(dato: string, jobNr = '16'): Promise<Pakkeri
   return {
     dato,
     ordrerIAlt:       ordrer.size,
-    ordrerUdenPakker: Array.from(ordrer.values()).filter(taget => !taget).length,
+    ordrerUdenPakker: Array.from(ordrer.entries())
+                        .filter(([nr, taget]) => !taget && ordrerMedAabne.has(nr)).length,
     linjerIAlt:       linjer.size,
     // En bogført linje er færdig og skal ikke stå som "mangler".
     aabneLinjer:      (aabne ?? []).filter(l => !navnAf(l)).length,
