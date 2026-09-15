@@ -855,7 +855,11 @@ export function OrderRow({
                 e.preventDefault()
                 const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-qty-input]'))
                 const idx = inputs.indexOf(e.currentTarget)
-                if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
+                // Spring blokerede/ikke-bestilbare linjer over (deres input er disabled) →
+                // fokusér næste AKTIVE vare, så man ikke sidder fast på en udsolgt linje.
+                for (let i = idx + 1; i < inputs.length; i++) {
+                  if (!inputs[i].disabled) { inputs[i].focus(); break }
+                }
               }
             }}
             className="w-16 rounded border border-gray-200 py-1 text-center text-sm font-semibold focus:border-blue-400 focus:outline-none disabled:opacity-40 disabled:bg-gray-50"
@@ -1387,7 +1391,12 @@ export default function OrderList({
         (!avail.daekketFra || effectiveStr >= avail.daekketFra)) return null
     // Kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
     if (effectiveStr > todayStr) {
-      if (avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
+      // naesteLevering kan nu afspejle en ÅBEN MONTAGE (FINIT mængde) — ikke kun ubegrænset
+      // genforsyning. Har BC-coverage en finit værdi, er DEN autoritativ (montage-loftet), så vi
+      // uncapper KUN på naesteLevering når coverage mangler/er stale. daekketFra (ægte ubegrænset
+      // genbestil) beskytter stadig producerede varer mod stale coverage nedenfor.
+      const covFinite = cov !== undefined && cov >= 0
+      if (!covFinite && avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
       if (avail.daekketFra && effectiveStr >= avail.daekketFra) return null
       const cutoff = itemCutoffs.get(itemNo)
       if (cutoff && cutoff.cutoffWeekday > 0) {
@@ -1453,6 +1462,44 @@ export default function OrderList({
     return () => { cancelled = true; clearTimeout(t) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveryStrForCoverage, selectedMethodCode, availKeysSig, cartSig])
+
+  // ── Auto-reducér kurv-linjer der overstiger loftet efter DATO-/leveringsskift ─────
+  // setQty capper ved INPUT, men et dato-/leveringsskift kan sænke loftet på varer der
+  // allerede ligger i kurven. Når den autoritative coverage er hentet for den nye dato,
+  // reduceres sådanne linjer til det nye maks, og kunden får besked (messagebox). Kør KUN
+  // besked ved ægte dato-/leveringsskift (ikke ved kurv-netting på samme dato).
+  const linesClampRef = useRef(lines)
+  useEffect(() => { linesClampRef.current = lines }, [lines])
+  const rowMaxQtyClampRef = useRef(rowMaxQty)
+  useEffect(() => { rowMaxQtyClampRef.current = rowMaxQty }, [rowMaxQty])
+  const clampDateKeyRef = useRef<string | null>(null)
+  const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
+
+  useEffect(() => {
+    if (Object.keys(coverageMax).length === 0) return
+    const dateKey = `${deliveryStrForCoverage}|${selectedMethodCode}`
+    const firstRun = clampDateKeyRef.current === null
+    const isDateChange = !firstRun && clampDateKeyRef.current !== dateKey
+    clampDateKeyRef.current = dateKey
+
+    const cur = linesClampRef.current
+    const getMax = rowMaxQtyClampRef.current
+    const changes: { name: string; from: number; to: number }[] = []
+    const next = new Map(cur)
+    let mutated = false
+    for (const [no, l] of cur) {
+      const cap = getMax(no)                       // null = ubegrænset → aldrig reducér
+      if (cap != null && cap >= 0 && l.quantity > cap) {
+        changes.push({ name: l.item.description || no, from: l.quantity, to: cap })
+        if (cap <= 0) next.delete(no)
+        else next.set(no, { ...l, quantity: cap })
+        mutated = true
+      }
+    }
+    if (mutated) setLines(next)
+    if (changes.length && isDateChange) setDateChangeNotice(changes)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverageMax])
 
   // ── DEBUG (?debug=1) — udskriv disponibel-tal pr. vare til konsollen ─────────
   // Viser hvorfor rowMaxQty capper/frigiver: daekketFra (kan skaffes), coverage-værdi,
@@ -2516,6 +2563,34 @@ export default function OrderList({
       {/* Vare-detalje modal */}
       {detailItem && (
         <ItemDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
+      )}
+
+      {/* Messagebox: antal reduceret efter dato-/leveringsskift */}
+      {dateChangeNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDateChangeNotice(null)}>
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="mb-1 text-base font-bold text-gray-900">Antal justeret</h3>
+            <p className="mb-3 text-sm text-gray-600">Efter den nye leveringsdato kan følgende varer ikke bestilles i samme antal. Antallet er reduceret til det mulige maks:</p>
+            <ul className="mb-4 space-y-1 text-sm">
+              {dateChangeNotice.map((c, i) => (
+                <li key={i} className="flex justify-between gap-3">
+                  <span className="text-gray-800">{c.name}</span>
+                  <span className="whitespace-nowrap font-semibold">
+                    <span className="text-gray-400 line-through">{c.from}</span>
+                    {' → '}
+                    <span className="text-red-600">{c.to === 0 ? 'fjernet' : c.to}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={() => setDateChangeNotice(null)}
+              className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 active:scale-[0.98]"
+            >
+              OK
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
