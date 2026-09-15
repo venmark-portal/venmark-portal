@@ -198,9 +198,12 @@ DEFS.push(
     name:        'Pakkeristatus',
     description: 'Dagens ordrer og linjer — hvor mange der mangler pakker, og pr. pakker hvor mange linjer der er pakket og hvor mange af dem der er scannet.',
     ttlSec:      60,
-    params: [],
-    async fetch(): Promise<PakkeriStatus> {
-      return pakkeriStatus(todayCopenhagen())
+    params: [
+      // Dan-Time-job til produktivitetstallet. 16 = "Pakkeriet"; 6 = "Pakkestation".
+      { key: 'jobNr', label: 'Dan-Time jobnr.', type: 'number', default: 16, min: 1, max: 999 },
+    ],
+    async fetch(params): Promise<PakkeriStatus> {
+      return pakkeriStatus(todayCopenhagen(), String(params.jobNr ?? 16))
     },
   },
   {

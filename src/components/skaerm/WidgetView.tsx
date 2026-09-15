@@ -387,6 +387,15 @@ function Pakkeri({ data }: { data: PakkeriStatus }) {
             farve={data.aabneLinjer > 0 ? 'text-amber-300' : 'text-emerald-400'}
           />
           <Noegletal vaerdi={data.linjerIAlt} tekst="Linjer i alt" />
+          {/* Linjer pr. STEMPLET arbejdstime (Dan-Time). Klokketimer siger kun
+              hvornår der blev pakket, ikke hvor mange der stod der imens. */}
+          {data.linjerPrTime !== null && (
+            <Noegletal
+              vaerdi={data.linjerPrTime}
+              tekst={`Linjer pr. time${data.arbejdstimer ? ` (${nf1.format(data.arbejdstimer)} t)` : ''}`}
+              farve="text-sky-300"
+            />
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
