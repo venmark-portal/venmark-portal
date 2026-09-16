@@ -734,6 +734,13 @@ model Auction {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  // Live proxy-tilstand (opdateres i transaktion pr. bud; auktionsrækken låses FOR UPDATE).
+  currentPrice     Decimal  @default(0) @db.Decimal(12, 2)  // synligt nuværende bud (0 = ingen bud)
+  leaderCustomerId String?                                  // nuværende højestbydende (Customer.id)
+  leaderName       String?
+  leaderMax        Decimal? @db.Decimal(12, 2)              // leders proxy-loft (SKJULT for kunder)
+  bidCount         Int      @default(0)
+
   images AuctionImage[]
   bids   Bid[]
 

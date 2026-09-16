@@ -20,6 +20,11 @@ CREATE TABLE "Auction" (
     "createdBy" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "currentPrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "leaderCustomerId" TEXT,
+    "leaderName" TEXT,
+    "leaderMax" DECIMAL(12,2),
+    "bidCount" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "Auction_pkey" PRIMARY KEY ("id")
 );
