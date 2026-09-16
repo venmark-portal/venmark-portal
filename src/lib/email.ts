@@ -24,13 +24,14 @@ function createTransporter() {
 
 // ─── Generisk email ──────────────────────────────────────────────────────────
 
-export async function sendEmail({ to, subject, text, html }: {
+export async function sendEmail({ to, subject, text, html, attachments }: {
   to: string; subject: string; text: string; html?: string
+  attachments?: { filename: string; content: Buffer; contentType?: string }[]
 }) {
   const transporter = createTransporter()
   const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'no-reply@venmark.dk'
-  if (!transporter) { console.log(`[EMAIL] To: ${to}\nSubject: ${subject}\n${text}`); return }
-  await transporter.sendMail({ from, to, subject, text, html })
+  if (!transporter) { console.log(`[EMAIL] To: ${to}\nSubject: ${subject}\n${text}${attachments?.length ? `\n(+${attachments.length} vedhæftning)` : ''}`); return }
+  await transporter.sendMail({ from, to, subject, text, html, attachments })
 }
 
 // ─── Send reklamations-notifikation ───────────────────────────────────────────
