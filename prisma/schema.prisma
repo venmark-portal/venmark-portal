@@ -40,6 +40,7 @@ model Customer {
   requirePoNumber     Boolean  @default(false)
   bcDebitorBookingGroup String? // e.g. "Salling", "COOP" — triggers mandatory PO
   contacts            ContactUser[]
+  auctionBids         Bid[]
 }
 
 model AdminUser {
@@ -699,4 +700,76 @@ model BcWidgetCache {
   fetchedAt   DateTime  @default(now())
   lastError   String?
   lastErrorAt DateTime?
+}
+
+// ─── Auktion ─────────────────────────────────────────────────────────────────
+// Kun synlig bag login; kun kreditgodkendte kunder kan byde. Manuel afregning
+// (Venmark opretter ordren i BC ud fra vinderen; mængde styres manuelt i BC).
+
+enum PriceMode {
+  TOTAL   // bud = totalpris for partiet
+  PER_KG  // bud = kr pr. kg
+}
+
+enum AuctionStatus {
+  DRAFT      // kladde — ikke synlig for kunder
+  LIVE       // i gang
+  ENDED      // udløbet
+  CANCELLED  // aflyst
+}
+
+model Auction {
+  id           String        @id @default(cuid())
+  title        String
+  description  String
+  itemNo       String?       // valgfri BC-varenr (info)
+  lotText      String?       // mængde/lot som fri tekst (styres manuelt i BC)
+  priceMode    PriceMode     @default(TOTAL)
+  minPrice     Decimal       @default(0) @db.Decimal(12, 2)  // reserve; 0 = ingen
+  minIncrement Decimal       @default(1) @db.Decimal(12, 2)  // fast 1 kr
+  startsAt     DateTime      @default(now())
+  endsAt       DateTime
+  status       AuctionStatus @default(DRAFT)
+  createdBy    String        // admin-bruger
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Live proxy-tilstand (opdateres i transaktion pr. bud; auktionsrækken låses FOR UPDATE).
+  currentPrice     Decimal  @default(0) @db.Decimal(12, 2)  // synligt nuværende bud (0 = ingen bud)
+  leaderCustomerId String?                                  // nuværende højestbydende (Customer.id)
+  leaderName       String?
+  leaderMax        Decimal? @db.Decimal(12, 2)              // leders proxy-loft (SKJULT for kunder)
+  bidCount         Int      @default(0)
+
+  images AuctionImage[]
+  bids   Bid[]
+
+  @@index([status, endsAt])
+}
+
+model AuctionImage {
+  id        String   @id @default(cuid())
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  auctionId String
+  data      String   // base64/data-URL (som TicketImage.data)
+  mimeType  String
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([auctionId])
+}
+
+model Bid {
+  id         String   @id @default(cuid())
+  auction    Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  auctionId  String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String
+  bidderName String
+  amount     Decimal  @db.Decimal(12, 2)  // synligt/effektivt bud
+  maxAmount  Decimal? @db.Decimal(12, 2)  // autobud-loft (proxy); null = ikke proxy
+  createdAt  DateTime @default(now())
+
+  @@index([auctionId, createdAt])
+  @@index([auctionId, amount])
 }
