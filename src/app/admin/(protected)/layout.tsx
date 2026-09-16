@@ -52,6 +52,7 @@ export default async function AdminLayout({
                 <a href="/admin/salgsliste"    className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Salgsliste</a>
                 <a href="/admin/beskeder"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Beskeder</a>
                 <a href="/admin/anbefalinger"  className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Anbefalinger</a>
+                <a href="/admin/auktioner"     className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Auktioner</a>
                 <a href="/admin/reklamationer" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Reklamationer</a>
                 <a href="/admin/leverandoerer" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Leverandørerklæringer</a>
                 <a href="/admin/leverandoerer/certifikater" className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Certifikater</a>

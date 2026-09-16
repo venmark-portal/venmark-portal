@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning, MessageSquare } from 'lucide-react'
 import { getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods } from '@/lib/businesscentral'
 import { parseCutoffTime } from '@/lib/dateUtils'
+import AuktionForsideWidget from '@/components/portal/AuktionForsideWidget'
 
 export default async function PortalDashboard() {
   const session    = await getServerSession(authOptions)
@@ -145,6 +146,9 @@ export default async function PortalDashboard() {
           <ChevronRight size={18} className="ml-auto text-gray-400" />
         </Link>
       </div>
+
+      {/* Auktioner — resumé (skriver "Ingen auktion" hvis tom) */}
+      <AuktionForsideWidget />
 
       {/* Beskeder fra Venmark */}
       {newestMessages.length > 0 && (

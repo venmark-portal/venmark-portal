@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, ShoppingCart, Package, MessageSquare, FileText } from 'lucide-react'
+import { Home, ShoppingCart, Package, MessageSquare, FileText, Gavel } from 'lucide-react'
 
 const items = [
   { href: '/portal',           label: 'Hjem',      icon: Home          },
   { href: '/portal/bestil',    label: 'Bestil',     icon: ShoppingCart  },
+  { href: '/portal/auktioner', label: 'Auktion',    icon: Gavel         },
   { href: '/portal/ordrer',    label: 'Ordrer',     icon: Package       },
   { href: '/portal/beskeder',  label: 'Beskeder',   icon: MessageSquare },
   { href: '/portal/fakturaer', label: 'Fakturaer',  icon: FileText      },
