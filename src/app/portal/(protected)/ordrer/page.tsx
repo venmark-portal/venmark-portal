@@ -258,6 +258,8 @@ function OrderCard({ order, lines, fromBc, deliveryDate }: { order: BCCustomerOr
                 portalCustomerNote={line.portalCustomerNote ?? null}
                 packedBy={line.packedBy ?? ''}
                 packedQty={line.packedQty ?? 0}
+                gearType={line.gearType ?? ''}
+                catchArea={line.catchArea ?? ''}
               />
             ))}
           </div>

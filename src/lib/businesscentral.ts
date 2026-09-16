@@ -1576,6 +1576,8 @@ export interface BCPortalLine {
   packedBy:           string   // initialer; tom = ikke pakket
   packedQty:          number
   shipmentDate:       string   // 'YYYY-MM-DD' — linjens afsendelses-/leveringsdato (fallback til ordre-dato)
+  gearType:           string   // fangstredskab (sporbarhed) — udfyldt på pakkede linjer
+  catchArea:          string   // fangstområde (sporbarhed) — udfyldt på pakkede linjer
 }
 
 /**
@@ -1620,6 +1622,8 @@ export async function getPortalLineStatuses(
       packedBy:           (l.packedBy ?? '').trim(),
       packedQty:          l.packedQty ?? 0,
       shipmentDate:       (!l.shipmentDate || l.shipmentDate === '0001-01-01') ? '' : l.shipmentDate,
+      gearType:           (l.gearType ?? '').trim(),
+      catchArea:          (l.catchArea ?? '').trim(),
     })) as BCPortalLine[]
   } catch {
     return null
