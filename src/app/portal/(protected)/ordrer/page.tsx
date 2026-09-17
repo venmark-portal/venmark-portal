@@ -274,6 +274,8 @@ function OrderCard({ order, lines, fromBc, deliveryDate, portalOrderId, deadline
                 portalCustomerNote={line.portalCustomerNote ?? null}
                 packedBy={line.packedBy ?? ''}
                 packedQty={line.packedQty ?? 0}
+                gearType={line.gearType ?? ''}
+                catchArea={line.catchArea ?? ''}
               />
             ))}
           </div>

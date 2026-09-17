@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Clock, XCircle, PackageCheck, Package } from 'lucide-react'
+import { CheckCircle2, Clock, XCircle, PackageCheck, Package, Anchor, MapPin } from 'lucide-react'
 
 // Tal uden valuta-symbol/enhed (kolonne-overskriften siger hvad det er). Dansk komma-decimal.
 const num = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -23,6 +23,8 @@ interface Props {
   portalCustomerNote: string | null
   packedBy?:          string
   packedQty?:         number
+  gearType?:          string
+  catchArea?:         string
 }
 
 const LINE_STATUS = {
@@ -33,7 +35,7 @@ const LINE_STATUS = {
 
 export default function OrderLineStatus({
   itemNumber, itemName, quantity, uom, unitPrice, portalLineStatus, portalCustomerNote,
-  packedBy = '', packedQty = 0,
+  packedBy = '', packedQty = 0, gearType = '', catchArea = '',
 }: Props) {
   const [open, setOpen]     = useState(false)
   const [showFull, setFull] = useState(false)
@@ -42,6 +44,7 @@ export default function OrderLineStatus({
   const hasNote  = !!portalCustomerNote
   const isAfvist = portalLineStatus === 'Afvist'
   const isPacked = !!packedBy
+  const hasTrace = !!(gearType || catchArea)
   const longName = itemName.length > 30
   const shownName = showFull || !longName ? itemName : itemName.slice(0, 30) + '…'
 
@@ -96,6 +99,22 @@ export default function OrderLineStatus({
           )}
         </span>
       </div>
+
+      {/* Sporbarhed — fangstredskab + område på pakkede linjer (indrykket under beskrivelsen) */}
+      {hasTrace && (
+        <div className="pb-1.5 -mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500" style={{ paddingLeft: 90 }}>
+          {gearType && (
+            <span className="inline-flex items-center gap-1" title="Fangstredskab">
+              <Anchor size={11} className="text-sky-500 shrink-0" />{gearType}
+            </span>
+          )}
+          {catchArea && (
+            <span className="inline-flex items-center gap-1" title="Fangstområde">
+              <MapPin size={11} className="text-sky-500 shrink-0" />{catchArea}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Bemærkning — folder ud ved klik på B */}
       {open && hasNote && (
