@@ -1578,6 +1578,7 @@ export interface BCPortalLine {
   shipmentDate:       string   // 'YYYY-MM-DD' — linjens afsendelses-/leveringsdato (fallback til ordre-dato)
   gearType:           string   // fangstredskab (sporbarhed) — udfyldt på pakkede linjer
   catchArea:          string   // fangstområde (sporbarhed) — udfyldt på pakkede linjer
+  headerPackedBy:     string   // salgshovedets "Packed By" — sat = ordren er FÆRDIGpakket
 }
 
 /**
@@ -1624,6 +1625,7 @@ export async function getPortalLineStatuses(
       shipmentDate:       (!l.shipmentDate || l.shipmentDate === '0001-01-01') ? '' : l.shipmentDate,
       gearType:           (l.gearType ?? '').trim(),
       catchArea:          (l.catchArea ?? '').trim(),
+      headerPackedBy:     (l.headerPackedBy ?? '').trim(),
     })) as BCPortalLine[]
   } catch {
     return null
