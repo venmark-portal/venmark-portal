@@ -107,7 +107,7 @@ export default function OnboardingPage() {
   const [errMsg, setErrMsg] = useState<string | null>(null)
 
   const [f, setF] = useState<Record<string, any>>({
-    name: '', vat: '', form: 'ApS', address: '', zip: '', city: '', country: 'Danmark', ean: false, gln: '', website: '',
+    name: '', vat: '', form: 'ApS', address: '', zip: '', city: '', country: 'DK', ean: false, gln: '', website: '',
     phone: '+45 ', mainmail: '', monthly: '', pllang: 'Dansk',
     lsConsent: false, bank: '', reg: '', acc: '',
     gName: '', gCpr: '', gRel: '', gStreet: '', gZip: '', gCity: '', gConfirm: false,
@@ -124,7 +124,11 @@ export default function OnboardingPage() {
 
   const tt = t(lang)
   const isLs = variant === 'ls'
-  const steps = ['company', 'contacts', 'billing', ...(isLs ? ['ls', 'guaranty'] : []), 'sign']
+  // I/S og enkeltmandsvirksomhed hæfter allerede personligt/ubegrænset — så al kaution udgår
+  // (Leverandørservice-mandatet gælder stadig). Kaution-trinet + kautionist-underskrift skjules.
+  const personalLiable = f.form === 'I/S' || f.form === 'Enkeltmandsvirksomhed'
+  const showGuaranty = isLs && !personalLiable
+  const steps = ['company', 'contacts', 'billing', ...(isLs ? ['ls'] : []), ...(showGuaranty ? ['guaranty'] : []), 'sign']
 
   // ---- load prefill ----
   useEffect(() => {
@@ -222,7 +226,7 @@ export default function OnboardingPage() {
     }
     if (stepId === 'sign') {
       if (!f.terms) { keys.add('cTerms'); missing = true } if (!f.gdpr) { keys.add('cGdpr'); missing = true } if (!f.auth) { keys.add('cAuth'); missing = true }
-      if (!sigInk.s1) { keys.add('sig1'); missing = true } if (isLs && !sigInk.s2) { keys.add('sig2'); missing = true }
+      if (!sigInk.s1) { keys.add('sig1'); missing = true } if (showGuaranty && !sigInk.s2) { keys.add('sig2'); missing = true }
     }
     return { keys, format, missing }
   }
@@ -250,18 +254,24 @@ export default function OnboardingPage() {
       docEmails: DOC_KEYS.map(k => ({ type: k, emails: docEmails[k].filter(e => e.trim()) })),
       monthly: f.monthly, prislisteSprog: f.pllang,
       ls: isLs ? { consent: f.lsConsent, bank: f.bank, reg: f.reg, acc: f.acc } : undefined,
-      guarantor: isLs ? { name: f.gName, cpr: f.gCpr, addressStreet: f.gStreet, zip: f.gZip, city: f.gCity } : undefined,
+      guarantor: showGuaranty ? { name: f.gName, cpr: f.gCpr, addressStreet: f.gStreet, zip: f.gZip, city: f.gCity } : undefined,
       consents: { terms: f.terms, gdpr: f.gdpr, marketing: f.mkt, authorized: f.auth },
       signPlace: f.place, signDate: iso, signerName: contacts[0].name || f.name,
       sig1: sigInk.s1 ? sig1.current?.toDataURL('image/png') : undefined,
-      sig2: isLs && sigInk.s2 ? sig2.current?.toDataURL('image/png') : undefined,
+      sig2: showGuaranty && sigInk.s2 ? sig2.current?.toDataURL('image/png') : undefined,
     }
     try {
       const res = await fetch(`/api/kunde/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        let detail = ''
+        try { const j = await res.json(); detail = j.detail || j.error || '' } catch {}
+        throw new Error(detail)
+      }
       setDone(true); window.scrollTo({ top: 0 })
-    } catch {
-      setErrMsg(lang === 'da' ? 'Indsendelse fejlede — prøv igen.' : 'Submission failed — please try again.'); setTimeout(() => setErrMsg(null), 5000)
+    } catch (err: any) {
+      const base = lang === 'da' ? 'Indsendelse fejlede' : 'Submission failed'
+      const msg = err?.message ? `${base}: ${err.message}` : `${base} — ${lang === 'da' ? 'prøv igen' : 'try again'}.`
+      setErrMsg(msg); setTimeout(() => setErrMsg(null), 9000)
     } finally { setSubmitting(false) }
   }
 
@@ -318,11 +328,11 @@ export default function OnboardingPage() {
                   <div className="grid">
                     <F full lbl={tt.l_legalname} req><input className={'in' + inv('name')} value={f.name} onChange={e => upd('name', e.target.value)} /></F>
                     <F lbl={tt.l_cvr} req hint={tt.hint_8dig}><input className={'in mono' + inv('vat')} inputMode="numeric" maxLength={8} value={f.vat} onChange={e => upd('vat', e.target.value)} /></F>
-                    <F lbl={tt.l_form} req><select className="in" value={f.form} onChange={e => upd('form', e.target.value)}><option>ApS</option><option>A/S</option><option>I/S</option><option>{tt.form_sole}</option><option>{tt.form_other}</option></select></F>
+                    <F lbl={tt.l_form} req><select className="in" value={f.form} onChange={e => upd('form', e.target.value)}><option value="ApS">ApS</option><option value="A/S">A/S</option><option value="I/S">I/S</option><option value="Enkeltmandsvirksomhed">{tt.form_sole}</option><option value="Andet">{tt.form_other}</option></select></F>
                     <F full lbl={tt.l_address} req><input className={'in' + inv('address')} value={f.address} onChange={e => upd('address', e.target.value)} /></F>
                     <F lbl={tt.l_zip} req hint={tt.hint_4dig}><input className={'in mono' + inv('zip')} inputMode="numeric" maxLength={4} style={{ maxWidth: 120 }} value={f.zip} onChange={e => upd('zip', e.target.value)} /></F>
                     <F lbl={tt.l_city} req><input className={'in' + inv('city')} value={f.city} onChange={e => upd('city', e.target.value)} /></F>
-                    <F lbl={tt.l_country} req><select className="in" value={f.country} onChange={e => upd('country', e.target.value)}><option>Danmark</option><option>Sverige</option><option>Deutschland</option><option>Nederland</option></select></F>
+                    <F lbl={tt.l_country} req><select className="in" value={f.country} onChange={e => upd('country', e.target.value)}><option value="DK">Danmark</option><option value="SE">Sverige</option><option value="DE">Deutschland</option><option value="NL">Nederland</option></select></F>
                     <F full><label className="check"><input type="checkbox" checked={f.ean} onChange={e => upd('ean', e.target.checked)} /><span className="c-text">{tt.l_wantean}</span></label></F>
                     {f.ean && <F full lbl={tt.l_gln} req><input className={'in mono' + inv('gln')} inputMode="numeric" placeholder="5790000000000" value={f.gln} onChange={e => upd('gln', e.target.value)} /></F>}
                     <F lbl={tt.l_web}><input className="in" value={f.website} onChange={e => upd('website', e.target.value)} /></F>
@@ -424,7 +434,7 @@ export default function OnboardingPage() {
                       <canvas ref={sig1} {...makeDraw(sig1, 's1')} />
                       <div className="sig-base"><span>{tt.sig_hint}</span><button type="button" className="clear-sig" onClick={() => clearSig(sig1, 's1')}>{tt.sig_clear}</button></div>
                     </div>
-                    {isLs && (
+                    {showGuaranty && (
                       <div className={'sigpad' + (invalid.has('sig2') ? ' invalid' : '')}>
                         <div className="sig-label"><span>{tt.sig_guar}</span><span className={'sig-status' + (sigInk.s2 ? ' ok' : '')}>{sigInk.s2 ? tt.sig_ok : tt.sig_empty}</span></div>
                         <canvas ref={sig2} {...makeDraw(sig2, 's2')} />

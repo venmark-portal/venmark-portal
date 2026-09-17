@@ -85,7 +85,7 @@ export async function buildOnboardingPdf(d: OnboardingPdfData): Promise<Buffer> 
       ${row(t.bank, d.lsBankName)}${row(t.reg, d.lsRegNo)}${row(t.acc, d.lsAccountNo)}
     </table>` : ''
 
-  const guarBlock = isLs ? `
+  const guarBlock = (isLs && d.guarantorName) ? `
     <h2>${t.guar}</h2>
     <div class="legal">${legal.guar}</div>
     <table class="kv">
