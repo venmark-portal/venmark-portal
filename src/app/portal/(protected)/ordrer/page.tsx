@@ -1,7 +1,8 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { Package, Store, Globe, Building2 } from 'lucide-react'
+import Link from 'next/link'
+import { Package, Store, Globe, Building2, PlusCircle } from 'lucide-react'
 import {
   getCustomerOrders,
   getPortalLineStatuses,
@@ -83,10 +84,15 @@ export default async function MyOrdersPage() {
     bcNumbers.length
       ? prisma.order.findMany({
           where:  { bcOrderNumber: { in: bcNumbers } },
-          select: { bcOrderNumber: true },
+          select: { id: true, bcOrderNumber: true, deadline: true },
         })
-      : Promise.resolve([] as { bcOrderNumber: string | null }[]),
+      : Promise.resolve([] as { id: string; bcOrderNumber: string | null; deadline: Date }[]),
   ])
+  // bcOrderNumber → portal-ordre (Prisma-id + deadline). Bruges til "Tilføj vare"-linket, der
+  // slår ordren op på Prisma-id — og til at afgøre oprindelse (portal vs. tastet i BC).
+  const portalRowByNumber = new Map(
+    portalRows.filter(r => r.bcOrderNumber).map(r => [r.bcOrderNumber as string, r]),
+  )
   const portalOrigin = new Set(portalRows.map(r => r.bcOrderNumber).filter(Boolean) as string[])
 
   // Kun grupper med ordrer; login-kunden først, derefter butikker alfabetisk
@@ -161,15 +167,20 @@ export default async function MyOrdersPage() {
                 )}
 
                 <div className="space-y-3">
-                  {sortedOrders.map((order) => (
-                    <OrderCard
-                      key={order.id || order.number}
-                      order={order}
-                      lines={lineMap.get(order.number) ?? null}
-                      fromBc={!portalOrigin.has(order.number)}
-                      deliveryDate={deliveryOf(order)}
-                    />
-                  ))}
+                  {sortedOrders.map((order) => {
+                    const pr = portalRowByNumber.get(order.number)
+                    return (
+                      <OrderCard
+                        key={order.id || order.number}
+                        order={order}
+                        lines={lineMap.get(order.number) ?? null}
+                        fromBc={!portalOrigin.has(order.number)}
+                        deliveryDate={deliveryOf(order)}
+                        portalOrderId={pr?.id}
+                        deadline={pr?.deadline?.toISOString()}
+                      />
+                    )
+                  })}
                 </div>
               </section>
             )
@@ -180,10 +191,15 @@ export default async function MyOrdersPage() {
   )
 }
 
-function OrderCard({ order, lines, fromBc, deliveryDate }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string }) {
+function OrderCard({ order, lines, fromBc, deliveryDate, portalOrderId, deadline }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string; portalOrderId?: string; deadline?: string }) {
   const st = STATUS[order.status] ?? { label: order.status || 'Åben', cls: 'bg-gray-100 text-gray-600' }
   // "Kladde" forvirrer kunden → skjul status-badgen for kladder (vis kun ved reelle statusser).
   const showStatus = order.status !== 'Draft' && !!st.label
+
+  // "Tilføj vare" må KUN når: det er en portal-ordre (findes i Prisma → har id), INTET er pakket
+  // endnu, og fristen ikke er overskredet (tilføj-siden redirecter ellers).
+  const anyPacked = (lines ?? []).some((l) => (l.packedBy ?? '').trim() !== '')
+  const canAddLines = !!portalOrderId && !anyPacked && (!deadline || new Date() < new Date(deadline))
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
@@ -261,6 +277,19 @@ function OrderCard({ order, lines, fromBc, deliveryDate }: { order: BCCustomerOr
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Tilføj vare til ordren — kun portal-ordrer der ikke er pakket og stadig er inden for fristen */}
+      {canAddLines && (
+        <div className="border-t border-gray-100 px-4 py-2.5">
+          <Link
+            href={`/portal/ordrer/${portalOrderId}/tilfoej`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            <PlusCircle size={15} />
+            Tilføj vare til denne ordre
+          </Link>
         </div>
       )}
     </div>
