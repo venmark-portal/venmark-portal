@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Trash2, ArrowLeft, CheckCircle2, Heart } from 'lucide-react'
-import { OrderRow } from '@/components/portal/OrderList'
+import { OrderRow, resolvePrice } from '@/components/portal/OrderList'
 import type { EnrichedItem, PriceTier } from '@/components/portal/OrderList'
 import ItemSearchModal from '@/components/portal/ItemSearchModal'
 
@@ -52,6 +52,36 @@ export default function AddLinesClient({
       const data = await res.json()
       if (data?.availabilities) setAvail(prev => ({ ...prev, ...data.availabilities }))
     } catch { /* disponibilitet er best-effort */ }
+  }
+
+  // "ca. X kr."-estimater for varer uden aftalt pris (samme som bestil-siden).
+  const [est, setEst] = useState<Record<string, number>>({})
+  async function ensureEstimated(nos: string[]) {
+    const missing = Array.from(new Set(nos.filter(n => n && !(n in est))))
+    if (!missing.length) return
+    try {
+      const res = await fetch('/api/portal/estimated-prices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemNos: missing }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data?.estimatedPrices) setEst(prev => ({ ...prev, ...data.estimatedPrices }))
+    } catch { /* estimater er best-effort */ }
+  }
+
+  // Søgeresultat-callback: hent BÅDE disponibilitet og estimat-pris (som bestil-siden).
+  function onSearchResults(nos: string[]) { ensureAvailability(nos); ensureEstimated(nos) }
+
+  // Kundepris til søge-modalen — spejler bestil-sidens getSearchDisplayPrice:
+  // trappepris for antal=1 (kilde-prioriteret) → "ca."-estimat → varekortpris.
+  function getDisplayPrice(it: { number: string; unitPrice: number; baseUnitOfMeasureCode?: string }): number {
+    const base = it.baseUnitOfMeasureCode
+    const resolved = resolvePrice(it.number, 1, priceTiers, 0, base, 1, base)
+    if (resolved > 0) return resolved
+    const e = est[it.number]
+    if (e && e > 0) return e
+    return it.unitPrice
   }
 
   // Lokal kurv per varenr
@@ -342,7 +372,8 @@ export default function AddLinesClient({
           favNos={favSet}
           itemAvailabilities={avail}
           deliveryDate={deliveryDate ? new Date(deliveryDate) : undefined}
-          onResults={ensureAvailability}
+          onResults={onSearchResults}
+          getDisplayPrice={getDisplayPrice}
         />
       )}
     </div>

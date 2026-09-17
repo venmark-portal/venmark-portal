@@ -320,7 +320,7 @@ function pickBySource(tiers: PriceTier[]): number {
   return Math.min(...top.map(t => t.unitPrice))
 }
 
-function resolvePrice(
+export function resolvePrice(
   itemNo: string, qty: number, tiers: PriceTier[], fallback: number,
   uomCode?: string, qtyPerUom = 1, baseUomCode?: string,
 ): number {
