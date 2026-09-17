@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -67,6 +68,11 @@ export async function POST(
       console.error('BC linje-fejl ved tilføjelse:', errors)
     }
   }
+
+  // Bust cachen for ordreoversigten (getPortalLineStatuses cacher BC-data i 30s) så de
+  // tilføjede linjer vises med det samme — ellers krævede det en F5 fra kunden.
+  revalidatePath('/portal/ordrer')
+  revalidatePath(`/portal/ordrer/${orderId}`)
 
   return NextResponse.json({ added: created.length }, { status: 201 })
 }

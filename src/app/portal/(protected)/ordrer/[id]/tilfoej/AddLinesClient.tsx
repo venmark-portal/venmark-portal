@@ -132,7 +132,7 @@ export default function AddLinesClient({
       })
       if (res.ok) {
         setDone(true)
-        setTimeout(() => router.push('/portal/ordrer'), 1500)
+        setTimeout(() => { router.push('/portal/ordrer'); router.refresh() }, 1500)
       } else {
         const data = await res.json().catch(() => ({}))
         setError(data.error ?? `Fejl fra server (${res.status})`)
