@@ -196,10 +196,12 @@ function OrderCard({ order, lines, fromBc, deliveryDate, portalOrderId, deadline
   // "Kladde" forvirrer kunden → skjul status-badgen for kladder (vis kun ved reelle statusser).
   const showStatus = order.status !== 'Draft' && !!st.label
 
-  // "Tilføj vare" må KUN når: det er en portal-ordre (findes i Prisma → har id), INTET er pakket
-  // endnu, og fristen ikke er overskredet (tilføj-siden redirecter ellers).
-  const anyPacked = (lines ?? []).some((l) => (l.packedBy ?? '').trim() !== '')
-  const canAddLines = !!portalOrderId && !anyPacked && (!deadline || new Date() < new Date(deadline))
+  // "Tilføj vare" må når: det er en portal-ordre (Prisma-id), ordren ikke er FÆRDIGPAKKET (alle
+  // linjer pakket), og fristen ikke er overskredet. Delvist pakket (kun nogle linjer) må gerne —
+  // nye linjer vises bare som "ikke pakket" til pakkeren. (Før skjulte vi ved bare ÉN pakket linje.)
+  const lns = lines ?? []
+  const allPacked = lns.length > 0 && lns.every((l) => (l.packedBy ?? '').trim() !== '')
+  const canAddLines = !!portalOrderId && !allPacked && (!deadline || new Date() < new Date(deadline))
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
