@@ -255,7 +255,7 @@ function OrderCard({ order, lines, fromBc, deliveryDate, portalOrderId, deadline
         <div className="border-t border-gray-100 overflow-x-auto">
           <div className="min-w-[720px]">
             {/* Overskrifter */}
-            <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100 bg-gray-50/50`} style={{ gridTemplateColumns: LINE_COLS }}>
+            <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100 bg-gray-50/50`} style={{ display: 'grid', gridTemplateColumns: LINE_COLS }}>
               <span></span>
               <span>Varenr</span>
               <span>Beskrivelse</span>

@@ -50,7 +50,7 @@ export default function OrderLineStatus({
 
   return (
     <div className="border-b border-gray-50 last:border-0">
-      <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-sm`} style={{ gridTemplateColumns: LINE_COLS }}>
+      <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-sm`} style={{ display: 'grid', gridTemplateColumns: LINE_COLS }}>
         {/* Status-ikon */}
         <span title={status.label}>{status.icon}</span>
 
