@@ -26,15 +26,33 @@ interface Props {
   priceTiers?:         PriceTier[]
   initialFavNos?:      string[]
   itemAvailabilities?: Record<string, any>
+  deliveryDate?:       string   // ISO — ordrens leveringsdato (til disponibel-beregning i søgning)
 }
 
 export default function AddLinesClient({
   orderId, bcOrderNumber, deliveryLabel,
   stdFavorites = [], favorites = [], venmarkItems = [],
   priceTiers = [], initialFavNos = [],
-  itemAvailabilities = {},
+  itemAvailabilities = {}, deliveryDate,
 }: Props) {
   const router = useRouter()
+
+  // Disponibilitet er STATE: initialt de forudindlæste varer; søgning/kategori fletter nye
+  // varers disponibilitet ind (samme "skygge-opslag" som bestil-siden → viser disponibel/"timeglas").
+  const [avail, setAvail] = useState<Record<string, any>>(itemAvailabilities)
+  async function ensureAvailability(nos: string[]) {
+    const missing = Array.from(new Set(nos.filter(n => n && !(n in avail))))
+    if (!missing.length) return
+    try {
+      const res = await fetch('/api/portal/availabilities', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemNos: missing }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data?.availabilities) setAvail(prev => ({ ...prev, ...data.availabilities }))
+    } catch { /* disponibilitet er best-effort */ }
+  }
 
   // Lokal kurv per varenr
   const [qtyMap,    setQtyMap]    = useState<Map<string, number>>(new Map())
@@ -315,13 +333,16 @@ export default function AddLinesClient({
         </div>
       )}
 
-      {/* Søgning/katalog modal — samme komponent som bestil-siden */}
+      {/* Søgning/katalog modal — samme komponent + oplevelse som bestil-siden:
+          kategori-filter, disponibilitet ("timeglas") og leveringsdato. */}
       {showSearch && (
         <ItemSearchModal
           onAddItems={addSearchedItems}
           onClose={() => setShowSearch(false)}
           favNos={favSet}
-          itemAvailabilities={itemAvailabilities}
+          itemAvailabilities={avail}
+          deliveryDate={deliveryDate ? new Date(deliveryDate) : undefined}
+          onResults={ensureAvailability}
         />
       )}
     </div>

@@ -187,6 +187,7 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
       priceTiers={priceTiers}
       initialFavNos={allFavNos}
       itemAvailabilities={Object.fromEntries(itemAvailabilities)}
+      deliveryDate={order.deliveryDate.toISOString()}
     />
   )
 }
