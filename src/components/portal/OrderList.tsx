@@ -67,6 +67,12 @@ interface Props {
   calendarDays?:                BCCalendarDay[]
   estimatedPrices?:             Record<string, number>
   zeroPriceNos?:                string[]   // varer uden aftalt pris → hent "ca. X kr." efter render
+  // "Tilføj til eksisterende ordre"-tilstand: samme UI som bestilling, men indsend lægger linjer
+  // på en eksisterende ordre i stedet for at oprette en ny. Sat = add-mode. Leveringsdato/-form
+  // og PO låses (ordren har dem allerede).
+  addToOrderId?:     string
+  addBcOrderNumber?: string
+  addDeadline?:      string   // ISO — ordrens frist (bruges til pastDeadline i add-mode)
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -1081,7 +1087,9 @@ export default function OrderList({
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
   estimatedPrices: initialEst = {} as Record<string, number>,
   zeroPriceNos = [],
+  addToOrderId, addBcOrderNumber, addDeadline,
 }: Props) {
+  const addMode = !!addToOrderId
   // Disponibilitet er STATE: initialt kun de viste varer (favoritter osv.); kategori/søgning
   // fletter nye varers disponibilitet ind via ensureAvailability (som BC's skygge-opslag).
   const [itemAvailabilities, setItemAvailabilities] = useState<Record<string, BCItemAvailability>>(initialAvail)
@@ -1358,7 +1366,9 @@ export default function OrderList({
   const selectedWeekday = deliveryDate
     ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
     : 0
-  const pastDeadline = deadline ? now > deadline : false
+  const pastDeadline = addMode
+    ? (addDeadline ? now > new Date(addDeadline) : false)
+    : (deadline ? now > deadline : false)
 
   // ── Antals-loft pr. vare ─────────────────────────────────────────────────────
   // Loftet = disponibelt for ALLE varetyper (strenge, handelsvarer, producerede) → intet oversalg.
@@ -1683,6 +1693,14 @@ export default function OrderList({
     setShowSearch(false)
   }
 
+  // Add-mode: efter varer er lagt på ordren → tilbage til ordreoversigten.
+  useEffect(() => {
+    if (submitted && addToOrderId) {
+      const t = setTimeout(() => { window.location.href = '/portal/ordrer' }, 1500)
+      return () => clearTimeout(t)
+    }
+  }, [submitted, addToOrderId])
+
   // ── Indsend ordre ────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (lines.size === 0 || !deliveryDate) return
@@ -1705,14 +1723,18 @@ export default function OrderList({
     })
 
     try {
-      const res = await fetch('/api/portal/order', {
+      const url = addToOrderId ? `/api/portal/order/${addToOrderId}/lines` : '/api/portal/order'
+      const body = addToOrderId
+        ? { lines: orderLines }
+        : {
+            deliveryDate: `${deliveryDate.getFullYear()}-${String(deliveryDate.getMonth()+1).padStart(2,'0')}-${String(deliveryDate.getDate()).padStart(2,'0')}`, notes, driverNote, poNumber, lines: orderLines,
+            shipmentMethodCode: selectedMethodCode,
+            reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
+          }
+      const res = await fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          deliveryDate: `${deliveryDate.getFullYear()}-${String(deliveryDate.getMonth()+1).padStart(2,'0')}-${String(deliveryDate.getDate()).padStart(2,'0')}`, notes, driverNote, poNumber, lines: orderLines,
-          shipmentMethodCode: selectedMethodCode,
-          reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
-        }),
+        body:    JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
       setSubmitted(true)
@@ -1826,6 +1848,24 @@ export default function OrderList({
   const weekdayName = ['', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'][selectedWeekday] ?? ''
 
   // ─── SUCCES ──────────────────────────────────────────────────────────────────
+  if (submitted && addMode) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-white py-16 text-center ring-1 ring-gray-200">
+        <CheckCircle2 size={52} className="text-green-500" />
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Tilføjet til ordren!</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Varerne er lagt på ordren{addBcOrderNumber ? ` #${addBcOrderNumber}` : ''}.
+          </p>
+          <p className="mt-0.5 text-sm text-gray-400">Sender dig tilbage til dine bestillinger…</p>
+        </div>
+        <a href="/portal/ordrer" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+          Tilbage til mine bestillinger
+        </a>
+      </div>
+    )
+  }
+
   if (submitted) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-white py-16 text-center ring-1 ring-gray-200">
@@ -1886,8 +1926,8 @@ export default function OrderList({
           🐞 COVERAGE: {coverageDiag}
         </div>
       )}
-      {/* Leveringsmetode-vælger — kun synlige metoder */}
-      {shipmentMethods.filter(m => m.portalVisible).length > 1 && (
+      {/* Leveringsmetode-vælger — kun synlige metoder (skjult i add-mode: ordren har allerede metode) */}
+      {!addMode && shipmentMethods.filter(m => m.portalVisible).length > 1 && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Leveringsform</p>
           <div className="flex flex-wrap gap-2">
@@ -1908,8 +1948,15 @@ export default function OrderList({
         </div>
       )}
 
-      {/* Leveringsdato */}
-      <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} />
+      {/* Leveringsdato — vælgeren i bestilling; i add-mode er datoen låst til ordrens */}
+      {addMode ? (
+        <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Levering</p>
+          <div className="font-medium text-gray-900">{deliveryDate ? formatLongDate(deliveryDate) : ''}</div>
+        </div>
+      ) : (
+        <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} />
+      )}
 
       {/* Advarsel ved fremtidig afgang (i morgen eller senere): priser kan ændre sig,
           især auktionsfisk → opfordr til maks. pris i bemærkning. */}
@@ -2389,8 +2436,9 @@ export default function OrderList({
             className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
           >
             {pastDeadline ? 'Deadline passeret for denne dag'
-              : totalLines === 0 ? 'Tilføj varer for at bestille'
+              : totalLines === 0 ? 'Tilføj varer'
               : !deliveryDate ? 'Vælg en leveringsdato'
+              : addMode ? `Gennemse og tilføj (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`
               : `Gennemse og send (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
           </button>
         </div>
@@ -2493,8 +2541,8 @@ export default function OrderList({
               />
             </div>
 
-            {/* PO-nummer */}
-            <div>
+            {/* PO-nummer (udgår i add-mode — ordren har det allerede) */}
+            {!addMode && <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 PO-nummer / Indkøbsordre{requirePoNumber ? ' *' : ' (valgfri)'}
               </label>
@@ -2512,10 +2560,10 @@ export default function OrderList({
               {requirePoNumber && !poNumber.trim() && (
                 <p className="mt-1 text-xs text-orange-600">⚠️ Din konto kræver et PO-nummer.</p>
               )}
-            </div>
+            </div>}
 
-            {/* Chauffør-besked */}
-            <div>
+            {/* Chauffør-besked (udgår i add-mode) */}
+            {!addMode && <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Besked til chauffør <span className="font-normal normal-case text-gray-400">(valgfri)</span>
               </label>
@@ -2527,7 +2575,7 @@ export default function OrderList({
               {driverNote.trim() && (
                 <p className="mt-1 text-[11px] text-blue-500">🔔 Chaufføren bekræfter denne besked ved levering</p>
               )}
-            </div>
+            </div>}
 
             {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
@@ -2537,7 +2585,7 @@ export default function OrderList({
               disabled={submitting || pastDeadline}
               className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
             >
-              {submitting ? 'Sender…' : pastDeadline ? 'Deadline passeret' : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+              {submitting ? (addMode ? 'Tilføjer…' : 'Sender…') : pastDeadline ? 'Deadline passeret' : addMode ? `Tilføj ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} til ordren` : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
             </button>
           </div>
         </div>
