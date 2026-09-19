@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
         email:             vendorEmail ?? prev?.email,
         contactPerson:     prev?.contactPerson,
         qualityManager:    prev?.qualityManager,
+        qualityManagerEmail: prev?.qualityManagerEmail,
+        qualityManagerPhone: prev?.qualityManagerPhone,
         emergencyPhone:    prev?.emergencyPhone,
         hasThirdPartyCert: prev?.hasThirdPartyCert,
         certTypes:         prev?.certTypes,

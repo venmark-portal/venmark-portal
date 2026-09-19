@@ -531,9 +531,11 @@ model SupplierDeclaration {
   country         String?
   phone           String?
   email           String?
-  contactPerson   String?
-  qualityManager  String?
-  emergencyPhone  String?
+  contactPerson       String?
+  qualityManager      String?
+  qualityManagerEmail String?
+  qualityManagerPhone String?
+  emergencyPhone      String?
 
   // Certificeringer
   hasThirdPartyCert     Boolean?
@@ -566,6 +568,7 @@ model SupplierDeclaration {
   signerName            String?
   signerTitle           String?
   signerEmail           String?
+  signatureData         String?   // tegnet underskrift som data-URL (base64 PNG)
   confirmedAt           DateTime?
   ipAddress             String?
 

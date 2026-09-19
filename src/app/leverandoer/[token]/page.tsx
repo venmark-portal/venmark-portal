@@ -75,7 +75,7 @@ export default function LeverandoerFormPage() {
   // Formfelter
   const [fields, setFields] = useState({
     companyName: '', vatNo: '', address: '', country: '', phone: '',
-    email: '', contactPerson: '', qualityManager: '', emergencyPhone: '',
+    email: '', contactPerson: '', qualityManager: '', qualityManagerEmail: '', qualityManagerPhone: '', emergencyPhone: '',
     hasThirdPartyCert: false, certTypes: [] as string[],
     certData: {} as Record<string, { number: string; expiry: string }>,
     signerName: '', signerTitle: '', signerEmail: '', confirmed: false,
@@ -84,6 +84,29 @@ export default function LeverandoerFormPage() {
   const [selfAnswers, setSelfAnswers]           = useState<Answers>({})
   const [docs, setDocs] = useState<{ docType: string; file: File }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Tegnet underskrift (som på debitor-onboarding)
+  const sigRef = useRef<HTMLCanvasElement>(null)
+  const sigDrawing = useRef(false)
+  const sigLast = useRef<{ x: number; y: number } | null>(null)
+  const [sigInk, setSigInk] = useState(false)
+  function sigPos(e: React.PointerEvent) { const r = sigRef.current!.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  function sigDown(e: React.PointerEvent) { sigDrawing.current = true; sigLast.current = sigPos(e); try { sigRef.current!.setPointerCapture(e.pointerId) } catch {} }
+  function sigMove(e: React.PointerEvent) {
+    if (!sigDrawing.current) return
+    const ctx = sigRef.current!.getContext('2d'); const l = sigLast.current; if (!ctx || !l) return
+    const p = sigPos(e)
+    ctx.strokeStyle = '#132029'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(p.x, p.y); ctx.stroke(); sigLast.current = p
+    if (!sigInk) setSigInk(true)
+  }
+  function sigUp(e: React.PointerEvent) { sigDrawing.current = false; sigLast.current = null; try { sigRef.current!.releasePointerCapture(e.pointerId) } catch {} }
+  function sigClear() { const c = sigRef.current; if (c) c.getContext('2d')?.clearRect(0, 0, c.width, c.height); setSigInk(false) }
+  useEffect(() => {
+    const c = sigRef.current; if (!c || c.offsetParent === null) return
+    const dpr = window.devicePixelRatio || 1
+    if (c.width !== Math.round(c.clientWidth * dpr)) { c.width = Math.round(c.clientWidth * dpr); c.height = Math.round(c.clientHeight * dpr); c.getContext('2d')?.scale(dpr, dpr) }
+  })
 
   useEffect(() => {
     fetch(`/api/leverandoer/${token}`)
@@ -107,6 +130,8 @@ export default function LeverandoerFormPage() {
           email:            d.email             ?? '',
           contactPerson:    d.contactPerson     ?? '',
           qualityManager:   d.qualityManager    ?? '',
+          qualityManagerEmail: d.qualityManagerEmail ?? '',
+          qualityManagerPhone: d.qualityManagerPhone ?? '',
           emergencyPhone:   d.emergencyPhone    ?? '',
           hasThirdPartyCert:Boolean(d.hasThirdPartyCert),
           certTypes:        d.certTypes ? JSON.parse(d.certTypes) : [],
@@ -149,6 +174,7 @@ export default function LeverandoerFormPage() {
     if (!fields.companyName) errs.push(t.fields.companyName)
     if (!fields.signerName)  errs.push(t.fields.signerName)
     if (!fields.signerEmail) errs.push(t.fields.signerEmail)
+    if (!sigInk)             errs.push((t as any).signatureLabel ?? 'Signature')
     if (!fields.confirmed)   errs.push(t.confirmCheckbox)
     if (errs.length) { setErrors(errs); return }
     setErrors([]); setSubmitting(true)
@@ -160,6 +186,7 @@ export default function LeverandoerFormPage() {
       else if (k === 'certData') fd.append('certData', JSON.stringify(v))
       else if (k !== 'confirmed') fd.append(k, String(v))
     })
+    try { if (sigInk && sigRef.current) fd.append('signatureData', sigRef.current.toDataURL('image/png')) } catch {}
     fd.append('haccpAnswers',     JSON.stringify(haccpAnswers))
     fd.append('selfControlAnswers', JSON.stringify(selfAnswers))
     docs.forEach(({ docType, file }) => fd.append(`doc_${docType}`, file, file.name))
@@ -224,7 +251,7 @@ export default function LeverandoerFormPage() {
             {/* Stamdata */}
             <h2 className="text-sm font-semibold text-gray-600 mb-3">{t.sections.stamdata}</h2>
             <div className="grid grid-cols-2 gap-3 text-sm mb-5">
-              {([['Firma', decl?.companyName],['CVR/VAT', decl?.vatNo],['Adresse', decl?.address],['Land', decl?.country],['Telefon', decl?.phone],['Email', decl?.email],['Kontaktperson', decl?.contactPerson],['Kvalitetsansvarlig', decl?.qualityManager],['Nødtelefon', decl?.emergencyPhone]] as [string,string][]).filter(([,v]) => v).map(([label, value]) => (
+              {([['Firma', decl?.companyName],['CVR/VAT', decl?.vatNo],['Adresse', decl?.address],['Land', decl?.country],['Telefon', decl?.phone],['Email', decl?.email],['Kontaktperson', decl?.contactPerson],['Kvalitetsansvarlig', decl?.qualityManager],['Kvalitetsansvarlig email', decl?.qualityManagerEmail],['Kvalitetsansvarlig tlf.', decl?.qualityManagerPhone],['Nødtelefon', decl?.emergencyPhone]] as [string,string][]).filter(([,v]) => v).map(([label, value]) => (
                 <div key={label}><p className="text-xs text-gray-400">{label}</p><p className="text-gray-800">{value}</p></div>
               ))}
             </div>
@@ -236,6 +263,12 @@ export default function LeverandoerFormPage() {
                 <div key={label}><p className="text-xs text-gray-400">{label}</p><p className="text-gray-800">{value}</p></div>
               ))}
             </div>
+            {decl?.signatureData && (
+              <div className="mt-4">
+                <p className="text-xs text-gray-400 mb-1">Underskrift</p>
+                <img src={decl.signatureData} alt="Underskrift" className="h-24 rounded-lg border border-gray-200 bg-white p-1" />
+              </div>
+            )}
           </div>
 
           {/* Certificeringer */}
@@ -361,6 +394,8 @@ export default function LeverandoerFormPage() {
               <Field label={t.fields.email}><input type="email" value={fields.email} onChange={f('email')} className={input} /></Field>
               <Field label={t.fields.contactPerson}><input type="text" value={fields.contactPerson} onChange={f('contactPerson')} className={input} /></Field>
               <Field label={t.fields.qualityManager}><input type="text" value={fields.qualityManager} onChange={f('qualityManager')} className={input} /></Field>
+              <Field label={(t.fields as any).qualityManagerEmail ?? 'Quality manager email'}><input type="email" value={fields.qualityManagerEmail} onChange={f('qualityManagerEmail')} className={input} /></Field>
+              <Field label={(t.fields as any).qualityManagerPhone ?? 'Quality manager phone'}><input type="tel" value={fields.qualityManagerPhone} onChange={f('qualityManagerPhone')} className={input} /></Field>
               <Field label={t.fields.emergencyPhone} className="sm:col-span-2"><input type="tel" value={fields.emergencyPhone} onChange={f('emergencyPhone')} className={input} /></Field>
             </div>
           </Section>
@@ -480,6 +515,29 @@ export default function LeverandoerFormPage() {
                 <Field label={t.fields.signerTitle}><input type="text" value={fields.signerTitle} onChange={f('signerTitle')} className={input} /></Field>
                 <Field label={t.fields.signerEmail} required className="sm:col-span-2"><input type="email" value={fields.signerEmail} onChange={f('signerEmail')} className={input} /></Field>
               </div>
+
+              {/* Underskriftsfelt (som på debitor-onboarding) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-500">
+                    {(t as any).signatureLabel ?? 'Signature'}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <button type="button" onClick={sigClear} className="text-xs text-gray-400 hover:text-red-500">
+                    {(t as any).signatureClear ?? 'Clear'}
+                  </button>
+                </div>
+                <canvas
+                  ref={sigRef}
+                  onPointerDown={sigDown}
+                  onPointerMove={sigMove}
+                  onPointerUp={sigUp}
+                  onPointerLeave={sigUp}
+                  className="w-full h-40 rounded-lg border border-gray-300 bg-white touch-none cursor-crosshair"
+                  style={{ touchAction: 'none' }}
+                />
+                <p className="text-xs text-gray-400 mt-1">{(t as any).signatureHint ?? 'Sign in the field above using your mouse or finger.'}</p>
+              </div>
+
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={fields.confirmed} onChange={f('confirmed')} className="mt-0.5 h-4 w-4 accent-blue-600" />
                 <span className="text-sm text-gray-700 font-medium">{t.confirmCheckbox}</span>
