@@ -49,7 +49,7 @@ function AnswerToggle({ k, answers, setAnswers, t }: {
         ))}
       </div>
       {(cur === 'no' || cur === 'na') && (
-        <input type="text" placeholder="Kommentar…"
+        <input type="text" placeholder={t.commentPlaceholder ?? 'Comment…'}
           value={answers[k]?.comment ?? ''}
           onChange={e => setAnswers(a => ({ ...a, [k]: { ...a[k], comment: e.target.value } }))}
           className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:border-blue-300"
@@ -166,7 +166,7 @@ export default function LeverandoerFormPage() {
 
     const res = await fetch(`/api/leverandoer/${token}`, { method: 'POST', body: fd })
     if (res.ok) setSubmitted(true)
-    else setErrors(['Der opstod en fejl. Prøv igen.'])
+    else setErrors([t.submitError ?? 'An error occurred. Please try again.'])
     setSubmitting(false)
   }
 
@@ -180,7 +180,7 @@ export default function LeverandoerFormPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center space-y-2">
         <AlertCircle className="mx-auto text-red-400" size={40} />
-        <p className="text-gray-600">Linket er ugyldigt eller udløbet.</p>
+        <p className="text-gray-600">{t.notFound ?? 'The link is invalid or has expired.'}</p>
       </div>
     </div>
   )
@@ -369,7 +369,7 @@ export default function LeverandoerFormPage() {
           <Section title={t.sections.certs}>
             <div className="space-y-4">
               <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 border border-blue-100">
-                📎 Du vil blive bedt om at uploade certifikatdokumenter under &quot;Dokumentupload&quot; nedenfor.
+                {t.certUploadHint ?? '📎 You will be asked to upload certificate documents under "Document upload" below.'}
               </p>
 
               <YesNoField label={t.fields.hasThirdPartyCert} value={fields.hasThirdPartyCert}
@@ -394,14 +394,14 @@ export default function LeverandoerFormPage() {
                   {fields.certTypes.length > 0 && (
                     <div className="space-y-3 pt-1">
                       <div className="grid grid-cols-3 gap-3 text-xs font-medium text-gray-400 px-1">
-                        <span>Certifikat</span><span>Nummer</span><span>Udløbsdato</span>
+                        <span>{t.certColCert ?? 'Certificate'}</span><span>{t.certColNumber ?? 'Number'}</span><span>{t.certColExpiry ?? 'Expiry date'}</span>
                       </div>
                       {fields.certTypes.map(k => (
                         <div key={k} className="grid grid-cols-3 gap-3 items-center bg-gray-50 rounded-lg px-3 py-2">
                           <span className="text-sm font-medium text-gray-700">{t.certTypes[k]}</span>
                           <input
                             type="text"
-                            placeholder="Cert.nr."
+                            placeholder={t.certNoPlaceholder ?? 'Cert. no.'}
                             value={fields.certData[k]?.number ?? ''}
                             onChange={e => setFields(s => ({ ...s, certData: { ...s.certData, [k]: { ...s.certData[k], number: e.target.value } } }))}
                             className={input}

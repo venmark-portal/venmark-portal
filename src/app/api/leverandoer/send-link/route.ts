@@ -20,21 +20,42 @@ export async function POST(req: NextRequest) {
   if (!bcVendorNo || !vendorEmail)
     return NextResponse.json({ error: 'bcVendorNo og vendorEmail er påkrævet' }, { status: 400 })
 
-  // Find eller opret erklæring
+  // Find en åben erklæring (PENDING/SUBMITTED) — den genbruges direkte (allerede forudfyldt).
   let decl = await prisma.supplierDeclaration.findFirst({
     where: { bcVendorNo, status: { in: ['PENDING', 'SUBMITTED'] } },
     orderBy: { createdAt: 'desc' },
   })
 
   if (!decl) {
+    // Ny runde (fx årlig fornyelse efter godkendelse): KOPIÉR forrige indsendelses data, så
+    // leverandøren kun skal OPDATERE — ikke udfylde alt på ny. Underskrift + bekræftelse tages
+    // IKKE med (skal afgives på ny).
+    const prev = await prisma.supplierDeclaration.findFirst({
+      where: { bcVendorNo }, orderBy: { createdAt: 'desc' },
+    })
     decl = await prisma.supplierDeclaration.create({
       data: {
         bcVendorNo,
-        lang: lang ?? 'en',
-        companyName: vendorName ?? null,
-        email: vendorEmail,
+        lang: lang ?? prev?.lang ?? 'en',
         status: 'PENDING',
         nextRenewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        companyName:        vendorName ?? prev?.companyName ?? null,
+        vatNo:             prev?.vatNo,
+        address:           prev?.address,
+        country:           prev?.country,
+        phone:             prev?.phone,
+        email:             vendorEmail ?? prev?.email,
+        contactPerson:     prev?.contactPerson,
+        qualityManager:    prev?.qualityManager,
+        emergencyPhone:    prev?.emergencyPhone,
+        hasThirdPartyCert: prev?.hasThirdPartyCert,
+        certTypes:         prev?.certTypes,
+        certData:          prev?.certData,
+        haccpAnswers:      prev?.haccpAnswers,
+        selfControlAnswers:prev?.selfControlAnswers,
+        signerName:        prev?.signerName,
+        signerTitle:       prev?.signerTitle,
+        signerEmail:       prev?.signerEmail,
       },
     })
   }

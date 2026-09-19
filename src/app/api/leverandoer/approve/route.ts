@@ -28,6 +28,13 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  // Skriv status tilbage til BC: Godkendt (2) ved approve, Ikke Modtaget (0) ved returnering.
+  try {
+    await updateBCVendorStatus(decl.bcVendorNo, action === 'approve' ? 'Godkendt' : 'Ikke Modtaget', updated.nextRenewalDate)
+  } catch (e) {
+    console.error('BC vendor status (approve) fejlede:', e)
+  }
+
   // Send bekræftelsesmail til leverandør
   if (decl.email) {
     const t = getT(decl.lang)
@@ -45,4 +52,34 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true })
+}
+
+// Spejler updateBCVendorStatus i [token]/route.ts — PATCH'er vendorDeclarationStatuses i BC.
+async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewal: Date | null) {
+  const { getAccessToken, bcPortalBaseUrl } = await import('@/lib/businesscentral')
+  const token = await getAccessToken()
+  const base  = bcPortalBaseUrl()
+
+  const searchRes = await fetch(
+    `${base}/vendorDeclarationStatuses?$filter=vendorNo eq '${vendorNo}'`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
+  )
+  if (!searchRes.ok) return
+  const data = await searchRes.json()
+  if (!data.value?.[0]) return
+
+  const statusMap: Record<string, number> = { 'Ikke Modtaget': 0, 'Afventer': 1, 'Godkendt': 2, 'Udlobet': 3 }
+
+  await fetch(
+    `${base}/vendorDeclarationStatuses('${vendorNo}')`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'If-Match': '*' },
+      body: JSON.stringify({
+        erklaeringStatus: statusMap[status] ?? 2,
+        erlaeringSidstModtaget: new Date().toISOString().split('T')[0],
+        naestFornyelsesdato: nextRenewal ? nextRenewal.toISOString().split('T')[0] : null,
+      }),
+    },
+  )
 }

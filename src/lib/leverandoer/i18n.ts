@@ -41,6 +41,18 @@ export type Translations = {
   hasAsc: string
   ascCertNumber: string
   ascExpiry: string
+  // Tilføjede UI-strenge (tidligere hardcodet på dansk) — valgfri m. engelsk fallback i getT
+  notFound?: string
+  submitError?: string
+  commentPlaceholder?: string
+  certUploadHint?: string
+  certColCert?: string
+  certColNumber?: string
+  certColExpiry?: string
+  certNoPlaceholder?: string
+  signatureLabel?: string
+  signatureHint?: string
+  signatureClear?: string
 }
 
 const t: Record<Lang, Translations> = {
@@ -689,6 +701,86 @@ const t: Record<Lang, Translations> = {
   },
 }
 
+// Ekstra UI-strenge + kvalitetschef-mail/tlf + underskrift, pr. sprog. Flettes ind i getT så vi
+// ikke skal redigere alle 8 store sprogblokke. fields flettes separat (nested).
+const EXTRA: Record<Lang, Partial<Translations>> = {
+  da: {
+    notFound: 'Linket er ugyldigt eller udløbet.',
+    submitError: 'Der opstod en fejl. Prøv igen.',
+    commentPlaceholder: 'Kommentar…',
+    certUploadHint: '📎 Du vil blive bedt om at uploade certifikatdokumenter under "Dokumentupload" nedenfor.',
+    certColCert: 'Certifikat', certColNumber: 'Nummer', certColExpiry: 'Udløbsdato', certNoPlaceholder: 'Cert.nr.',
+    signatureLabel: 'Underskrift', signatureHint: 'Skriv med finger eller mus', signatureClear: 'Ryd',
+    fields: { qualityManagerEmail: 'Kvalitetsansvarlig — e-mail', qualityManagerPhone: 'Kvalitetsansvarlig — telefon' },
+  },
+  sv: {
+    notFound: 'Länken är ogiltig eller har gått ut.',
+    submitError: 'Ett fel uppstod. Försök igen.',
+    commentPlaceholder: 'Kommentar…',
+    certUploadHint: '📎 Du kommer att ombes ladda upp certifikatdokument under "Dokumentuppladdning" nedan.',
+    certColCert: 'Certifikat', certColNumber: 'Nummer', certColExpiry: 'Utgångsdatum', certNoPlaceholder: 'Cert.nr.',
+    signatureLabel: 'Underskrift', signatureHint: 'Skriv med finger eller mus', signatureClear: 'Rensa',
+    fields: { qualityManagerEmail: 'Kvalitetsansvarig — e-post', qualityManagerPhone: 'Kvalitetsansvarig — telefon' },
+  },
+  en: {
+    notFound: 'The link is invalid or has expired.',
+    submitError: 'An error occurred. Please try again.',
+    commentPlaceholder: 'Comment…',
+    certUploadHint: '📎 You will be asked to upload certificate documents under "Document upload" below.',
+    certColCert: 'Certificate', certColNumber: 'Number', certColExpiry: 'Expiry date', certNoPlaceholder: 'Cert. no.',
+    signatureLabel: 'Signature', signatureHint: 'Draw with finger or mouse', signatureClear: 'Clear',
+    fields: { qualityManagerEmail: 'Quality manager — e-mail', qualityManagerPhone: 'Quality manager — phone' },
+  },
+  de: {
+    notFound: 'Der Link ist ungültig oder abgelaufen.',
+    submitError: 'Es ist ein Fehler aufgetreten. Bitte erneut versuchen.',
+    commentPlaceholder: 'Kommentar…',
+    certUploadHint: '📎 Sie werden gebeten, Zertifikatsdokumente unter „Dokument-Upload" unten hochzuladen.',
+    certColCert: 'Zertifikat', certColNumber: 'Nummer', certColExpiry: 'Ablaufdatum', certNoPlaceholder: 'Zert.-Nr.',
+    signatureLabel: 'Unterschrift', signatureHint: 'Mit Finger oder Maus zeichnen', signatureClear: 'Löschen',
+    fields: { qualityManagerEmail: 'Qualitätsmanager — E-Mail', qualityManagerPhone: 'Qualitätsmanager — Telefon' },
+  },
+  fr: {
+    notFound: 'Le lien est invalide ou a expiré.',
+    submitError: 'Une erreur est survenue. Veuillez réessayer.',
+    commentPlaceholder: 'Commentaire…',
+    certUploadHint: '📎 Il vous sera demandé de téléverser les documents de certification sous « Téléversement de documents » ci-dessous.',
+    certColCert: 'Certificat', certColNumber: 'Numéro', certColExpiry: 'Date d\'expiration', certNoPlaceholder: 'N° de cert.',
+    signatureLabel: 'Signature', signatureHint: 'Écrivez avec le doigt ou la souris', signatureClear: 'Effacer',
+    fields: { qualityManagerEmail: 'Responsable qualité — e-mail', qualityManagerPhone: 'Responsable qualité — téléphone' },
+  },
+  nl: {
+    notFound: 'De link is ongeldig of verlopen.',
+    submitError: 'Er is een fout opgetreden. Probeer het opnieuw.',
+    commentPlaceholder: 'Opmerking…',
+    certUploadHint: '📎 U wordt gevraagd certificaatdocumenten te uploaden onder "Document uploaden" hieronder.',
+    certColCert: 'Certificaat', certColNumber: 'Nummer', certColExpiry: 'Vervaldatum', certNoPlaceholder: 'Cert.nr.',
+    signatureLabel: 'Handtekening', signatureHint: 'Teken met vinger of muis', signatureClear: 'Wissen',
+    fields: { qualityManagerEmail: 'Kwaliteitsmanager — e-mail', qualityManagerPhone: 'Kwaliteitsmanager — telefoon' },
+  },
+  it: {
+    notFound: 'Il link non è valido o è scaduto.',
+    submitError: 'Si è verificato un errore. Riprova.',
+    commentPlaceholder: 'Commento…',
+    certUploadHint: '📎 Ti verrà chiesto di caricare i documenti del certificato in "Caricamento documenti" qui sotto.',
+    certColCert: 'Certificato', certColNumber: 'Numero', certColExpiry: 'Data di scadenza', certNoPlaceholder: 'N. cert.',
+    signatureLabel: 'Firma', signatureHint: 'Scrivi con dito o mouse', signatureClear: 'Cancella',
+    fields: { qualityManagerEmail: 'Responsabile qualità — e-mail', qualityManagerPhone: 'Responsabile qualità — telefono' },
+  },
+  es: {
+    notFound: 'El enlace no es válido o ha caducado.',
+    submitError: 'Se ha producido un error. Inténtalo de nuevo.',
+    commentPlaceholder: 'Comentario…',
+    certUploadHint: '📎 Se le pedirá que cargue los documentos del certificado en "Carga de documentos" más abajo.',
+    certColCert: 'Certificado', certColNumber: 'Número', certColExpiry: 'Fecha de caducidad', certNoPlaceholder: 'N.º cert.',
+    signatureLabel: 'Firma', signatureHint: 'Escribe con el dedo o el ratón', signatureClear: 'Borrar',
+    fields: { qualityManagerEmail: 'Responsable de calidad — correo', qualityManagerPhone: 'Responsable de calidad — teléfono' },
+  },
+}
+
 export function getT(lang: string): Translations {
-  return t[(lang as Lang) in t ? (lang as Lang) : 'en']
+  const key: Lang = (lang as Lang) in t ? (lang as Lang) : 'en'
+  const base = t[key]
+  const ex = EXTRA[key] ?? {}
+  return { ...base, ...ex, fields: { ...base.fields, ...(ex.fields ?? {}) } }
 }
