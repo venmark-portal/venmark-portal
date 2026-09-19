@@ -2274,6 +2274,7 @@ export interface BCShipmentMethod {
   sat:           boolean
   sun:           boolean
   cutoffTime:    string   // "HH:MM:SS.fffffff" — Edm.TimeOfDay fra BC ("Hentes kl"/Portal Cutoff Time)
+  orderCutoffTime?: string // separat BESTILLINGSfrist ("Portal Order Cutoff Time"); tom = brug cutoffTime. KUN til ordre-deadline — ikke afhentning/fragt-autosend.
   transitDays:   number
   sameDay:       boolean
   portalVisible: boolean
@@ -2311,6 +2312,7 @@ export async function getPortalShipmentMethods(): Promise<BCShipmentMethod[]> {
       sat:           m.sat           ?? false,
       sun:           m.sun           ?? false,
       cutoffTime:    m.cutoffTime    ?? '14:00:00.0000000',
+      orderCutoffTime: m.orderCutoffTime ?? undefined,
       transitDays:   m.transitDays   ?? 1,
       sameDay:       m.sameDay       ?? false,
       portalVisible: m.portalVisible ?? false,

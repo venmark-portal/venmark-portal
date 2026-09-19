@@ -1304,11 +1304,20 @@ export default function OrderList({
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
     const s = getItemAvailStatus(avail, deliveryDate)
-    // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato). Dagen = leveringsdato minus
-    // varens leadtid (fx 2D → onsdag-levering skal bestilles mandag).
+    // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato) OG anvend LAVESTE FÆLLESNÆVNER:
+    // den reelle sidste bestillingstid for DENNE vare til den valgte leveringsdag er den TIDLIGSTE af
+    // (a) varens egen frist (frist-dag = leveringsdato − leadtid, kl. Åbn til) og (b) LEVERINGSKODENS
+    // bestillingsfrist (deadline). Så en HENTERSELV-vare (kode-frist 08:00) viser 08:00 — ikke varens
+    // "inden 11:00". Vinder aldrig SENERE end før: teksten kan kun blive strammere.
     if (s.aabnTilLabel) {
-      const dag = getFristDagLabel(itemNo)
-      if (dag) s.aabnTilLabel = s.aabnTilLabel.replace('Bestil inden', `Bestil ${dag} inden`)
+      const itemFrist = getFristDato(itemNo)
+      const eff = itemFrist && deadline ? (itemFrist <= deadline ? itemFrist : deadline)
+                : (itemFrist ?? deadline ?? null)
+      if (eff) s.aabnTilLabel = formatFristLabel(eff)
+      else {
+        const dag = getFristDagLabel(itemNo)
+        if (dag) s.aabnTilLabel = s.aabnTilLabel.replace('Bestil inden', `Bestil ${dag} inden`)
+      }
     }
     // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
@@ -1361,6 +1370,32 @@ export default function OrderList({
     const diff = Math.round((frist.getTime() - today0.getTime()) / 86400000)
     const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][frist.getDay()]
     return diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${frist.getDate()}/${frist.getMonth() + 1}`
+  }
+  // Varens frist som fuld Date (frist-dag kl. Åbn til) — til laveste-fællesnævner-sammenligning med
+  // leveringskodens deadline. Null hvis varen ingen Åbn til/auktions-frist har.
+  const getFristDato = (itemNo: string): Date | null => {
+    if (!deliveryDate) return null
+    const avail = itemAvailabilities[itemNo]
+    const fristTid = avail?.aabnTil ?? avail?.auktionsFrist
+    const p = fristTid ? parseAabnTil(fristTid) : null
+    if (!p) return null
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+    let frist = new Date(deliveryDate); frist.setHours(0, 0, 0, 0)
+    const lead = avail?.leadDage ?? 0
+    if (lead > 0) frist = subWorkdays(frist, lead)
+    if (frist < today0) frist = today0
+    frist.setHours(p.hh, p.mm, 0, 0)
+    return frist
+  }
+  // "Bestil [i dag|i morgen|wd d/m] inden HH:MM" fra en fuld Date.
+  const formatFristLabel = (d: Date): string => {
+    const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+    const d0 = new Date(d); d0.setHours(0, 0, 0, 0)
+    const diff = Math.round((d0.getTime() - today0.getTime()) / 86400000)
+    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][d0.getDay()]
+    const dag = diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${d0.getDate()}/${d0.getMonth() + 1}`
+    const hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0')
+    return `Bestil ${dag} inden ${hh}:${mm}`
   }
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate

@@ -179,7 +179,9 @@ export function getDeadlineForMethodDelivery(
   calendarDays: BCCalendarDay[] = [],
 ): Date {
   const transit = method.sameDay ? 0 : (method.transitDays ?? 1)
-  const { hour, minute } = parseCutoffTime(method.cutoffTime)
+  // BESTILLINGSfrist (orderCutoffTime) vinder over afhentningstid (cutoffTime="Hentes kl.") når den
+  // er sat — så fx HENTERSELV kan lukke for bestilling 08:00 selv om afhentning er 09:00. Tom → cutoffTime.
+  const { hour, minute } = parseCutoffTime(method.orderCutoffTime || method.cutoffTime)
   const dispatch = new Date(deliveryDate)
   dispatch.setDate(dispatch.getDate() - transit)
 
