@@ -70,7 +70,11 @@ async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewa
   const data = await searchRes.json()
   if (!data.value?.[0]) { console.error('BC vendorDeclarationStatuses: kreditor ikke fundet:', vendorNo); return }
 
-  const statusMap: Record<string, number> = { 'Ikke Modtaget': 0, 'Afventer': 1, 'Godkendt': 2, 'Udlobet': 3 }
+  // erklaeringStatus er et enum-felt: BC's OData vil have værdiens NAVN med mellemrum kodet
+  // som _x0020_ ("Ikke_x0020_Modtaget") — et tal giver 400 "Cannot read the value '2'".
+  // Datoer som lokal dansk dato, ikke toISOString (UTC-skift om aftenen).
+  const bcEnum = (s: string) => s.replace(/ /g, '_x0020_')
+  const bcDate = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Copenhagen', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 
   const patchRes = await fetch(
     `${base}/vendorDeclarationStatuses('${vendorNo}')`,
@@ -78,9 +82,9 @@ async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewa
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'If-Match': '*' },
       body: JSON.stringify({
-        erklaeringStatus: statusMap[status] ?? 2,
-        erlaeringSidstModtaget: new Date().toISOString().split('T')[0],
-        naestFornyelsesdato: nextRenewal ? nextRenewal.toISOString().split('T')[0] : null,
+        erklaeringStatus: bcEnum(status),
+        erlaeringSidstModtaget: bcDate(new Date()),
+        ...(nextRenewal ? { naestFornyelsesdato: bcDate(nextRenewal) } : {}),
       }),
     },
   )
