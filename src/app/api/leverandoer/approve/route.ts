@@ -64,13 +64,15 @@ async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewa
     `${base}/vendorDeclarationStatuses?$filter=vendorNo eq '${vendorNo}'`,
     { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
   )
-  if (!searchRes.ok) return
+  // Log ALTID når vi ikke kan skrive — en stille return skjulte i månedsvis at API-siden
+  // lå under forkert APIGroup (404).
+  if (!searchRes.ok) { console.error(`BC vendorDeclarationStatuses opslag fejlede (${searchRes.status}):`, (await searchRes.text()).slice(0, 300)); return }
   const data = await searchRes.json()
-  if (!data.value?.[0]) return
+  if (!data.value?.[0]) { console.error('BC vendorDeclarationStatuses: kreditor ikke fundet:', vendorNo); return }
 
   const statusMap: Record<string, number> = { 'Ikke Modtaget': 0, 'Afventer': 1, 'Godkendt': 2, 'Udlobet': 3 }
 
-  await fetch(
+  const patchRes = await fetch(
     `${base}/vendorDeclarationStatuses('${vendorNo}')`,
     {
       method: 'PATCH',
@@ -82,4 +84,5 @@ async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewa
       }),
     },
   )
+  if (!patchRes.ok) console.error(`BC vendorDeclarationStatuses PATCH fejlede (${patchRes.status}):`, (await patchRes.text()).slice(0, 300))
 }

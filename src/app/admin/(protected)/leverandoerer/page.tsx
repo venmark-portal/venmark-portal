@@ -9,7 +9,7 @@ type Decl = {
   lang: string; status: string; submittedAt: string | null; approvedAt: string | null
   nextRenewalDate: string | null; token: string; country: string | null
   signerName: string | null; signerEmail: string | null; signerTitle: string | null
-  documents: { id: string; docType: string; fileName: string }[]
+  documents: { id: string; docType: string; fileName: string; expiresAt: string | null }[]
   reminders: { sentAt: string; type: string }[]
   updatedAt: string
 }
@@ -24,6 +24,15 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 function monthsAgo(date: string | null): number {
   if (!date) return 999
   return Math.floor((Date.now() - new Date(date).getTime()) / (30 * 24 * 60 * 60 * 1000))
+}
+
+// Dokument-udløb: rød = udløbet, gul = under 60 dage, ellers neutral
+function docExpiryClass(expiresAt: string | null): string {
+  if (!expiresAt) return 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+  const days = (new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+  if (days < 0)  return 'text-red-700 bg-red-50 hover:bg-red-100 ring-1 ring-red-200'
+  if (days < 60) return 'text-yellow-800 bg-yellow-50 hover:bg-yellow-100 ring-1 ring-yellow-200'
+  return 'text-blue-600 bg-blue-50 hover:bg-blue-100'
 }
 
 function urgencyColor(decl: Decl): string {
@@ -195,9 +204,16 @@ export default function LeverandoererPage() {
                     <span className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${sc.color}`}>
                       {sc.icon}{sc.label}
                     </span>
-                    {d.documents.length > 0 && (
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{d.documents.length} dok.</span>
-                    )}
+                    {d.documents.length > 0 && (() => {
+                      const expired = d.documents.filter(x => x.expiresAt && new Date(x.expiresAt).getTime() < Date.now()).length
+                      const soon = d.documents.filter(x => x.expiresAt && new Date(x.expiresAt).getTime() >= Date.now() && new Date(x.expiresAt).getTime() < Date.now() + 60 * 24 * 60 * 60 * 1000).length
+                      return (
+                        <span className={`text-xs px-2 py-1 rounded-full ${expired ? 'bg-red-100 text-red-700' : soon ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}
+                          title={expired ? `${expired} dokument(er) udløbet` : soon ? `${soon} dokument(er) udløber inden 60 dage` : ''}>
+                          {d.documents.length} dok.{expired ? ` · ${expired} udløbet` : soon ? ` · ${soon} udløber snart` : ''}
+                        </span>
+                      )
+                    })()}
                     {isExp ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                   </div>
                 </div>
@@ -217,8 +233,9 @@ export default function LeverandoererPage() {
                         <div className="flex flex-wrap gap-2">
                           {d.documents.map(doc => (
                             <a key={doc.id} href={`/api/leverandoer/dokument?path=${(doc as any).filePath ?? `uploads/leverandoer/${d.bcVendorNo}/${doc.fileName}`}`}
-                              target="_blank" className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 rounded px-2 py-1 hover:bg-blue-100">
+                              target="_blank" className={`flex items-center gap-1 text-xs rounded px-2 py-1 ${docExpiryClass(doc.expiresAt)}`}>
                               <FileText size={11} />{doc.docType} — {doc.fileName}
+                              {doc.expiresAt && <span className="opacity-70"> · udløber {new Date(doc.expiresAt).toLocaleDateString('da-DK')}</span>}
                             </a>
                           ))}
                         </div>

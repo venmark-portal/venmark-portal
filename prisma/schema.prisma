@@ -601,6 +601,7 @@ model SupplierDocument {
   mimeType      String
   fileSize      Int
   uploadedAt    DateTime @default(now())
+  expiresAt     DateTime? // udløbsdato angivet af leverandøren ved upload — cron rykker for nyt
 
   @@index([declarationId])
 }

@@ -86,18 +86,68 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Dokument-udløb ──────────────────────────────────────────────────────────
+  // Dokumenter med udløbsdato inden 30 dage (eller allerede udløbet) på leverandørens NYESTE
+  // erklæring → mail til leverandøren (højst hver 14. dag pr. erklæring) + med i kvalitetschef-
+  // mailen. Ældre erklæringer ignoreres, ellers rykker vi for sidste års dokumenter.
+  const latestByVendor = new Map<string, typeof declarations[number]>()
+  for (const d of [...declarations].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()))
+    if (!latestByVendor.has(d.bcVendorNo)) latestByVendor.set(d.bcVendorNo, d)
+
+  const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  const expiringDocs = await prisma.supplierDocument.findMany({
+    where: { declarationId: { in: Array.from(latestByVendor.values()).map(d => d.id) }, expiresAt: { not: null, lte: in30Days } },
+    orderBy: { expiresAt: 'asc' },
+  })
+  const docsByDecl = new Map<string, typeof expiringDocs>()
+  for (const doc of expiringDocs) docsByDecl.set(doc.declarationId, [...(docsByDecl.get(doc.declarationId) ?? []), doc])
+
+  const docExpiryList: string[] = []
+  let docRemindersSent = 0
+  for (const [declId, docs] of Array.from(docsByDecl.entries())) {
+    const decl = declarations.find(d => d.id === declId)
+    if (!decl) continue
+    const t = getT(decl.lang)
+    const fmt = (d: Date) => d.toLocaleDateString('da-DK')
+    const docLines = docs.map(x => `• ${t.docTypes[x.docType] ?? x.docType} — ${x.fileName} (${x.expiresAt!.getTime() < now.getTime() ? 'udløbet' : 'udløber'} ${fmt(x.expiresAt!)})`)
+    docExpiryList.push(`${decl.companyName || decl.bcVendorNo} (${decl.bcVendorNo}):\n${docLines.map(l => '  ' + l).join('\n')}`)
+
+    const recipientEmail = decl.email || decl.signerEmail || ''
+    if (!recipientEmail) continue
+    const lastDocReminder = await prisma.supplierReminderLog.findFirst({
+      where: { declarationId: declId, type: 'DOC_EXPIRY' }, orderBy: { sentAt: 'desc' },
+    })
+    const daysSinceLast = lastDocReminder ? (now.getTime() - lastDocReminder.sentAt.getTime()) / (24 * 60 * 60 * 1000) : 999
+    if (daysSinceLast < 14) continue
+
+    const url = `${process.env.APP_URL}/leverandoer/${decl.token}`
+    await sendEmail({
+      to: recipientEmail,
+      cc: decl.signerEmail && decl.signerEmail !== recipientEmail ? decl.signerEmail : undefined,
+      subject: `${t.title} — ${docs.length} dokument(er) udløber / expiring documents`,
+      text: `Kære ${decl.companyName || decl.bcVendorNo},\n\nFølgende dokumenter hos Venmark Fisk A/S er udløbet eller udløber snart:\n\n${docLines.join('\n')}\n\nUpload venligst de nye versioner her:\n${url}\n\n---\n\nDear ${decl.companyName || decl.bcVendorNo},\n\nThe following documents on file with Venmark Fisk A/S have expired or are about to expire:\n\n${docLines.join('\n')}\n\nPlease upload the new versions here:\n${url}\n\nVenmark Fisk A/S`,
+    })
+    await prisma.supplierReminderLog.create({ data: { declarationId: declId, type: 'DOC_EXPIRY', sentTo: recipientEmail } })
+    docRemindersSent++
+  }
+
   // Send samlet eskaleringsmail til kvalitetschef
-  if (escalationList.length > 0 && kvalitetschefEmail) {
+  if ((escalationList.length > 0 || docExpiryList.length > 0) && kvalitetschefEmail) {
     const lines = escalationList
       .map(e => `• ${e.name} (${e.vendorNo}) — ${e.monthsOverdue} måned(er) overskredet`)
       .join('\n')
+    const parts: string[] = []
+    if (escalationList.length) parts.push(`Følgende leverandører mangler leverandørerklæring og er overskredet 11 måneder:\n\n${lines}`)
+    if (docExpiryList.length) parts.push(`Dokumenter der er udløbet eller udløber inden 30 dage:\n\n${docExpiryList.join('\n\n')}`)
 
     await sendEmail({
       to: kvalitetschefEmail,
-      subject: `⚠️ ${escalationList.length} leverandørerklæring(er) overskredet 11 måneder`,
-      text: `Følgende leverandører mangler leverandørerklæring og er overskredet 11 måneder:\n\n${lines}\n\nOversigt: ${process.env.APP_URL}/admin/leverandoerer`,
+      subject: escalationList.length
+        ? `⚠️ ${escalationList.length} leverandørerklæring(er) overskredet 11 måneder${docExpiryList.length ? ` · ${expiringDocs.length} dokument(er) udløber` : ''}`
+        : `⚠️ ${expiringDocs.length} leverandørdokument(er) udløbet/udløber snart`,
+      text: `${parts.join('\n\n')}\n\nOversigt: ${process.env.APP_URL}/admin/leverandoerer`,
     })
   }
 
-  return NextResponse.json({ ok: true, remindersSent, escalations: escalationList.length })
+  return NextResponse.json({ ok: true, remindersSent, docRemindersSent, escalations: escalationList.length, expiringDocs: expiringDocs.length })
 }

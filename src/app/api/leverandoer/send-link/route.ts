@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
       return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  const { bcVendorNo, vendorName, vendorEmail, lang } = await req.json()
+  // cc = leverandørens hovedmail når BC sender til en særskilt "Erklæring e-mail"
+  const { bcVendorNo, vendorName, vendorEmail, lang, cc } = await req.json()
   if (!bcVendorNo || !vendorEmail)
     return NextResponse.json({ error: 'bcVendorNo og vendorEmail er påkrævet' }, { status: 400 })
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
 
   await sendEmail({
     to: vendorEmail,
+    cc: typeof cc === 'string' && cc.trim() && cc.trim().toLowerCase() !== String(vendorEmail).toLowerCase() ? cc.trim() : undefined,
     subject: t.title + ' — Venmark Fisk A/S',
     text: `${vendorName ? `Kære ${vendorName},\n\n` : ''}Venmark Fisk A/S anmoder om udfyldelse af leverandørerklæring.\n\nBrug linket herunder:\n${url}\n\nLinket er personligt og udløber ikke.\n\nMed venlig hilsen\nVenmark Fisk A/S`,
   })

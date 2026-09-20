@@ -82,7 +82,8 @@ export default function LeverandoerFormPage() {
   })
   const [haccpAnswers, setHaccpAnswers]         = useState<Answers>({})
   const [selfAnswers, setSelfAnswers]           = useState<Answers>({})
-  const [docs, setDocs] = useState<{ docType: string; file: File }[]>([])
+  // expiry = valgfri udløbsdato (YYYY-MM-DD) — cron rykker leverandøren for nyt dokument
+  const [docs, setDocs] = useState<{ docType: string; file: File; expiry: string }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Tegnet underskrift (som på debitor-onboarding)
@@ -164,8 +165,8 @@ export default function LeverandoerFormPage() {
     }))
   }
 
-  function addDoc(docType: string, file: File) {
-    setDocs(d => [...d, { docType, file }])
+  function addDoc(docType: string, file: File, expiry: string) {
+    setDocs(d => [...d, { docType, file, expiry }])
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -189,7 +190,10 @@ export default function LeverandoerFormPage() {
     try { if (sigInk && sigRef.current) fd.append('signatureData', sigRef.current.toDataURL('image/png')) } catch {}
     fd.append('haccpAnswers',     JSON.stringify(haccpAnswers))
     fd.append('selfControlAnswers', JSON.stringify(selfAnswers))
-    docs.forEach(({ docType, file }) => fd.append(`doc_${docType}`, file, file.name))
+    docs.forEach(({ docType, file, expiry }, i) => {
+      fd.append(`doc_${i}_${docType}`, file, file.name)
+      if (expiry) fd.append(`docexp_${i}`, expiry)
+    })
 
     const res = await fetch(`/api/leverandoer/${token}`, { method: 'POST', body: fd })
     if (res.ok) setSubmitted(true)
@@ -341,6 +345,7 @@ export default function LeverandoerFormPage() {
                   <a key={doc.id} href={`/api/leverandoer/dokument?path=${doc.filePath ?? `uploads/leverandoer/${decl.bcVendorNo}/${doc.fileName}`}`}
                     target="_blank" className="flex items-center gap-1 text-blue-600 bg-blue-50 rounded px-2 py-1 hover:bg-blue-100 text-xs">
                     <Upload size={11} />{t.docTypes[doc.docType] ?? doc.docType} — {doc.fileName}
+                    {doc.expiresAt && <span className="text-blue-400"> · {t.certColExpiry ?? 'Expiry'}: {new Date(doc.expiresAt).toLocaleDateString('da-DK')}</span>}
                   </a>
                 ))}
               </div>
@@ -496,7 +501,10 @@ export default function LeverandoerFormPage() {
               {docs.map((d, i) => (
                 <div key={i} className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2">
                   <Upload size={14} className="text-blue-500 shrink-0" />
-                  <span className="text-xs text-blue-700 flex-1 truncate">{t.docTypes[d.docType]} — {d.file.name}</span>
+                  <span className="text-xs text-blue-700 flex-1 truncate">
+                    {t.docTypes[d.docType]} — {d.file.name}
+                    {d.expiry && <span className="text-blue-400"> · {t.certColExpiry ?? 'Expiry'}: {new Date(d.expiry).toLocaleDateString(lang === 'en' ? 'en-GB' : lang)}</span>}
+                  </span>
                   <button type="button" onClick={() => setDocs(ds => ds.filter((_,j) => j !== i))}>
                     <X size={14} className="text-gray-400 hover:text-red-500" />
                   </button>
@@ -613,9 +621,10 @@ function YesNoField({ label, value, onChange, t }: {
 }
 
 function DocUploadButton({ t, onAdd, docTypeKeys }: {
-  t: Translations; onAdd: (type: string, file: File) => void; docTypeKeys: string[]
+  t: Translations; onAdd: (type: string, file: File, expiry: string) => void; docTypeKeys: string[]
 }) {
   const [docType, setDocType] = useState(docTypeKeys[0])
+  const [expiry, setExpiry] = useState('')
   const ref = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -623,6 +632,12 @@ function DocUploadButton({ t, onAdd, docTypeKeys }: {
         className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:border-blue-300">
         {docTypeKeys.map(k => <option key={k} value={k}>{t.docTypes[k]}</option>)}
       </select>
+      {/* Udløbsdato vælges FØR filen — nulstilles efter hver tilføjelse */}
+      <label className="flex items-center gap-1.5 text-xs text-gray-500">
+        {t.certColExpiry ?? 'Expiry date'}
+        <input type="date" value={expiry} onChange={e => setExpiry(e.target.value)}
+          className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:border-blue-300" />
+      </label>
       <button type="button" onClick={() => ref.current?.click()}
         className="flex items-center gap-1.5 rounded-lg border border-dashed border-blue-300 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 transition">
         <Plus size={13} />{t.addCert}
@@ -630,7 +645,7 @@ function DocUploadButton({ t, onAdd, docTypeKeys }: {
       <input ref={ref} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
         onChange={e => {
           const file = e.target.files?.[0]
-          if (file) { onAdd(docType, file); e.target.value = '' }
+          if (file) { onAdd(docType, file, expiry); setExpiry(''); e.target.value = '' }
         }}
       />
     </div>

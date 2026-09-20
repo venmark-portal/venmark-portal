@@ -57,21 +57,26 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   const uploadDir = path.join(process.cwd(), 'uploads', 'leverandoer', decl.bcVendorNo)
   fs.mkdirSync(uploadDir, { recursive: true })
 
-  const docEntries: { docType: string; file: File }[] = []
+  // Filer sendes som doc_<index>_<type> + valgfri udløbsdato som docexp_<index>, så flere
+  // dokumenter af samme type kan have hver sin dato.
+  const docEntries: { docType: string; file: File; expiresAt: Date | null }[] = []
   for (const [key, value] of form.entries()) {
-    if (key.startsWith('doc_') && value instanceof File && value.size > 0) {
-      docEntries.push({ docType: key.replace('doc_', ''), file: value as File })
+    const m = /^doc_(\d+)_(.+)$/.exec(key)
+    if (m && value instanceof File && value.size > 0) {
+      const exp = (form.get(`docexp_${m[1]}`) as string | null) || ''
+      const expiresAt = /^\d{4}-\d{2}-\d{2}$/.test(exp) ? new Date(exp) : null
+      docEntries.push({ docType: m[2], file: value as File, expiresAt })
     }
   }
 
-  const savedDocs = await Promise.all(docEntries.map(async ({ docType, file }) => {
+  const savedDocs = await Promise.all(docEntries.map(async ({ docType, file, expiresAt }) => {
     const ext = file.name.split('.').pop() ?? 'bin'
     const id = Math.random().toString(36).slice(2)
     const fileName = `${id}.${ext}`
     const filePath = `uploads/leverandoer/${decl.bcVendorNo}/${fileName}`
     const buf = Buffer.from(await file.arrayBuffer())
     fs.writeFileSync(path.join(process.cwd(), filePath), buf)
-    return { docType, fileName: file.name, filePath, mimeType: file.type, fileSize: file.size }
+    return { docType, fileName: file.name, filePath, mimeType: file.type, fileSize: file.size, expiresAt }
   }))
 
   const updated = await prisma.supplierDeclaration.update({
@@ -142,15 +147,17 @@ async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewa
     `${base}/vendorDeclarationStatuses?$filter=vendorNo eq '${vendorNo}'`,
     { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
   )
-  if (!searchRes.ok) return
+  // Log ALTID når vi ikke kan skrive — en stille return skjulte at API-siden lå under
+  // forkert APIGroup (404), så BC aldrig fik "Afventer"/"Godkendt".
+  if (!searchRes.ok) { console.error(`BC vendorDeclarationStatuses opslag fejlede (${searchRes.status}):`, (await searchRes.text()).slice(0, 300)); return }
 
   const data = await searchRes.json()
   const vendor = data.value?.[0]
-  if (!vendor) return
+  if (!vendor) { console.error('BC vendorDeclarationStatuses: kreditor ikke fundet:', vendorNo); return }
 
   const statusMap: Record<string, number> = { 'Ikke Modtaget': 0, 'Afventer': 1, 'Godkendt': 2, 'Udlobet': 3 }
 
-  await fetch(
+  const patchRes = await fetch(
     `${base}/vendorDeclarationStatuses('${vendorNo}')`,
     {
       method: 'PATCH',
@@ -166,4 +173,5 @@ async function updateBCVendorStatus(vendorNo: string, status: string, nextRenewa
       }),
     }
   )
+  if (!patchRes.ok) console.error(`BC vendorDeclarationStatuses PATCH fejlede (${patchRes.status}):`, (await patchRes.text()).slice(0, 300))
 }
