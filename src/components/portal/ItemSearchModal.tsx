@@ -111,8 +111,10 @@ interface Props {
   existingNos?:    Set<string>
   itemAvailabilities?: Record<string, BCItemAvailability>
   deliveryDate?:   Date
-  /** Frist-dag pr. vare ("i dag"/"i morgen"/dato = leveringsdato − leadtid) → "Bestil … inden HH:MM". */
-  getFristDayLabel?: (itemNo: string) => string
+  /** Færdig frist-tekst pr. vare. Får modalens egen "Bestil inden HH:MM" og returnerer den endelige
+   *  tekst med dag — SAMME beregning som varelisten (laveste fællesnævner af varens Åbn til og
+   *  leveringskodens frist), så modal og liste aldrig kan vise forskelligt. Uden: kun HH:MM. */
+  getFristLabel?: (itemNo: string, base: string) => string
   onResults?:      (itemNos: string[]) => void
   /** Resolver kundens rigtige pris (aftalt trappe → estimat → varekort). Uden denne vises varekortets rå unitPrice. */
   getDisplayPrice?: (item: EnrichedItem) => number
@@ -125,7 +127,7 @@ interface Props {
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
-  itemAvailabilities, deliveryDate, getFristDayLabel, onResults, getDisplayPrice, getMaxQty,
+  itemAvailabilities, deliveryDate, getFristLabel, onResults, getDisplayPrice, getMaxQty,
   initialQuery = '',
 }: Props) {
   const singleMode  = !!onSelect
@@ -420,10 +422,7 @@ export default function ItemSearchModal({
                 {!status.blockLabel && status.aabnTilLabel && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
                     <Clock size={9} />
-                    {(() => {
-                      const dag = getFristDayLabel?.(item.number)
-                      return dag ? status.aabnTilLabel!.replace('Bestil inden', `Bestil ${dag} inden`) : status.aabnTilLabel
-                    })()}
+                    {getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel}
                   </div>
                 )}
 
