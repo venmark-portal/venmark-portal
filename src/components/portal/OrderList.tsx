@@ -1383,6 +1383,14 @@ export default function OrderList({
     let frist = new Date(deliveryDate); frist.setHours(0, 0, 0, 0)
     const lead = avail?.leadDage ?? 0
     if (lead > 0) frist = subWorkdays(frist, lead)
+    // Åbn til er en frist på BESTILLINGSdagen — og den sidste dag man overhovedet kan bestille er
+    // leveringskodens deadline-dag (afsendelsesdagen). Uden dette loft blev fx tirsdags-levering med
+    // transit 1 regnet som "tirsdag 11:30", som så tabte til kodens "mandag 14:00" — selv om varen
+    // reelt skal bestilles mandag inden 11:30.
+    if (deadline) {
+      const deadlineDay0 = new Date(deadline); deadlineDay0.setHours(0, 0, 0, 0)
+      if (frist > deadlineDay0) frist = deadlineDay0
+    }
     if (frist < today0) frist = today0
     frist.setHours(p.hh, p.mm, 0, 0)
     return frist
