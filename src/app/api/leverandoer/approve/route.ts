@@ -39,14 +39,19 @@ export async function POST(req: NextRequest) {
   if (decl.email) {
     const t = getT(decl.lang)
     try {
+      // På leverandørens sprog (decl.lang) — var hardcodet dansk
+      const date = updated.nextRenewalDate?.toLocaleDateString(decl.lang === 'da' ? 'da-DK' : 'en-GB', { timeZone: 'Europe/Copenhagen' }) ?? ''
+      const url = `${process.env.APP_URL}/leverandoer/${decl.token}`
       await sendEmail({
         to: decl.email,
+        cc: decl.ccEmail ?? undefined,
         subject: action === 'approve'
-          ? `${t.title} — Godkendt`
-          : `${t.title} — Returneret til revision`,
-        text: action === 'approve'
-          ? `Jeres leverandørerklæring er gennemgået og godkendt af Venmark Fisk A/S.\n\nNæste fornyelse: ${updated.nextRenewalDate?.toLocaleDateString('da-DK') ?? ''}`
-          : `Jeres leverandørerklæring er returneret til revision. Venligst log ind og opdater oplysningerne:\n${process.env.APP_URL}/leverandoer/${decl.token}`,
+          ? `${t.title} — ${t.mailApprovedSubj ?? 'Approved'}`
+          : `${t.title} — ${t.mailReturnedSubj ?? 'Returned for revision'}`,
+        text: (action === 'approve'
+          ? (t.mailApprovedBody ?? 'Your supplier declaration has been reviewed and approved by Venmark Fisk A/S.\n\nNext renewal: {date}').replace('{date}', date)
+          : (t.mailReturnedBody ?? 'Your supplier declaration has been returned for revision. Please update the details here:\n{url}').replace('{url}', url))
+          + `\n\n${t.mailRegards ?? 'Kind regards'}\nVenmark Fisk A/S`,
       })
     } catch {}
   }

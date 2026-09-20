@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
     to: vendorEmail,
     cc: decl.ccEmail ?? undefined,
     subject: t.title + ' — Venmark Fisk A/S',
-    text: `${vendorName ? `Kære ${vendorName},\n\n` : ''}Venmark Fisk A/S anmoder om udfyldelse af leverandørerklæring.\n\nBrug linket herunder:\n${url}\n\nLinket er personligt og udløber ikke.\n\nMed venlig hilsen\nVenmark Fisk A/S`,
+    // Brødtekst på leverandørens sprog (decl.lang) — var hardcodet dansk
+    text: `${vendorName ? `${t.mailDear ?? 'Dear'} ${vendorName},\n\n` : ''}${t.mailRequest ?? 'Venmark Fisk A/S kindly asks you to complete the supplier declaration.'}\n\n${t.mailUseLink ?? 'Please use the link below:'}\n${url}\n\n${t.mailNoExpiry ?? 'The link is personal and does not expire.'}\n\n${t.mailRegards ?? 'Kind regards'}\nVenmark Fisk A/S`,
   })
 
   await prisma.supplierReminderLog.create({

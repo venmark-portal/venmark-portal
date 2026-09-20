@@ -53,6 +53,16 @@ export type Translations = {
   signatureLabel?: string
   signatureHint?: string
   signatureClear?: string
+  // Mails (send-link + godkendt/returneret) — på leverandørens sprog
+  mailDear?: string        // "Kære" / "Dear"
+  mailRequest?: string     // "... anmoder om udfyldelse af leverandørerklæring."
+  mailUseLink?: string     // "Brug linket herunder:"
+  mailNoExpiry?: string    // "Linket er personligt og udløber ikke."
+  mailRegards?: string     // "Med venlig hilsen"
+  mailApprovedSubj?: string
+  mailApprovedBody?: string   // {date} = næste fornyelse
+  mailReturnedSubj?: string
+  mailReturnedBody?: string   // {url}
 }
 
 const t: Record<Lang, Translations> = {
@@ -712,6 +722,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certifikat', certColNumber: 'Nummer', certColExpiry: 'Udløbsdato', certNoPlaceholder: 'Cert.nr.',
     signatureLabel: 'Underskrift', signatureHint: 'Skriv med finger eller mus', signatureClear: 'Ryd',
     fields: { qualityManagerEmail: 'Kvalitetsansvarlig — e-mail', qualityManagerPhone: 'Kvalitetsansvarlig — telefon' },
+    mailDear: 'Kære', mailRequest: 'Venmark Fisk A/S anmoder om udfyldelse af leverandørerklæring.',
+    mailUseLink: 'Brug linket herunder:', mailNoExpiry: 'Linket er personligt og udløber ikke.', mailRegards: 'Med venlig hilsen',
+    mailApprovedSubj: 'Godkendt', mailApprovedBody: 'Jeres leverandørerklæring er gennemgået og godkendt af Venmark Fisk A/S.\n\nNæste fornyelse: {date}',
+    mailReturnedSubj: 'Returneret til revision', mailReturnedBody: 'Jeres leverandørerklæring er returneret til revision. Opdater venligst oplysningerne her:\n{url}',
   },
   sv: {
     notFound: 'Länken är ogiltig eller har gått ut.',
@@ -721,6 +735,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certifikat', certColNumber: 'Nummer', certColExpiry: 'Utgångsdatum', certNoPlaceholder: 'Cert.nr.',
     signatureLabel: 'Underskrift', signatureHint: 'Skriv med finger eller mus', signatureClear: 'Rensa',
     fields: { qualityManagerEmail: 'Kvalitetsansvarig — e-post', qualityManagerPhone: 'Kvalitetsansvarig — telefon' },
+    mailDear: 'Hej', mailRequest: 'Venmark Fisk A/S ber er fylla i leverantörsförsäkran.',
+    mailUseLink: 'Använd länken nedan:', mailNoExpiry: 'Länken är personlig och går inte ut.', mailRegards: 'Med vänlig hälsning',
+    mailApprovedSubj: 'Godkänd', mailApprovedBody: 'Er leverantörsförsäkran har granskats och godkänts av Venmark Fisk A/S.\n\nNästa förnyelse: {date}',
+    mailReturnedSubj: 'Återsänd för revidering', mailReturnedBody: 'Er leverantörsförsäkran har återsänts för revidering. Uppdatera uppgifterna här:\n{url}',
   },
   en: {
     notFound: 'The link is invalid or has expired.',
@@ -730,6 +748,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certificate', certColNumber: 'Number', certColExpiry: 'Expiry date', certNoPlaceholder: 'Cert. no.',
     signatureLabel: 'Signature', signatureHint: 'Draw with finger or mouse', signatureClear: 'Clear',
     fields: { qualityManagerEmail: 'Quality manager — e-mail', qualityManagerPhone: 'Quality manager — phone' },
+    mailDear: 'Dear', mailRequest: 'Venmark Fisk A/S kindly asks you to complete the supplier declaration.',
+    mailUseLink: 'Please use the link below:', mailNoExpiry: 'The link is personal and does not expire.', mailRegards: 'Kind regards',
+    mailApprovedSubj: 'Approved', mailApprovedBody: 'Your supplier declaration has been reviewed and approved by Venmark Fisk A/S.\n\nNext renewal: {date}',
+    mailReturnedSubj: 'Returned for revision', mailReturnedBody: 'Your supplier declaration has been returned for revision. Please update the details here:\n{url}',
   },
   de: {
     notFound: 'Der Link ist ungültig oder abgelaufen.',
@@ -739,6 +761,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Zertifikat', certColNumber: 'Nummer', certColExpiry: 'Ablaufdatum', certNoPlaceholder: 'Zert.-Nr.',
     signatureLabel: 'Unterschrift', signatureHint: 'Mit Finger oder Maus zeichnen', signatureClear: 'Löschen',
     fields: { qualityManagerEmail: 'Qualitätsmanager — E-Mail', qualityManagerPhone: 'Qualitätsmanager — Telefon' },
+    mailDear: 'Sehr geehrte Damen und Herren,', mailRequest: 'Venmark Fisk A/S bittet Sie, die Lieferantenerklärung auszufüllen.',
+    mailUseLink: 'Bitte verwenden Sie den folgenden Link:', mailNoExpiry: 'Der Link ist persönlich und läuft nicht ab.', mailRegards: 'Mit freundlichen Grüßen',
+    mailApprovedSubj: 'Genehmigt', mailApprovedBody: 'Ihre Lieferantenerklärung wurde von Venmark Fisk A/S geprüft und genehmigt.\n\nNächste Erneuerung: {date}',
+    mailReturnedSubj: 'Zur Überarbeitung zurückgesendet', mailReturnedBody: 'Ihre Lieferantenerklärung wurde zur Überarbeitung zurückgesendet. Bitte aktualisieren Sie die Angaben hier:\n{url}',
   },
   fr: {
     notFound: 'Le lien est invalide ou a expiré.',
@@ -748,6 +774,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certificat', certColNumber: 'Numéro', certColExpiry: 'Date d\'expiration', certNoPlaceholder: 'N° de cert.',
     signatureLabel: 'Signature', signatureHint: 'Écrivez avec le doigt ou la souris', signatureClear: 'Effacer',
     fields: { qualityManagerEmail: 'Responsable qualité — e-mail', qualityManagerPhone: 'Responsable qualité — téléphone' },
+    mailDear: 'Bonjour', mailRequest: 'Venmark Fisk A/S vous demande de compléter la déclaration fournisseur.',
+    mailUseLink: 'Veuillez utiliser le lien ci-dessous :', mailNoExpiry: 'Le lien est personnel et n\'expire pas.', mailRegards: 'Cordialement',
+    mailApprovedSubj: 'Approuvée', mailApprovedBody: 'Votre déclaration fournisseur a été examinée et approuvée par Venmark Fisk A/S.\n\nProchain renouvellement : {date}',
+    mailReturnedSubj: 'Renvoyée pour révision', mailReturnedBody: 'Votre déclaration fournisseur a été renvoyée pour révision. Veuillez mettre à jour les informations ici :\n{url}',
   },
   nl: {
     notFound: 'De link is ongeldig of verlopen.',
@@ -757,6 +787,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certificaat', certColNumber: 'Nummer', certColExpiry: 'Vervaldatum', certNoPlaceholder: 'Cert.nr.',
     signatureLabel: 'Handtekening', signatureHint: 'Teken met vinger of muis', signatureClear: 'Wissen',
     fields: { qualityManagerEmail: 'Kwaliteitsmanager — e-mail', qualityManagerPhone: 'Kwaliteitsmanager — telefoon' },
+    mailDear: 'Beste', mailRequest: 'Venmark Fisk A/S verzoekt u de leveranciersverklaring in te vullen.',
+    mailUseLink: 'Gebruik de onderstaande link:', mailNoExpiry: 'De link is persoonlijk en verloopt niet.', mailRegards: 'Met vriendelijke groet',
+    mailApprovedSubj: 'Goedgekeurd', mailApprovedBody: 'Uw leveranciersverklaring is beoordeeld en goedgekeurd door Venmark Fisk A/S.\n\nVolgende vernieuwing: {date}',
+    mailReturnedSubj: 'Teruggestuurd ter herziening', mailReturnedBody: 'Uw leveranciersverklaring is teruggestuurd ter herziening. Werk de gegevens hier bij:\n{url}',
   },
   it: {
     notFound: 'Il link non è valido o è scaduto.',
@@ -766,6 +800,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certificato', certColNumber: 'Numero', certColExpiry: 'Data di scadenza', certNoPlaceholder: 'N. cert.',
     signatureLabel: 'Firma', signatureHint: 'Scrivi con dito o mouse', signatureClear: 'Cancella',
     fields: { qualityManagerEmail: 'Responsabile qualità — e-mail', qualityManagerPhone: 'Responsabile qualità — telefono' },
+    mailDear: 'Gentile', mailRequest: 'Venmark Fisk A/S vi chiede di compilare la dichiarazione del fornitore.',
+    mailUseLink: 'Utilizzate il link qui sotto:', mailNoExpiry: 'Il link è personale e non scade.', mailRegards: 'Cordiali saluti',
+    mailApprovedSubj: 'Approvata', mailApprovedBody: 'La vostra dichiarazione del fornitore è stata esaminata e approvata da Venmark Fisk A/S.\n\nProssimo rinnovo: {date}',
+    mailReturnedSubj: 'Restituita per revisione', mailReturnedBody: 'La vostra dichiarazione del fornitore è stata restituita per revisione. Aggiornate i dati qui:\n{url}',
   },
   es: {
     notFound: 'El enlace no es válido o ha caducado.',
@@ -775,6 +813,10 @@ const EXTRA: Record<Lang, Partial<Translations>> = {
     certColCert: 'Certificado', certColNumber: 'Número', certColExpiry: 'Fecha de caducidad', certNoPlaceholder: 'N.º cert.',
     signatureLabel: 'Firma', signatureHint: 'Escribe con el dedo o el ratón', signatureClear: 'Borrar',
     fields: { qualityManagerEmail: 'Responsable de calidad — correo', qualityManagerPhone: 'Responsable de calidad — teléfono' },
+    mailDear: 'Estimados', mailRequest: 'Venmark Fisk A/S les solicita completar la declaración de proveedor.',
+    mailUseLink: 'Utilicen el siguiente enlace:', mailNoExpiry: 'El enlace es personal y no caduca.', mailRegards: 'Atentamente',
+    mailApprovedSubj: 'Aprobada', mailApprovedBody: 'Su declaración de proveedor ha sido revisada y aprobada por Venmark Fisk A/S.\n\nPróxima renovación: {date}',
+    mailReturnedSubj: 'Devuelta para revisión', mailReturnedBody: 'Su declaración de proveedor ha sido devuelta para revisión. Actualicen los datos aquí:\n{url}',
   },
 }
 
