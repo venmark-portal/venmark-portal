@@ -32,6 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
 
   const b = await req.json()
   const isLs = (b.variant === 'ls')
+  // Kaution er uafhængig af LS — formularen sender kun true når trinet faktisk blev vist
+  // (sælger valgte det OG virksomhedsformen ikke er I/S/enkeltmand).
+  const hasGuaranty = !!b.guaranty
   const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || ''
 
   const co = b.company || {}
@@ -52,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   try {
     pdfBuf = await buildOnboardingPdf({
       lang: b.lang === 'en' ? 'en' : 'da',
-      variant: isLs ? 'ls' : 'std',
+      variant: isLs ? 'ls' : 'std', guaranty: hasGuaranty,
       companyName: co.name, vatRegistrationNo: co.vat, companyForm: co.form,
       address: co.address, postCode: co.postCode, city: co.city, countryRegionCode: co.country,
       eInvoiceEan: !!co.eInvoiceEan, gln: co.gln, website: co.website,
@@ -105,6 +108,8 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     patch.lsBankName = ls.bank || ''
     patch.lsRegNo = ls.reg || ''
     patch.lsAccountNo = ls.acc || ''
+  }
+  if (hasGuaranty) {
     patch.guarantorName = g.name || ''
     patch.guarantorCpr = g.cpr || ''
     patch.guarantorAddress = guarantorAddress
@@ -138,7 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     await sendEmail({
       to: process.env.NOTIFICATION_EMAIL || 'fisk@venmark.dk',
       subject: `Ny kundeoprettelse modtaget — ${co.name || rec.bcCustomerNo || ''}`,
-      text: `Ny onboarding indsendt af ${co.name || ''} (CVR ${co.vat || ''}).\nVariant: ${isLs ? 'Med Leverandørservice + kaution' : 'Standard'}.\nGodkend i BC: Kunde onboarding-listen.`,
+      text: `Ny onboarding indsendt af ${co.name || ''} (CVR ${co.vat || ''}).\nLeverandørservice: ${isLs ? 'Ja' : 'Nej'} · Selvskyldnerkaution: ${hasGuaranty ? 'Ja' : 'Nej'}.\nGodkend i BC: Kunde onboarding-listen.`,
       attachments,
     })
   } catch (e) { console.error('Venmark-notifikationsmail fejlede:', e) }

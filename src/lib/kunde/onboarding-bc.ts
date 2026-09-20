@@ -11,6 +11,7 @@ export interface OnboardingRecord {
   token: string
   bcCustomerNo: string
   variant: string          // 'Standard' | 'Leverandoerservice'
+  guarantyRequired?: boolean // selvskyldnerkaution — uafhængig af variant (mangler før BC-sync)
   languageCode: string     // 'da' | 'en'
   status: string           // 'IkkeSendt' | 'Sendt' | 'Afventer' | 'Godkendt' | ...
   [key: string]: any

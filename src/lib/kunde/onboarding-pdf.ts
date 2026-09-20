@@ -4,6 +4,7 @@ import { LEGAL, Lang } from './content'
 export interface OnboardingPdfData {
   lang: Lang
   variant: 'std' | 'ls'
+  guaranty?: boolean      // selvskyldnerkaution — uafhængig af variant
   companyName?: string
   vatRegistrationNo?: string
   companyForm?: string
@@ -85,7 +86,7 @@ export async function buildOnboardingPdf(d: OnboardingPdfData): Promise<Buffer> 
       ${row(t.bank, d.lsBankName)}${row(t.reg, d.lsRegNo)}${row(t.acc, d.lsAccountNo)}
     </table>` : ''
 
-  const guarBlock = (isLs && d.guarantorName) ? `
+  const guarBlock = (d.guaranty && d.guarantorName) ? `
     <h2>${t.guar}</h2>
     <div class="legal">${legal.guar}</div>
     <table class="kv">

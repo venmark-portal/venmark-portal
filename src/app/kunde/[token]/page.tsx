@@ -99,6 +99,8 @@ export default function OnboardingPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [lang, setLang] = useState<Lang>('da')
   const [variant, setVariant] = useState<Variant>('std')
+  // Selvskyldnerkaution vælges i BC uafhængigt af Leverandørservice (Guaranty Required).
+  const [guaranty, setGuaranty] = useState(false)
   const [prefilled, setPrefilled] = useState(false)
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
@@ -125,9 +127,10 @@ export default function OnboardingPage() {
   const tt = t(lang)
   const isLs = variant === 'ls'
   // I/S og enkeltmandsvirksomhed hæfter allerede personligt/ubegrænset — så al kaution udgår
-  // (Leverandørservice-mandatet gælder stadig). Kaution-trinet + kautionist-underskrift skjules.
+  // uanset hvad sælger valgte (Leverandørservice-mandatet gælder stadig). Kaution-trinet +
+  // kautionist-underskrift skjules.
   const personalLiable = f.form === 'I/S' || f.form === 'Enkeltmandsvirksomhed'
-  const showGuaranty = isLs && !personalLiable
+  const showGuaranty = guaranty && !personalLiable
   const steps = ['company', 'contacts', 'billing', ...(isLs ? ['ls'] : []), ...(showGuaranty ? ['guaranty'] : []), 'sign']
 
   // ---- load prefill ----
@@ -139,7 +142,11 @@ export default function OnboardingPage() {
         if (!res.ok) { if (alive) { setLoadError(res.status === 404 ? 'notfound' : 'loaderr'); setLoading(false) } ; return }
         const r = await res.json()
         if (!alive) return
-        setVariant(r.variant === 'Leverandoerservice' ? 'ls' : 'std')
+        const ls = r.variant === 'Leverandoerservice'
+        setVariant(ls ? 'ls' : 'std')
+        // Feltet mangler kun hvis BC endnu ikke er synket til den nye version — så falder vi
+        // tilbage til den gamle regel (kaution fulgte Leverandørservice).
+        setGuaranty(typeof r.guarantyRequired === 'boolean' ? r.guarantyRequired : ls)
         setLang(r.languageCode === 'en' ? 'en' : 'da')
         const anyData = r.companyName || r.vatRegistrationNo || r.contact1Name
         setPrefilled(!!anyData)
@@ -247,7 +254,7 @@ export default function OnboardingPage() {
     const today = new Date()
     const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     const payload = {
-      lang, variant,
+      lang, variant, guaranty: showGuaranty,
       company: { name: f.name, vat: f.vat, form: f.form, address: f.address, postCode: f.zip, city: f.city, country: f.country, eInvoiceEan: f.ean, gln: f.gln, website: f.website },
       contacts: contacts.map(c => ({ name: c.name, mobile: c.mobile, email: c.email })),
       phoneNo: f.phone, email: f.mainmail,
