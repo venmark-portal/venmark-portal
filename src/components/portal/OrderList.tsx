@@ -1309,16 +1309,7 @@ export default function OrderList({
     // (a) varens egen frist (frist-dag = leveringsdato − leadtid, kl. Åbn til) og (b) LEVERINGSKODENS
     // bestillingsfrist (deadline). Så en HENTERSELV-vare (kode-frist 08:00) viser 08:00 — ikke varens
     // "inden 11:00". Vinder aldrig SENERE end før: teksten kan kun blive strammere.
-    if (s.aabnTilLabel) {
-      const itemFrist = getFristDato(itemNo)
-      const eff = itemFrist && deadline ? (itemFrist <= deadline ? itemFrist : deadline)
-                : (itemFrist ?? deadline ?? null)
-      if (eff) s.aabnTilLabel = formatFristLabel(eff)
-      else {
-        const dag = getFristDagLabel(itemNo)
-        if (dag) s.aabnTilLabel = s.aabnTilLabel.replace('Bestil inden', `Bestil ${dag} inden`)
-      }
-    }
+    if (s.aabnTilLabel) s.aabnTilLabel = fristLabelFor(itemNo, s.aabnTilLabel)
     // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
     if (cap != null) {
@@ -1394,6 +1385,16 @@ export default function OrderList({
     if (frist < today0) frist = today0
     frist.setHours(p.hh, p.mm, 0, 0)
     return frist
+  }
+  // ÉN fælles frist-tekst for vareliste OG søge-modal (laveste fællesnævner, se rowAvailStatus).
+  // `base` = "Bestil inden HH:MM" fra status-beregningen; returnerer den færdige tekst med dag.
+  const fristLabelFor = (itemNo: string, base: string): string => {
+    const itemFrist = getFristDato(itemNo)
+    const eff = itemFrist && deadline ? (itemFrist <= deadline ? itemFrist : deadline)
+              : (itemFrist ?? deadline ?? null)
+    if (eff) return formatFristLabel(eff)
+    const dag = getFristDagLabel(itemNo)
+    return dag ? base.replace('Bestil inden', `Bestil ${dag} inden`) : base
   }
   // "Bestil [i dag|i morgen|wd d/m] inden HH:MM" fra en fuld Date.
   const formatFristLabel = (d: Date): string => {
@@ -2644,7 +2645,7 @@ export default function OrderList({
           onToggleFav={toggleFavorite}
           itemAvailabilities={itemAvailabilities}
           deliveryDate={deliveryDate}
-          getFristDayLabel={getFristDagLabel}
+          getFristLabel={fristLabelFor}
           onResults={onSearchResults}
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}
