@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { getT } from '@/lib/leverandoer/i18n'
+import { createRenewalDeclaration } from '@/lib/leverandoer/renewal'
 
 export const runtime = 'nodejs'
 
@@ -27,40 +28,18 @@ export async function POST(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   })
 
+  const ccClean = typeof cc === 'string' && cc.trim() && cc.trim().toLowerCase() !== String(vendorEmail).toLowerCase() ? cc.trim() : null
+
   if (!decl) {
     // Ny runde (fx årlig fornyelse efter godkendelse): KOPIÉR forrige indsendelses data, så
-    // leverandøren kun skal OPDATERE — ikke udfylde alt på ny. Underskrift + bekræftelse tages
-    // IKKE med (skal afgives på ny).
+    // leverandøren kun skal OPDATERE — ikke udfylde alt på ny (se lib/leverandoer/renewal.ts).
     const prev = await prisma.supplierDeclaration.findFirst({
       where: { bcVendorNo }, orderBy: { createdAt: 'desc' },
     })
-    decl = await prisma.supplierDeclaration.create({
-      data: {
-        bcVendorNo,
-        lang: lang ?? prev?.lang ?? 'en',
-        status: 'PENDING',
-        nextRenewalDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        companyName:        vendorName ?? prev?.companyName ?? null,
-        vatNo:             prev?.vatNo,
-        address:           prev?.address,
-        country:           prev?.country,
-        phone:             prev?.phone,
-        email:             vendorEmail ?? prev?.email,
-        contactPerson:     prev?.contactPerson,
-        qualityManager:    prev?.qualityManager,
-        qualityManagerEmail: prev?.qualityManagerEmail,
-        qualityManagerPhone: prev?.qualityManagerPhone,
-        emergencyPhone:    prev?.emergencyPhone,
-        hasThirdPartyCert: prev?.hasThirdPartyCert,
-        certTypes:         prev?.certTypes,
-        certData:          prev?.certData,
-        haccpAnswers:      prev?.haccpAnswers,
-        selfControlAnswers:prev?.selfControlAnswers,
-        signerName:        prev?.signerName,
-        signerTitle:       prev?.signerTitle,
-        signerEmail:       prev?.signerEmail,
-      },
-    })
+    decl = await createRenewalDeclaration(bcVendorNo, prev, { vendorName, vendorEmail, lang, cc: ccClean })
+  } else if (ccClean && decl.ccEmail !== ccClean) {
+    // Gem CC på den åbne erklæring, så cron-rykkere også får hovedmailen med
+    decl = await prisma.supplierDeclaration.update({ where: { id: decl.id }, data: { ccEmail: ccClean } })
   }
 
   const url = `${process.env.APP_URL}/leverandoer/${decl.token}`
@@ -68,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   await sendEmail({
     to: vendorEmail,
-    cc: typeof cc === 'string' && cc.trim() && cc.trim().toLowerCase() !== String(vendorEmail).toLowerCase() ? cc.trim() : undefined,
+    cc: decl.ccEmail ?? undefined,
     subject: t.title + ' — Venmark Fisk A/S',
     text: `${vendorName ? `Kære ${vendorName},\n\n` : ''}Venmark Fisk A/S anmoder om udfyldelse af leverandørerklæring.\n\nBrug linket herunder:\n${url}\n\nLinket er personligt og udløber ikke.\n\nMed venlig hilsen\nVenmark Fisk A/S`,
   })

@@ -531,6 +531,7 @@ model SupplierDeclaration {
   country         String?
   phone           String?
   email           String?
+  ccEmail         String?   // leverandørens hovedmail som CC når linket sendes til "Erklæring e-mail"
   contactPerson       String?
   qualityManager      String?
   qualityManagerEmail String?

@@ -198,6 +198,11 @@ export default function LeverandoererPage() {
                       {mo < 999 && <span className={mo >= 11 ? 'text-red-500 font-medium' : mo >= 10 ? 'text-yellow-600 font-medium' : ''}>
                         {mo} mdr. siden
                       </span>}
+                      {d.status === 'PENDING' && d.reminders[0]?.type?.startsWith('RENEWAL_') && (
+                        <span className="text-orange-600 font-medium">
+                          Fornyelse · rykker {d.reminders[0].type.replace('RENEWAL_', '')} sendt {new Date(d.reminders[0].sentAt).toLocaleDateString('da-DK')}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
