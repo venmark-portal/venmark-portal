@@ -1309,9 +1309,25 @@ export default function OrderList({
     return `Bestillingsfrist: ${weekdayNames[cutoff.cutoffWeekday]} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00`
   }
 
+  // Spærret FRIST-vare til en for tidlig dato: fortæl HVORNÅR den kan bestilles i stedet for
+  // "Ikke på lager eller i indkøb lige nu". Regnes af varens frist (dag/time) + leadtid via samme
+  // gulv som håndhævelsen (fristFloor) — ingen håndskrevet tekst der forældes. Bruges af både
+  // varelisten og søgemodalen (getBlockLabel). `base` returneres uændret når reglen ikke gælder.
+  const fristBlockLabel = (itemNo: string, base: string): string => {
+    const floor = fristFloor(itemNo)
+    const cutoff = itemCutoffs.get(itemNo)
+    if (!floor || !cutoff || !deliveryDate) return base
+    const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
+    if (dd >= floor) return base
+    const kort = ['', 'man', 'tir', 'ons', 'tor', 'fre']
+    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][floor.getDay()]
+    return `Bestil senest ${kort[cutoff.cutoffWeekday] ?? ''} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00 → levering fra ${wd} ${floor.getDate()}/${floor.getMonth() + 1}`
+  }
+
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
     const s = getItemAvailStatus(avail, deliveryDate)
+    if (s.blocked && s.blockLabel) s.blockLabel = fristBlockLabel(itemNo, s.blockLabel)
     // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato) OG anvend LAVESTE FÆLLESNÆVNER:
     // den reelle sidste bestillingstid for DENNE vare til den valgte leveringsdag er den TIDLIGSTE af
     // (a) varens egen frist (frist-dag = leveringsdato − leadtid, kl. Åbn til) og (b) LEVERINGSKODENS
@@ -2660,6 +2676,7 @@ export default function OrderList({
           itemAvailabilities={itemAvailabilities}
           deliveryDate={deliveryDate}
           getFristLabel={fristLabelFor}
+          getBlockLabel={fristBlockLabel}
           onResults={onSearchResults}
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}

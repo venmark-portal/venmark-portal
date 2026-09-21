@@ -115,6 +115,9 @@ interface Props {
    *  tekst med dag — SAMME beregning som varelisten (laveste fællesnævner af varens Åbn til og
    *  leveringskodens frist), så modal og liste aldrig kan vise forskelligt. Uden: kun HH:MM. */
   getFristLabel?: (itemNo: string, base: string) => string
+  /** Færdig spærre-tekst pr. vare: frist-vare til for tidlig dato → "Bestil senest … → levering fra …"
+   *  (samme beregning som varelisten). Uden: modalens egen tekst. */
+  getBlockLabel?: (itemNo: string, base: string) => string
   onResults?:      (itemNos: string[]) => void
   /** Resolver kundens rigtige pris (aftalt trappe → estimat → varekort). Uden denne vises varekortets rå unitPrice. */
   getDisplayPrice?: (item: EnrichedItem) => number
@@ -127,7 +130,7 @@ interface Props {
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
-  itemAvailabilities, deliveryDate, getFristLabel, onResults, getDisplayPrice, getMaxQty,
+  itemAvailabilities, deliveryDate, getFristLabel, getBlockLabel, onResults, getDisplayPrice, getMaxQty,
   initialQuery = '',
 }: Props) {
   const singleMode  = !!onSelect
@@ -418,7 +421,7 @@ export default function ItemSearchModal({
                 {status.blockLabel && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit font-semibold">
                     <X size={9} />
-                    {status.blockLabel}
+                    {getBlockLabel ? getBlockLabel(item.number, status.blockLabel) : status.blockLabel}
                   </div>
                 )}
                 {!status.blockLabel && status.aabnTilLabel && (
