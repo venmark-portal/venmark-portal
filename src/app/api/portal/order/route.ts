@@ -4,8 +4,12 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDeadlineForDelivery, getDeadlineForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
-import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities } from '@/lib/businesscentral'
+import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage } from '@/lib/businesscentral'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
+
+// Coverage-kaldet til BC (afgang-dækkede linjer) kan tage >10s ved tunge producerede varer —
+// samme grund som coverage/route. Uden dette kunne et serverless-timeout afbryde ordren.
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -73,6 +77,9 @@ export async function POST(req: NextRequest) {
     const todayStr   = new Date().toISOString().split('T')[0]
     const tooEarly: string[] = []
     const overCap:  string[] = []
+    // Linjer der KUN er dækket af en kommende afgang (købsordre/montage) — ikke af lager, ikke af
+    // frist-gulvet. De har en ENDELIG mængde på vej, så loftet skal komme fra BC's coverage.
+    const afgangLines: { itemNo: string; name: string; qty: number }[] = []
     for (const l of lines) {
       const a = avails.get(l.bcItemNumber)
       if (!a) continue   // ingen disponibilitets-data → spring over (fail open; UI gater primært)
@@ -85,11 +92,13 @@ export async function POST(req: NextRequest) {
         floor = earliestDeliveryForItem(c.cutoffWeekday, c.cutoffHour, new Date(), c.leadDays ?? 0, holidaySet)
         floor.setHours(0, 0, 0, 0)
       }
-      const isForward = (floor ? ddMidnight >= floor : false)
-        || (!!a.naesteLevering && dStr >= a.naesteLevering)
+      const floorForward   = floor ? ddMidnight >= floor : false
+      const coveredByAfgang = !!a.naesteLevering && dStr >= a.naesteLevering
+      const isForward = floorForward || coveredByAfgang
 
-      // 1. Frist-vare til for tidlig dato UDEN lager → afvis (skaffes tidligst på gulvet)
-      if (floor && ddMidnight < floor && disp <= 0) {
+      // 1. Frist-vare til for tidlig dato UDEN lager OG uden afgang der dækker → afvis.
+      //    (En købsordre der ankommer senest leveringsdatoen dækker — spejler klientens isItemAvailable.)
+      if (floor && ddMidnight < floor && disp <= 0 && !coveredByAfgang) {
         tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${floor.toLocaleDateString('da-DK')})`)
         continue
       }
@@ -98,6 +107,24 @@ export async function POST(req: NextRequest) {
       const auctionFree = a.auktionsKategori && (a.priserOpdateret ? a.priserOpdateret.slice(0, 10) !== todayStr : true)
       if (!auctionFree && !isForward && disp > 0 && l.quantity > disp)
         overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
+      // 3. Dækket KUN af afgang (lager ≤ 0, ikke frist-forward) → loftet = BC coverage (mængden på vej).
+      if (!auctionFree && !floorForward && coveredByAfgang && disp <= 0)
+        afgangLines.push({ itemNo: l.bcItemNumber, name: l.itemName || l.bcItemNumber, qty: l.quantity })
+    }
+    // Autoritativt loft fra BC for afgang-dækkede linjer (samme beregning som klientens "Maks X").
+    // Fail-open ved BC-fejl/timeout (UI gater primært) — men aldrig ubegrænset når BC svarer.
+    if (afgangLines.length) {
+      try {
+        const cart: Record<string, number> = {}
+        for (const l of lines) if (l.bcItemNumber && l.quantity > 0) cart[l.bcItemNumber] = l.quantity
+        const cov = await getCartCoverage(activeCustomerNo, custLoc, dStr, shipmentMethodCode || '', afgangLines.map(x => x.itemNo), cart)
+        for (const row of cov?.results ?? []) {
+          const ln = afgangLines.find(x => x.itemNo === row.itemNo)
+          if (!ln || row.unlimited) continue
+          if (row.maxQty <= 0) tooEarly.push(`${ln.name} (ikke dækket til denne dato)`)
+          else if (ln.qty > row.maxQty) overCap.push(`${ln.name}: maks ${Math.round(row.maxQty * 10) / 10}`)
+        }
+      } catch { /* fail open */ }
     }
     if (tooEarly.length) {
       return NextResponse.json(

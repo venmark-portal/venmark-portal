@@ -1292,8 +1292,13 @@ export default function OrderList({
     if (!floor) return true // ingen særlig frist
     const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
     if (dd >= floor) return true // forward → tilgængelig (ubegrænset)
-    const avail = itemAvailabilities[itemNo] // nær-dato → kun hvis der er lager på hånden
-    return !!avail && avail.disponibelt > 0
+    const avail = itemAvailabilities[itemNo]
+    if (!avail) return false
+    if (avail.disponibelt > 0) return true // nær-dato med lager på hånden
+    // Nær-dato UDEN lager: en kommende afgang (købsordre/montage) der er ankommet senest på
+    // leveringsdatoen dækker også — fx pighvar-købsordre tirsdag → bestilbar til onsdag. Loftet
+    // er coverage (= den finite mængde på vej), så kunden kan højst købe det der kommer.
+    return !!avail.naesteLevering && localYmd(dd) >= avail.naesteLevering
   }
 
   // Navn på ugedag for cutoff (til fejlbesked)
