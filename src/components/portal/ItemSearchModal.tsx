@@ -132,6 +132,8 @@ export default function ItemSearchModal({
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
+  // ?debug=1 på siden → vis rå disponibel-felter pr. række (samme kontakt som OrderList's [disp]-log).
+  const dbg = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1'
 
   // Starter på det der allerede er tastet i det faste søgefelt, så man ikke skal
   // skrive det igen når modalen åbner.
@@ -460,6 +462,17 @@ export default function ItemSearchModal({
                           <><span>·</span>
                           <span className="font-semibold text-gray-600">{fmt.format(price)}/{item.baseUnitOfMeasureCode}</span></>
                         ) : null
+                      })()}
+                      {/* ?debug=1: klientens rå disponibel-objekt for rækken — afgør "data eller rendering". */}
+                      {dbg && (() => {
+                        const a = itemAvailabilities?.[item.number]
+                        return (
+                          <span className="basis-full font-mono text-[9px] text-purple-700 bg-purple-50 rounded px-1">
+                            {a
+                              ? `aabn=${a.aabnTil ?? '∅'} auk=${a.auktionsFrist ?? '∅'} strengt=${a.strengtLager} disp=${a.disponibelt} block="${status.blockLabel}" frist="${status.aabnTilLabel ?? ''}"`
+                              : 'INGEN AVAIL-OBJEKT'}
+                          </span>
+                        )
                       })()}
                       {cap != null ? (
                         cap <= 0 ? (
