@@ -1568,7 +1568,10 @@ export default function OrderList({
     Object.keys(itemAvailabilities).sort().forEach(no => {
       const a = itemAvailabilities[no]
       // eslint-disable-next-line no-console
-      console.log(`[disp] ${no} dk=${a.daekketFra ?? 'NULL'} naeste=${a.naesteLevering ?? 'NULL'} strengt=${a.strengtLager} disp=${a.disponibelt} cov=${coverageMax[no] ?? 'undef'} max=${rowMaxQty(no)}`)
+      // Frist-felterne + den færdige linje-tekst med, så "vare A viser frist, vare B ikke" kan afgøres
+      // direkte fra klientens objekt (er det data eller rendering?).
+      const st = rowAvailStatus(no)
+      console.log(`[disp] ${no} dk=${a.daekketFra ?? 'NULL'} naeste=${a.naesteLevering ?? 'NULL'} strengt=${a.strengtLager} disp=${a.disponibelt} cov=${coverageMax[no] ?? 'undef'} max=${rowMaxQty(no)} aabnTil=${a.aabnTil ?? 'NULL'} aukFrist=${a.auktionsFrist ?? 'NULL'} block="${st.blockLabel}" frist="${st.aabnTilLabel ?? ''}"`)
     })
   }, [debugMode, coverageMax, itemAvailabilities, deliveryDate, effectiveDate, selectedMethodCode, rowMaxQty])
 
@@ -2270,6 +2273,7 @@ export default function OrderList({
                   blockedLabel={rowAvailStatus(item.number).blockLabel}
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
                   infoNote={rowInfoNote(item.number)}
                   estimatedPrice={estimatedPrices[item.number]}
                 />
@@ -2300,6 +2304,7 @@ export default function OrderList({
                   blockedLabel={rowAvailStatus(item.number).blockLabel}
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
                   infoNote={rowInfoNote(item.number)}
                   estimatedPrice={estimatedPrices[item.number]}
                 />
@@ -2329,6 +2334,7 @@ export default function OrderList({
                   blockedLabel={rowAvailStatus(item.number).blockLabel}
                   disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
                   disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
                   infoNote={rowInfoNote(item.number)}
                   estimatedPrice={estimatedPrices[item.number]}
                 />
