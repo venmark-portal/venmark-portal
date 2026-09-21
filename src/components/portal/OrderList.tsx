@@ -1094,14 +1094,17 @@ export default function OrderList({
   // fletter nye varers disponibilitet ind via ensureAvailability (som BC's skygge-opslag).
   const [itemAvailabilities, setItemAvailabilities] = useState<Record<string, BCItemAvailability>>(initialAvail)
 
-  const ensureAvailability = useCallback(async (nos: string[]) => {
-    const missing = Array.from(new Set(nos.filter(n => n && !(n in itemAvailabilities))))
-    if (!missing.length) return
+  // force=true: hent også varer der ALLEREDE er i state. Favoritternes objekter er et sideload-
+  // snapshot; ændres vareopsætning (Åbn til, frist, strengt) mens siden er åben, viste søgningen
+  // friske data for nye varer men gamle for favoritter → "favorit har ingen frist, samme opsætning".
+  const ensureAvailability = useCallback(async (nos: string[], force = false) => {
+    const wanted = Array.from(new Set(nos.filter(n => n && (force || !(n in itemAvailabilities)))))
+    if (!wanted.length) return
     try {
       const res = await fetch('/api/portal/availabilities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemNos: missing }),
+        body: JSON.stringify({ itemNos: wanted }),
       })
       if (!res.ok) return
       const data = await res.json()
@@ -1156,7 +1159,7 @@ export default function OrderList({
 
   // Søgeresultat-callback: hent BÅDE disponibilitet og estimat-pris for de nye varer.
   const onSearchResults = useCallback((nos: string[]) => {
-    ensureAvailability(nos)
+    ensureAvailability(nos, true)   // søgning = altid friske data, også for favoritter
     ensureEstimated(nos)
   }, [ensureAvailability, ensureEstimated])
 
