@@ -18,7 +18,9 @@ export async function POST(req: NextRequest) {
   }
 
   // cc = leverandørens hovedmail når BC sender til en særskilt "Erklæring e-mail"
-  const { bcVendorNo, vendorName, vendorEmail, lang, cc } = await req.json()
+  // message = valgfri fritekst fra Venmark, sættes ØVERST i mailen (efter tiltalen)
+  const { bcVendorNo, vendorName, vendorEmail, lang, cc, message } = await req.json()
+  const messageTxt = typeof message === 'string' ? message.trim().slice(0, 2000) : ''
   if (!bcVendorNo || !vendorEmail)
     return NextResponse.json({ error: 'bcVendorNo og vendorEmail er påkrævet' }, { status: 400 })
 
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
     cc: decl.ccEmail ?? undefined,
     subject: t.title + ' — Venmark Fisk A/S',
     // Brødtekst på leverandørens sprog (decl.lang) — var hardcodet dansk
-    text: `${vendorName ? `${t.mailDear ?? 'Dear'} ${vendorName},\n\n` : ''}${t.mailRequest ?? 'Venmark Fisk A/S kindly asks you to complete the supplier declaration.'}\n\n${t.mailUseLink ?? 'Please use the link below:'}\n${url}\n\n${t.mailNoExpiry ?? 'The link is personal and does not expire.'}\n\n${t.mailRegards ?? 'Kind regards'}\nVenmark Fisk A/S`,
+    text: `${vendorName ? `${t.mailDear ?? 'Dear'} ${vendorName},\n\n` : ''}${messageTxt ? `${messageTxt}\n\n` : ''}${t.mailRequest ?? 'Venmark Fisk A/S kindly asks you to complete the supplier declaration.'}\n\n${t.mailUseLink ?? 'Please use the link below:'}\n${url}\n\n${t.mailNoExpiry ?? 'The link is personal and does not expire.'}\n\n${t.mailRegards ?? 'Kind regards'}\nVenmark Fisk A/S`,
   })
 
   await prisma.supplierReminderLog.create({

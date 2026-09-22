@@ -61,6 +61,8 @@ export default function LeverandoererPage() {
   const [newVendorName, setNewVendorName] = useState('')
   const [newVendorEmail, setNewVendorEmail] = useState('')
   const [newLang, setNewLang]             = useState<Lang>('en')
+  const [newMessage, setNewMessage]       = useState('')   // valgfri besked øverst i mailen
+  const [resendOf, setResendOf]           = useState<Decl | null>(null) // modal åbnet via "Gensend link"
   const [sendResult, setSendResult]       = useState('')
 
   useEffect(() => { load() }, [])
@@ -87,22 +89,28 @@ export default function LeverandoererPage() {
     setSending('new')
     const r = await fetch('/api/leverandoer/send-link', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bcVendorNo: newVendorNo, vendorName: newVendorName, vendorEmail: newVendorEmail, lang: newLang }),
+      body: JSON.stringify({ bcVendorNo: newVendorNo, vendorName: newVendorName, vendorEmail: newVendorEmail, lang: newLang, message: newMessage }),
     })
-    setSendResult(r.ok ? '✅ Link sendt!' : '❌ Fejl ved afsendelse')
+    setSendResult(r.ok ? (resendOf ? '✅ Link gensendt!' : '✅ Link sendt!') : '❌ Fejl ved afsendelse')
     await load()
     setSending(null)
   }
 
-  async function resend(decl: Decl) {
+  function openSendModal(decl: Decl | null) {
+    setResendOf(decl)
+    setNewVendorNo(decl?.bcVendorNo ?? '')
+    setNewVendorName(decl?.companyName ?? '')
+    setNewVendorEmail(decl ? (decl.email || decl.signerEmail || '') : '')
+    setNewLang((decl?.lang as Lang) ?? 'en')
+    setNewMessage('')
+    setSendResult('')
+    setShowSendModal(true)
+  }
+
+  // "Gensend link" åbner samme modal forudfyldt — så der kan skrives en besked med
+  function resend(decl: Decl) {
     if (!decl.email && !decl.signerEmail) return alert('Ingen email registreret')
-    setSending(decl.id)
-    await fetch('/api/leverandoer/send-link', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bcVendorNo: decl.bcVendorNo, vendorName: decl.companyName, vendorEmail: decl.email || decl.signerEmail, lang: decl.lang }),
-    })
-    setSending(null)
-    alert('Link gensendt')
+    openSendModal(decl)
   }
 
   const filtered = decls.filter(d => {
@@ -129,7 +137,7 @@ export default function LeverandoererPage() {
           <h1 className="text-2xl font-bold text-gray-900">Leverandørerklæringer</h1>
           <p className="text-sm text-gray-500">Oversigt over alle leverandørers erklæringsstatus</p>
         </div>
-        <button onClick={() => { setShowSendModal(true); setSendResult('') }}
+        <button onClick={() => openSendModal(null)}
           className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition">
           <Send size={15} /> Send ny erklæring
         </button>
@@ -288,7 +296,7 @@ export default function LeverandoererPage() {
       {showSendModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowSendModal(false) }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Send erklæringslink til leverandør</h2>
+            <h2 className="text-lg font-bold text-gray-900">{resendOf ? `Gensend erklæringslink — ${resendOf.companyName || resendOf.bcVendorNo}` : 'Send erklæringslink til leverandør'}</h2>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">BC Leverandørnr. <span className="text-red-500">*</span></label>
@@ -313,6 +321,12 @@ export default function LeverandoererPage() {
                     <option key={l} value={l}>{LANG_LABELS[l]}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Besked til leverandøren <span className="text-gray-400 font-normal">(valgfri — sættes øverst i mailen)</span></label>
+                <textarea value={newMessage} onChange={e => setNewMessage(e.target.value)} rows={4} maxLength={2000}
+                  placeholder="Fx: Vi mangler jeres nye MSC-certifikat — upload det venligst under Dokumenter."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
               </div>
             </div>
             {sendResult && <p className="text-sm font-medium">{sendResult}</p>}
