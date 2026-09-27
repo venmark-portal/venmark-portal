@@ -424,7 +424,7 @@ export default function ItemSearchModal({
                     {getBlockLabel ? getBlockLabel(item.number, status.blockLabel) : status.blockLabel}
                   </div>
                 )}
-                {!status.blockLabel && status.aabnTilLabel && (
+                {!status.blockLabel && status.aabnTilLabel && (!getFristLabel || getFristLabel(item.number, status.aabnTilLabel)) && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
                     <Clock size={9} />
                     {getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel}

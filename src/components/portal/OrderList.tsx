@@ -1191,14 +1191,27 @@ export default function OrderList({
     return e
   }
 
+  // Er frist-gulvet nået for leveringsdato d? Med LEVERINGSTID er gulvet "varen er HJEMME hos
+  // Venmark" (= BC's CalcGenbestilDate), så det skal holdes op mod den EFFEKTIVE dato (pak/afsendelse)
+  // — ellers kunne en tirsdags-hjemkomst sælges til levering tirsdag med transit 1 (pighvar opdræt:
+  // frist tor + 3D = hjemme tir 6/10 → levering fra ons 7/10, som BC). Uden leveringstid (legacy,
+  // fx laks "mandag ugen efter") er gulvet en LEVERINGSdato → uændret.
+  function fristReachedFor(itemNo: string, d: Date, method: BCShipmentMethod | undefined): boolean {
+    const floor = fristFloor(itemNo)
+    if (!floor) return true
+    const lead = itemCutoffs.get(itemNo)?.leadDays ?? 0
+    const cmp = lead > 0 && method ? new Date(getEffectiveDateForMethodDelivery(d, method, portalHolidays)) : new Date(d)
+    cmp.setHours(0, 0, 0, 0)
+    return cmp >= floor
+  }
+
   // Tilgængelig på den valgte dato? En frist-vare er tilgængelig FORWARD (dato ≥ gulv →
   // ubegrænset, skaffes frisk) ELLER fra LAGER til en nær dato (disponibelt > 0, cappes senere).
   function itemAvailable(itemNo: string, deliveryDate: Date | undefined): boolean {
     if (!deliveryDate) return true
     const floor = fristFloor(itemNo)
     if (!floor) return true // ingen frist — standard logik gælder
-    const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
-    if (dd >= floor) return true
+    if (fristReachedFor(itemNo, deliveryDate, selectedMethod)) return true
     const avail = itemAvailabilities[itemNo]
     return !!avail && avail.disponibelt > 0
   }
@@ -1291,7 +1304,7 @@ export default function OrderList({
     const floor = fristFloor(itemNo)
     if (!floor) return true // ingen særlig frist
     const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
-    if (dd >= floor) return true // forward → tilgængelig (ubegrænset)
+    if (fristReachedFor(itemNo, deliveryDate, selectedMethod)) return true // forward → tilgængelig (ubegrænset)
     const avail = itemAvailabilities[itemNo]
     if (!avail) return false
     if (avail.disponibelt > 0) return true // nær-dato med lager på hånden
@@ -1317,11 +1330,13 @@ export default function OrderList({
     const floor = fristFloor(itemNo)
     const cutoff = itemCutoffs.get(itemNo)
     if (!floor || !cutoff || !deliveryDate) return base
-    const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
-    if (dd >= floor) return base
+    if (fristReachedFor(itemNo, deliveryDate, selectedMethod)) return base
+    // "levering fra" = første VALGBARE leveringsdag hvor gulvet er nået (kundens leveringsdage +
+    // transit/pak-dag), ikke gulvet selv — gulvet er hjemkomst-datoen.
+    const first = deliveryDays.find(d => fristReachedFor(itemNo, d, selectedMethod)) ?? floor
     const kort = ['', 'man', 'tir', 'ons', 'tor', 'fre']
-    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][floor.getDay()]
-    return `Bestil senest ${kort[cutoff.cutoffWeekday] ?? ''} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00 → levering fra ${wd} ${floor.getDate()}/${floor.getMonth() + 1}`
+    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][first.getDay()]
+    return `Bestil senest ${kort[cutoff.cutoffWeekday] ?? ''} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00 → levering fra ${wd} ${first.getDate()}/${first.getMonth() + 1}`
   }
 
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
@@ -1333,7 +1348,7 @@ export default function OrderList({
     // (a) varens egen frist (frist-dag = leveringsdato − leadtid, kl. Åbn til) og (b) LEVERINGSKODENS
     // bestillingsfrist (deadline). Så en HENTERSELV-vare (kode-frist 08:00) viser 08:00 — ikke varens
     // "inden 11:00". Vinder aldrig SENERE end før: teksten kan kun blive strammere.
-    if (s.aabnTilLabel) s.aabnTilLabel = fristLabelFor(itemNo, s.aabnTilLabel)
+    if (s.aabnTilLabel) s.aabnTilLabel = fristLabelFor(itemNo, s.aabnTilLabel) || null
     // Har varen et hårdt loft, vis "Maks X" så kunden kender grænsen.
     const cap = rowMaxQty(itemNo)
     if (cap != null) {
@@ -1413,9 +1428,17 @@ export default function OrderList({
   // ÉN fælles frist-tekst for vareliste OG søge-modal (laveste fællesnævner, se rowAvailStatus).
   // `base` = "Bestil inden HH:MM" fra status-beregningen; returnerer den færdige tekst med dag.
   const fristLabelFor = (itemNo: string, base: string): string => {
+    // AUKTIONS-frist (ingen Åbn til): "Bestil inden 06:45" lover at auktionen skaffer varen. Det
+    // gælder KUN når auktionen når den valgte dato — dvs. varen er ikke cappet (BC/coverage siger
+    // "kan skaffes"). Cappet (Udsolgt/Maks X) = kun lager, fx afhentning i morgen tidlig før
+    // auktionsvaren er hjemme → ingen frist-tekst. Samme hvis fristen allerede er passeret.
+    const a = itemAvailabilities[itemNo]
+    const auktionOnly = !!a && !a.aabnTil && !!a.auktionsFrist
+    if (auktionOnly && rowMaxQty(itemNo) != null) return ''
     const itemFrist = getFristDato(itemNo)
     const eff = itemFrist && deadline ? (itemFrist <= deadline ? itemFrist : deadline)
               : (itemFrist ?? deadline ?? null)
+    if (auktionOnly && eff && eff.getTime() <= Date.now()) return ''
     if (eff) return formatFristLabel(eff)
     const dag = getFristDagLabel(itemNo)
     return dag ? base.replace('Bestil inden', `Bestil ${dag} inden`) : base
@@ -1477,18 +1500,13 @@ export default function OrderList({
       if (!covFinite && avail.naesteLevering && deliveryStr >= avail.naesteLevering) return null
       if (avail.daekketFra && effectiveStr >= avail.daekketFra) return null
       const cutoff = itemCutoffs.get(itemNo)
-      if (cutoff && cutoff.cutoffWeekday > 0) {
-        const floor = earliestDeliveryForItem(cutoff.cutoffWeekday, cutoff.cutoffHour, new Date(), cutoff.leadDays ?? 0, portalHolidays)
-        floor.setHours(0, 0, 0, 0)
-        const dd = new Date(deliveryDate); dd.setHours(0, 0, 0, 0)
-        if (dd >= floor) return null
-      }
+      if (cutoff && cutoff.cutoffWeekday > 0 && fristReachedFor(itemNo, deliveryDate, selectedMethod)) return null
     }
     // Kan IKKE skaffes i tide → coverage (autoritativt disponibel-på-dato) vinder, ellers klient-disponibel.
     if (cov !== undefined && cov >= 0) return cov
     // Ikke dækket (eller effektiv dato i dag) → cap ved disponibel (0 for udsolgt → intet oversalg).
     return Math.max(avail.disponibelt, 0)
-  }, [coverageMax, itemAvailabilities, itemCutoffs, deliveryDate, effectiveDate, portalHolidays])
+  }, [coverageMax, itemAvailabilities, itemCutoffs, deliveryDate, effectiveDate, portalHolidays, selectedMethod])
 
   // Genberegn disponibel fra BC når leveringsdato/-form skifter (autoritativt, synligt "beregner…").
   // Varenumrene = alt vi har disponibilitet for (favoritter/STD/søgte). Debounced; falder stille
