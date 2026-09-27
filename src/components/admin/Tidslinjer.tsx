@@ -61,14 +61,33 @@ function ugedagNavn(n: number): string {
   return ['', 'man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn'][n] ?? ''
 }
 
-/** Pæne akse-trin: 1, 2, 5 × 10^n — så tallene på aksen er til at læse. */
+/** Pænt trin: 1, 2, 2.5, 5 × 10^n — så tallene på aksen er til at læse. */
+function pentTrin(spaend: number, oenskede = 4): number {
+  const raat = Math.abs(spaend) / oenskede
+  if (raat <= 0) return 1
+  const eksp = Math.pow(10, Math.floor(Math.log10(raat)))
+  return [1, 2, 2.5, 5, 10].map(f => f * eksp).find(f => f >= raat) ?? 10 * eksp
+}
+
 function aksetrin(maks: number, oenskede = 4): number[] {
   if (maks <= 0) return [0]
-  const raat = maks / oenskede
-  const eksp = Math.pow(10, Math.floor(Math.log10(raat)))
-  const trin = [1, 2, 2.5, 5, 10].map(f => f * eksp).find(f => f >= raat) ?? 10 * eksp
+  const trin = pentTrin(maks, oenskede)
   const ud: number[] = []
   for (let v = 0; v <= maks + trin * 0.001; v += trin) ud.push(v)
+  return ud
+}
+
+/**
+ * Akse der også går under nul — til procentafvigelser, hvor nul er
+ * sammenligningsgrundlaget og ikke bunden af skalaen.
+ */
+function aksetrinSigneret(lav: number, hoej: number, oenskede = 4): number[] {
+  const l = Math.min(0, lav), h = Math.max(0, hoej)
+  const trin = pentTrin(h - l || 1, oenskede)
+  const fra = Math.floor(l / trin) * trin
+  const til = Math.ceil(h / trin) * trin
+  const ud: number[] = []
+  for (let v = fra; v <= til + trin * 0.001; v += trin) ud.push(Math.round(v * 1e6) / 1e6)
   return ud
 }
 
@@ -107,15 +126,22 @@ function Forklaring({ navne, farve }: { navne: string[]; farve: (n: string) => s
 
 /** Y-akse med gitter. Gitteret er med vilje sart — det skal ikke slås om opmærksomheden. */
 function YAkse({ trin, hoejde, format }: { trin: number[]; hoejde: number; format: (v: number) => string }) {
-  const maks = trin[trin.length - 1] || 1
+  const lav  = trin[0] ?? 0
+  const hoej = trin[trin.length - 1] || 1
+  const spaend = (hoej - lav) || 1
   return (
     <>
       {trin.map(v => {
-        const y = M.top + hoejde - (v / maks) * hoejde
+        const y = M.top + hoejde - ((v - lav) / spaend) * hoejde
+        // Nul-linjen er sammenligningsgrundlaget når aksen går under nul, og
+        // skal kunne ses tydeligere end gitteret.
+        const erNul = v === 0 && lav < 0
         return (
           <g key={v}>
-            <line x1={M.venstre} x2={B - M.hoejre} y1={y} y2={y} stroke={GITTER} strokeWidth={1} />
-            <text x={M.venstre - 8} y={y + 3.5} textAnchor="end" fontSize={10} fill={DAEMPET}
+            <line x1={M.venstre} x2={B - M.hoejre} y1={y} y2={y}
+                  stroke={erNul ? BASISLINJE : GITTER} strokeWidth={erNul ? 1.5 : 1} />
+            <text x={M.venstre - 8} y={y + 3.5} textAnchor="end" fontSize={10}
+                  fill={erNul ? BLAEK_2 : DAEMPET}
                   style={{ fontVariantNumeric: 'tabular-nums' }}>
               {format(v)}
             </text>
@@ -235,7 +261,7 @@ function StakketSoejler({
 // ─── Linjediagram ────────────────────────────────────────────────────────────
 
 function Linjer({
-  datoer, serier, farve, format, lukkede, nulErTomt,
+  datoer, serier, farve, format, lukkede, nulErTomt, signeret,
 }: {
   datoer: string[]
   serier: { navn: string; vaerdier: (number | null)[] }[]
@@ -244,15 +270,22 @@ function Linjer({
   lukkede?: Map<string, string>
   /** Vis ikke en nul-værdi som et punkt på gulvet — den betyder "ingen data". */
   nulErTomt?: boolean
+  /** Aksen må gå under nul — til afvigelser, hvor nul er sammenligningen. */
+  signeret?: boolean
 }) {
   const [over, setOver] = useState<number | null>(null)
   const hoejde = H - M.top - M.bund
-  const alle = serier.flatMap(s => s.vaerdier).filter((v): v is number => v !== null && (!nulErTomt || v > 0))
-  const trin = aksetrin(Math.max(...alle, 1))
-  const maks = trin[trin.length - 1] || 1
+  const alle = serier.flatMap(s => s.vaerdier)
+    .filter((v): v is number => v !== null && (!nulErTomt || v !== 0))
+  const trin = signeret
+    ? aksetrinSigneret(Math.min(...alle, 0), Math.max(...alle, 0))
+    : aksetrin(Math.max(...alle.filter(v => v > 0), 1))
+  const lav    = trin[0] ?? 0
+  const hoej   = trin[trin.length - 1] || 1
+  const spaend = (hoej - lav) || 1
   const kolonne = (B - M.venstre - M.hoejre) / Math.max(1, datoer.length)
   const xAf = (i: number) => M.venstre + kolonne * (i + 0.5)
-  const yAf = (v: number) => M.top + hoejde - (v / maks) * hoejde
+  const yAf = (v: number) => M.top + hoejde - ((v - lav) / spaend) * hoejde
 
   return (
     <div className="relative">
@@ -273,7 +306,9 @@ function Linjer({
           const stykker: string[] = []
           let nu: string[] = []
           r.vaerdier.forEach((v, i) => {
-            const tom = v === null || (nulErTomt && v === 0)
+            // En nul-værdi kan betyde "ingen data" (omsætning) eller "præcis som
+            // sidste år" (afvigelse). På en signeret akse er nul en ægte værdi.
+            const tom = v === null || (nulErTomt && !signeret && v === 0)
             if (tom) { if (nu.length) { stykker.push(nu.join(' ')); nu = [] } return }
             nu.push(`${nu.length ? 'L' : 'M'}${xAf(i)} ${yAf(v as number)}`)
           })
@@ -284,7 +319,7 @@ function Linjer({
                 <path key={i} d={d} fill="none" stroke={farve(r.navn)} strokeWidth={2}
                       strokeLinecap="round" strokeLinejoin="round" />
               ))}
-              {over !== null && r.vaerdier[over] !== null && !(nulErTomt && r.vaerdier[over] === 0) && (
+              {over !== null && r.vaerdier[over] !== null && !(nulErTomt && !signeret && r.vaerdier[over] === 0) && (
                 // 2px ring i baggrundsfarven, så punktet kan ses oven på en anden kurve.
                 <circle cx={xAf(over)} cy={yAf(r.vaerdier[over] as number)} r={4.5}
                         fill={farve(r.navn)} stroke="#ffffff" strokeWidth={2} />
@@ -434,6 +469,18 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
     { navn: 'Sidste år',  vaerdier: finans?.map(d => d.sidsteAar?.enheder ?? null) ?? [] },
   ]
 
+  // Afvigelse i procent mod samme ugedag sidste år. Kroner og enheder kan DELE
+  // akse her, netop fordi begge er procent — det er den ene gang to forskellige
+  // målestokke må stå i samme figur.
+  const afvigelse = (nu: number, saa: number | undefined | null): number | null =>
+    saa === undefined || saa === null || saa === 0 ? null : Math.round(((nu - saa) / saa) * 100)
+
+  const pctSerier = [
+    { navn: 'Omsætning', vaerdier: finans?.map(d => afvigelse(d.omsaetning, d.sidsteAar?.omsaetning)) ?? [] },
+    { navn: 'Enheder',   vaerdier: finans?.map(d => afvigelse(d.enheder,    d.sidsteAar?.enheder))    ?? [] },
+  ]
+  const pctFarve = (n: string) => (n === 'Omsætning' ? SERIE[0] : SERIE[1])
+
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
   const omsIAlt   = sum(finans?.map(d => d.omsaetning) ?? [])
   const omsSidste = sum(finans?.map(d => d.sidsteAar?.omsaetning ?? 0) ?? [])
@@ -499,6 +546,16 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
             <Linjer datoer={fDatoer} serier={omsSerier} farve={faste}
                     format={v => kr.format(v)} lukkede={lukkede} nulErTomt />
             <Forklaring navne={['I år', 'Sidste år']} farve={faste} />
+          </Ramme>
+
+          <Ramme
+            titel="Udvikling mod sidste år — omsætning og antal"
+            undertitel="Afvigelse i procent mod samme ugedag sidste år. Nul-linjen er sidste år. Kroner og enheder må dele akse her, fordi begge er procent — ligger de langt fra hinanden, er prisen flyttet sig, ikke mængden."
+            tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
+          >
+            <Linjer datoer={fDatoer} serier={pctSerier} farve={pctFarve}
+                    format={v => `${v > 0 ? '+' : ''}${v} %`} lukkede={lukkede} signeret />
+            <Forklaring navne={['Omsætning', 'Enheder']} farve={pctFarve} />
           </Ramme>
 
           <Ramme
