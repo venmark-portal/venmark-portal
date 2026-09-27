@@ -267,7 +267,7 @@ function StakketSoejler({
 // ─── Linjediagram ────────────────────────────────────────────────────────────
 
 function Linjer({
-  datoer, serier, farve, format, lukkede, nulErTomt, signeret,
+  datoer, serier, farve, format, lukkede, nulErTomt, reference,
 }: {
   datoer: string[]
   serier: { navn: string; vaerdier: (number | null)[] }[]
@@ -303,6 +303,14 @@ function Linjer({
         {lukkede && <Lukkemarkering datoer={datoer} lukkede={lukkede} hoejde={hoejde} />}
         <YAkse trin={trin} hoejde={hoejde} format={format} reference={reference} />
         <XAkse datoer={datoer} hoejde={hoejde} lukkede={lukkede ? new Set(lukkede.keys()) : undefined} />
+
+        {/* Sammenligningslinjen tegnes for sig. Den må ikke afhænge af om 100
+            tilfældigvis rammer et akse-trin — gør den ikke det, ville selve
+            grundlaget for figuren være usynligt. */}
+        {reference !== undefined && !trin.includes(reference) && (
+          <line x1={M.venstre} x2={B - M.hoejre} y1={yAf(reference)} y2={yAf(reference)}
+                stroke={BASISLINJE} strokeWidth={1.5} />
+        )}
 
         {over !== null && (
           <line x1={xAf(over)} x2={xAf(over)} y1={M.top} y2={M.top + hoejde}
