@@ -78,14 +78,16 @@ function aksetrin(maks: number, oenskede = 4): number[] {
 }
 
 /**
- * Akse der også går under nul — til procentafvigelser, hvor nul er
- * sammenligningsgrundlaget og ikke bunden af skalaen.
+ * Akse over et frit interval — til indekstal, hvor bunden ikke er nul men
+ * skalaen skal rumme sammenligningspunktet (100 = som sidste år).
+ *
+ * Starter man sådan en akse i nul, bliver al variation trykket sammen i toppen
+ * og man kan ikke se forskel på en god og en dårlig dag.
  */
-function aksetrinSigneret(lav: number, hoej: number, oenskede = 4): number[] {
-  const l = Math.min(0, lav), h = Math.max(0, hoej)
-  const trin = pentTrin(h - l || 1, oenskede)
-  const fra = Math.floor(l / trin) * trin
-  const til = Math.ceil(h / trin) * trin
+function aksetrinInterval(lav: number, hoej: number, oenskede = 4): number[] {
+  const trin = pentTrin((hoej - lav) || 1, oenskede)
+  const fra = Math.floor(lav / trin) * trin
+  const til = Math.ceil(hoej / trin) * trin
   const ud: number[] = []
   for (let v = fra; v <= til + trin * 0.001; v += trin) ud.push(Math.round(v * 1e6) / 1e6)
   return ud
@@ -125,7 +127,11 @@ function Forklaring({ navne, farve }: { navne: string[]; farve: (n: string) => s
 }
 
 /** Y-akse med gitter. Gitteret er med vilje sart — det skal ikke slås om opmærksomheden. */
-function YAkse({ trin, hoejde, format }: { trin: number[]; hoejde: number; format: (v: number) => string }) {
+function YAkse({ trin, hoejde, format, reference }: {
+  trin: number[]; hoejde: number; format: (v: number) => string
+  /** Værdi der markeres kraftigere — fx 100 = som sidste år. */
+  reference?: number
+}) {
   const lav  = trin[0] ?? 0
   const hoej = trin[trin.length - 1] || 1
   const spaend = (hoej - lav) || 1
@@ -133,9 +139,9 @@ function YAkse({ trin, hoejde, format }: { trin: number[]; hoejde: number; forma
     <>
       {trin.map(v => {
         const y = M.top + hoejde - ((v - lav) / spaend) * hoejde
-        // Nul-linjen er sammenligningsgrundlaget når aksen går under nul, og
-        // skal kunne ses tydeligere end gitteret.
-        const erNul = v === 0 && lav < 0
+        // Sammenligningsgrundlaget skal kunne ses tydeligere end gitteret —
+        // ellers ved man ikke hvad der er over og under.
+        const erNul = reference !== undefined && v === reference
         return (
           <g key={v}>
             <line x1={M.venstre} x2={B - M.hoejre} y1={y} y2={y}
@@ -270,15 +276,18 @@ function Linjer({
   lukkede?: Map<string, string>
   /** Vis ikke en nul-værdi som et punkt på gulvet — den betyder "ingen data". */
   nulErTomt?: boolean
-  /** Aksen må gå under nul — til afvigelser, hvor nul er sammenligningen. */
-  signeret?: boolean
+  /**
+   * Sammenligningsværdi (fx 100 = som sidste år). Sat, spænder aksen over
+   * dataene OG dette punkt i stedet for at starte i nul, og linjen markeres.
+   */
+  reference?: number
 }) {
   const [over, setOver] = useState<number | null>(null)
   const hoejde = H - M.top - M.bund
   const alle = serier.flatMap(s => s.vaerdier)
     .filter((v): v is number => v !== null && (!nulErTomt || v !== 0))
-  const trin = signeret
-    ? aksetrinSigneret(Math.min(...alle, 0), Math.max(...alle, 0))
+  const trin = reference !== undefined
+    ? aksetrinInterval(Math.min(...alle, reference), Math.max(...alle, reference))
     : aksetrin(Math.max(...alle.filter(v => v > 0), 1))
   const lav    = trin[0] ?? 0
   const hoej   = trin[trin.length - 1] || 1
@@ -292,7 +301,7 @@ function Linjer({
       <svg viewBox={`0 0 ${B} ${H}`} className="w-full" style={{ height: 'auto' }} role="img"
            onMouseLeave={() => setOver(null)}>
         {lukkede && <Lukkemarkering datoer={datoer} lukkede={lukkede} hoejde={hoejde} />}
-        <YAkse trin={trin} hoejde={hoejde} format={format} />
+        <YAkse trin={trin} hoejde={hoejde} format={format} reference={reference} />
         <XAkse datoer={datoer} hoejde={hoejde} lukkede={lukkede ? new Set(lukkede.keys()) : undefined} />
 
         {over !== null && (
@@ -308,7 +317,7 @@ function Linjer({
           r.vaerdier.forEach((v, i) => {
             // En nul-værdi kan betyde "ingen data" (omsætning) eller "præcis som
             // sidste år" (afvigelse). På en signeret akse er nul en ægte værdi.
-            const tom = v === null || (nulErTomt && !signeret && v === 0)
+            const tom = v === null || (nulErTomt && reference === undefined && v === 0)
             if (tom) { if (nu.length) { stykker.push(nu.join(' ')); nu = [] } return }
             nu.push(`${nu.length ? 'L' : 'M'}${xAf(i)} ${yAf(v as number)}`)
           })
@@ -319,7 +328,7 @@ function Linjer({
                 <path key={i} d={d} fill="none" stroke={farve(r.navn)} strokeWidth={2}
                       strokeLinecap="round" strokeLinejoin="round" />
               ))}
-              {over !== null && r.vaerdier[over] !== null && !(nulErTomt && !signeret && r.vaerdier[over] === 0) && (
+              {over !== null && r.vaerdier[over] !== null && !(nulErTomt && reference === undefined && r.vaerdier[over] === 0) && (
                 // 2px ring i baggrundsfarven, så punktet kan ses oven på en anden kurve.
                 <circle cx={xAf(over)} cy={yAf(r.vaerdier[over] as number)} r={4.5}
                         fill={farve(r.navn)} stroke="#ffffff" strokeWidth={2} />
@@ -469,22 +478,41 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
     { navn: 'Sidste år',  vaerdier: finans?.map(d => d.sidsteAar?.enheder ?? null) ?? [] },
   ]
 
-  // Afvigelse i procent mod samme ugedag sidste år. Kroner og enheder kan DELE
-  // akse her, netop fordi begge er procent — det er den ene gang to forskellige
-  // målestokke må stå i samme figur.
-  const afvigelse = (nu: number, saa: number | undefined | null): number | null =>
-    saa === undefined || saa === null || saa === 0 ? null : Math.round(((nu - saa) / saa) * 100)
+  // Indeks mod samme ugedag sidste år: i år delt med sidste år, gange 100.
+  // 100 = præcis som sidste år, 150 = halvanden gang så meget, 50 = halvdelen.
+  //
+  // Kroner og enheder kan DELE akse her, netop fordi begge er indekstal — det er
+  // den ene gang to forskellige målestokke hører hjemme i samme figur.
+  //
+  // To slags værdier luges væk frem for at blive tegnet:
+  //   over 300 %  — en enkelt stor ordre mod en stille dag sidste år giver
+  //                 udsving på tusinder af procent, og så bliver resten af
+  //                 kurven en flad streg langs bunden.
+  //   under 0 %   — kan kun opstå hvis et af tallene er negativt (kreditvægt),
+  //                 og et negativt indeks betyder ingenting.
+  const LOFT = 300
+  const indeks = (nu: number, saa: number | undefined | null): number | null => {
+    if (saa === undefined || saa === null || saa <= 0) return null
+    const v = Math.round((nu / saa) * 100)
+    return v < 0 || v > LOFT ? null : v
+  }
 
   const pctSerier = [
-    { navn: 'Omsætning', vaerdier: finans?.map(d => afvigelse(d.omsaetning, d.sidsteAar?.omsaetning)) ?? [] },
-    { navn: 'Enheder',   vaerdier: finans?.map(d => afvigelse(d.enheder,    d.sidsteAar?.enheder))    ?? [] },
+    { navn: 'Omsætning', vaerdier: finans?.map(d => indeks(d.omsaetning, d.sidsteAar?.omsaetning)) ?? [] },
+    { navn: 'Enheder',   vaerdier: finans?.map(d => indeks(d.enheder,    d.sidsteAar?.enheder))    ?? [] },
   ]
   const pctFarve = (n: string) => (n === 'Omsætning' ? SERIE[0] : SERIE[1])
+  const lugede = (finans ?? []).filter(d => {
+    const o = d.sidsteAar?.omsaetning
+    return o !== undefined && o !== null && o > 0 && Math.round((d.omsaetning / o) * 100) > LOFT
+  }).length
 
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
   const omsIAlt   = sum(finans?.map(d => d.omsaetning) ?? [])
   const omsSidste = sum(finans?.map(d => d.sidsteAar?.omsaetning ?? 0) ?? [])
-  const vaekst    = omsSidste > 0 ? Math.round(((omsIAlt - omsSidste) / omsSidste) * 100) : null
+  // Samme målestok som figuren: 100 % = som sidste år. To forskellige tal for
+  // det samme ville kun forvirre.
+  const vaekst    = omsSidste > 0 ? Math.round((omsIAlt / omsSidste) * 100) : null
 
   return (
     <div className="space-y-4">
@@ -532,9 +560,9 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
             <Noegletal titel="Omsætning i perioden" vaerdi={`${kr.format(omsIAlt)} kr.`} />
             <Noegletal titel="Samme periode sidste år" vaerdi={`${kr.format(omsSidste)} kr.`} />
             <Noegletal
-              titel="Udvikling"
-              vaerdi={vaekst === null ? '—' : `${vaekst > 0 ? '+' : ''}${vaekst} %`}
-              farve={vaekst === null ? undefined : vaekst >= 0 ? '#006300' : '#d03b3b'}
+              titel="I år i forhold til sidste år"
+              vaerdi={vaekst === null ? '—' : `${vaekst} %`}
+              farve={vaekst === null ? undefined : vaekst >= 100 ? '#006300' : '#d03b3b'}
             />
           </div>
 
@@ -549,12 +577,19 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           </Ramme>
 
           <Ramme
-            titel="Udvikling mod sidste år — omsætning og antal"
-            undertitel="Afvigelse i procent mod samme ugedag sidste år. Nul-linjen er sidste år. Kroner og enheder må dele akse her, fordi begge er procent — ligger de langt fra hinanden, er prisen flyttet sig, ikke mængden."
+            titel="I år i forhold til sidste år — omsætning og antal"
+            undertitel={
+              'I år delt med samme ugedag sidste år. 100 % er stregen: samme som sidste år. ' +
+              'Kroner og enheder må dele akse her, fordi begge er indekstal — ligger de langt ' +
+              'fra hinanden, er prisen flyttet sig og ikke mængden.' +
+              (lugede > 0
+                ? ` ${lugede} ${lugede === 1 ? 'dag er' : 'dage er'} udeladt med over 300 % — en stor ordre mod en stille dag sidste år ville ellers trykke resten flad.`
+                : '')
+            }
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
             <Linjer datoer={fDatoer} serier={pctSerier} farve={pctFarve}
-                    format={v => `${v > 0 ? '+' : ''}${v} %`} lukkede={lukkede} signeret />
+                    format={v => `${v} %`} lukkede={lukkede} reference={100} />
             <Forklaring navne={['Omsætning', 'Enheder']} farve={pctFarve} />
           </Ramme>
 
