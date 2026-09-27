@@ -26,7 +26,8 @@ const LUKKET_BG  = 'rgba(137,135,129,0.14)'
 interface PakkerDag { pakker: string; linjer: number; scannet: number; timer: number | null }
 interface PakkeriDag {
   dato: string; ugedag: number; linjer: number; scannet: number
-  timer: number | null; pakkere: PakkerDag[]
+  timer: number | null; timerKoblede: number; linjerKoblede: number
+  pakkere: PakkerDag[]
 }
 interface PakkeriData { dage: PakkeriDag[]; pakkere: string[]; starter: string | null; mangler?: string; fejl?: string }
 
@@ -378,10 +379,20 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
     vaerdier: pakkeri.dage.map(d => d.pakkere.find(p => p.pakker === navn)?.linjer ?? 0),
   }))
   const timerSerie = [{ navn: 'Timer', vaerdier: pakkeri.dage?.map(d => d.timer) ?? [] }]
+  // Samme mennesker i tæller og nævner: kun de pakkere der både er koblet til
+  // en pakkerkode OG har stemplet ind. JAN, HÅKON og LINE pakker uden at være i
+  // Dan-Time, så deres linjer må ikke lægges oven i andres timer.
   const prTimeSerie = [{
     navn: 'Linjer pr. time',
-    vaerdier: pakkeri.dage?.map(d => (d.timer && d.timer > 0 ? Math.round(d.linjer / d.timer) : null)) ?? [],
+    vaerdier: pakkeri.dage?.map(d =>
+      d.timerKoblede > 0 ? Math.round(d.linjerKoblede / d.timerKoblede) : null) ?? [],
   }]
+  // Hvor stor en del af dagens linjer raten overhovedet dækker.
+  const daekning = (() => {
+    const l = (pakkeri.dage ?? []).reduce((s, d) => s + d.linjer, 0)
+    const k = (pakkeri.dage ?? []).reduce((s, d) => s + d.linjerKoblede, 0)
+    return l > 0 ? Math.round((k / l) * 100) : null
+  })()
   const scanSerier = [
     { navn: 'Alle samlet', vaerdier: pakkeri.dage?.map(d => d.linjer > 0 ? Math.round((d.scannet / d.linjer) * 100) : null) ?? [] },
     ...(pakkeri.pakkere ?? []).map(navn => ({
@@ -517,7 +528,11 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
 
             <Ramme
               titel="Linjer pr. stemplet arbejdstime"
-              undertitel="Afdelingens produktivitet — kan ikke brydes ned pr. person, se noten nederst."
+              undertitel={
+                daekning === null
+                  ? 'Kun for pakkere der stempler i Dan-Time.'
+                  : `Kun for de pakkere der stempler i Dan-Time — de står for ${daekning} % af linjerne. Resten pakkes af folk uden stempling, og deres linjer tælles bevidst ikke med her.`
+              }
             >
               <Linjer datoer={pDatoer} serier={prTimeSerie} farve={() => SERIE[2]} format={v => kr.format(v)} />
             </Ramme>

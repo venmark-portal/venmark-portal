@@ -249,6 +249,14 @@ export interface PakkeriDag {
   scannet:  number
   /** Stemplede timer i pakkeriet (Dan-Time). Null hvis dagen ikke er samplet. */
   timer:    number | null
+  /**
+   * Timer for de pakkere vi KAN følge — dem der både er koblet til en
+   * pakkerkode og har stemplet ind. Sammen med `linjerKoblede` giver det en
+   * ærlig rate: samme mennesker i tæller og nævner.
+   */
+  timerKoblede:  number
+  /** Linjer pakket af netop de mennesker. */
+  linjerKoblede: number
   pakkere:  PakkerDag[]
 }
 
@@ -322,13 +330,21 @@ export async function pakkeriTidslinje(fra: string, til: string, jobNr = '16'): 
     .filter(d => pr.has(d))
     .map(d => {
       const a = pr.get(d)!
+      const folk = Array.from(a.pakkere.values()).sort((x, y) => y.linjer - x.linjer)
+      // Kun de pakkere der faktisk stempler tæller i produktivitets-raten.
+      // Regner man ALLE linjer mod de stemplede timer, bliver tallet for højt:
+      // JAN, HÅKON og LINE pakker uden at være i Dan-Time, så deres linjer ville
+      // blive lagt oven i andres timer.
+      const koblede = folk.filter(p => p.timer !== null && p.timer > 0)
       return {
         dato:    d,
         ugedag:  ugedagAf(d),
         linjer:  a.linjer,
         scannet: a.scannet,
         timer:   timerPrDag.get(d) ?? null,
-        pakkere: Array.from(a.pakkere.values()).sort((x, y) => y.linjer - x.linjer),
+        timerKoblede:  Math.round(koblede.reduce((s, p) => s + (p.timer ?? 0), 0) * 100) / 100,
+        linjerKoblede: koblede.reduce((s, p) => s + p.linjer, 0),
+        pakkere: folk,
       }
     })
 

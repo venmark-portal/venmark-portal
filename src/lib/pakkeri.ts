@@ -12,7 +12,7 @@
 //        IKKE tælle med i "mangler". Den kilde er rigtig som den er.
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
-import { timerPrJob } from '@/lib/dantime'
+import { timerPrJob, pakkerTimerPrDag } from '@/lib/dantime'
 
 export interface PakkerRaekke {
   /** PackedBy fra salgslinjen, fx "6 PATRICK". */
@@ -211,9 +211,16 @@ export async function pakkeriStatus(dato: string, jobNr = '16'): Promise<Pakkeri
   // ── Produktivitet mod STEMPLEDE timer (Dan-Time job 16 "Pakkeriet") ───────
   // Det er det rigtige nævnertal: klokketimer siger kun hvornår der blev pakket,
   // ikke hvor mange mennesker der stod der imens.
+  //
+  // MEN kun de pakkere der faktisk stempler må tælle med. Flere pakker uden at
+  // være i Dan-Time (fx salg der tager en direkte ordre), og lægger man DERES
+  // linjer oven i de andres timer, bliver produktiviteten for høj.
   const job = (jobtimer ?? []).find(j => j.jobNr === jobNr)
   const arbejdstimer = job && job.timer > 0 ? job.timer : null
-  const pakkedeLinjer = Array.from(linjer.values()).filter(l => l.pakker !== '').length
+
+  const stemplende = new Set((await pakkerTimerPrDag(dato, jobNr).catch(() => [])).map(p => p.kode))
+  const pakkedeLinjer = Array.from(linjer.values())
+    .filter(l => l.pakker !== '' && stemplende.has(l.pakker)).length
 
   return {
     dato,
