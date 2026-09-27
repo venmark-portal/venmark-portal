@@ -84,6 +84,27 @@ function aksetrin(maks: number, oenskede = 4): number[] {
  * Starter man sådan en akse i nul, bliver al variation trykket sammen i toppen
  * og man kan ikke se forskel på en god og en dårlig dag.
  */
+/**
+ * Glidende gennemsnit over de seneste `vindue` punkter.
+ *
+ * Omsætningen svinger voldsomt efter ugedag — mandag og onsdag er tre gange
+ * fredag — så den rå kurve er en savklinge man ikke kan læse en retning ud af.
+ * Gennemsnittet over halvanden handelsuge udjævner ugerytmen og viser niveauet.
+ *
+ * Bevidst BAGUDRETTET og ikke centreret: et centreret gennemsnit kan ikke
+ * beregnes for de sidste dage, og det er netop dem man kigger på. Til gengæld
+ * reagerer kurven lidt forsinket.
+ */
+function glidende(vaerdier: (number | null)[], vindue: number): (number | null)[] {
+  return vaerdier.map((_, i) => {
+    if (i + 1 < vindue) return null
+    const vindu = vaerdier.slice(i + 1 - vindue, i + 1).filter((v): v is number => v !== null && v > 0)
+    // Er mere end en tredjedel af vinduet hul, siger gennemsnittet ikke noget.
+    if (vindu.length < Math.ceil(vindue * 0.67)) return null
+    return Math.round(vindu.reduce((a, b) => a + b, 0) / vindu.length)
+  })
+}
+
 function aksetrinInterval(lav: number, hoej: number, oenskede = 4): number[] {
   const trin = pentTrin((hoej - lav) || 1, oenskede)
   const fra = Math.floor(lav / trin) * trin
@@ -477,10 +498,17 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
   const lukkede = new Map<string, string>()
   finans?.forEach(d => { if (d.lukket) lukkede.set(d.dato, d.lukket) })
 
+  // Vinduet er 7 HANDELSDAGE, ikke kalenderdage — weekender er allerede sorteret
+  // fra, så syv punkter er halvanden arbejdsuge og dækker ugerytmen.
+  const VINDUE = 7
+  const omsIAar = finans?.map(d => d.omsaetning) ?? []
   const omsSerier = [
-    { navn: 'I år',       vaerdier: finans?.map(d => d.omsaetning) ?? [] },
+    { navn: 'I år',       vaerdier: omsIAar },
     { navn: 'Sidste år',  vaerdier: finans?.map(d => d.sidsteAar?.omsaetning ?? null) ?? [] },
+    { navn: `Tendens (${VINDUE} dage)`, vaerdier: glidende(omsIAar, VINDUE) },
   ]
+  const omsFarve = (n: string) =>
+    n === 'I år' ? SERIE[0] : n === 'Sidste år' ? SERIE[1] : SERIE[2]
   const enhSerier = [
     { navn: 'I år',       vaerdier: finans?.map(d => d.enheder) ?? [] },
     { navn: 'Sidste år',  vaerdier: finans?.map(d => d.sidsteAar?.enheder ?? null) ?? [] },
@@ -587,12 +615,12 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
 
           <Ramme
             titel="Omsætning pr. dag — i år mod sidste år"
-            undertitel="Faktureret beløb ekskl. moms. Sammenlignet med SAMME UGEDAG sidste år (52 uger tilbage), fordi ugedagen afgør alt i fisk — fredag mod torsdag ville ikke sige noget. Dage uden omsætning i nogen af årene er udeladt, så arbejdsdagene ligger side om side. Grå baggrund = lukkedag."
+            undertitel={`Faktureret beløb ekskl. moms. Sammenlignet med SAMME UGEDAG sidste år (52 uger tilbage), fordi ugedagen afgør alt i fisk — fredag mod torsdag ville ikke sige noget. Tendenslinjen er gennemsnittet af de seneste ${VINDUE} handelsdage; den udjævner ugerytmen, hvor mandag kan være tre gange fredag. Dage uden omsætning i nogen af årene er udeladt. Grå baggrund = lukkedag.`}
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
-            <Linjer datoer={fDatoer} serier={omsSerier} farve={faste}
+            <Linjer datoer={fDatoer} serier={omsSerier} farve={omsFarve}
                     format={v => kr.format(v)} lukkede={lukkede} nulErTomt />
-            <Forklaring navne={['I år', 'Sidste år']} farve={faste} />
+            <Forklaring navne={['I år', 'Sidste år', `Tendens (${VINDUE} dage)`]} farve={omsFarve} />
           </Ramme>
 
           <Ramme
