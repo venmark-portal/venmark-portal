@@ -13,7 +13,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
-import { timerPrJob } from '@/lib/dantime'
+import { timerPrJob, pakkerTimerPrDag } from '@/lib/dantime'
 
 // ─── Skema ───────────────────────────────────────────────────────────────────
 
@@ -156,10 +156,16 @@ export interface FinansDag {
   omsaetning:  number
   enheder:     number
   fakturaer:   number
-  /** Samme dato året før. */
+  /**
+   * SAMMENLIGNINGEN: 52 uger tilbage, altså samme ugedag sidste år.
+   *
+   * I en fiskeforretning afgør ugedagen alt — fredag mod torsdag er ikke en
+   * sammenligning, det er to forskellige forretninger. 25/9 2026 (fredag) stilles
+   * derfor op mod 26/9 2025 (fredag), ikke mod 25/9 2025 (torsdag).
+   */
   sidsteAar:        { dato: string; ugedag: number; omsaetning: number; enheder: number } | null
-  /** 52 uger tilbage — samme ugedag, som ofte er den ærligere sammenligning. */
-  sammeUgedag:      { dato: string; ugedag: number; omsaetning: number; enheder: number } | null
+  /** Samme DATO sidste år — beholdt i tabellen, så man kan se begge dele. */
+  sammeDato:        { dato: string; ugedag: number; omsaetning: number; enheder: number } | null
   /** Sat hvis dagen er en lukkedag/helligdag. */
   lukket?:     string
   /** Sat hvis SAMMENLIGNINGSDAGEN var lukket — så tallet ikke læses som et fald. */
@@ -204,10 +210,10 @@ export async function finansTidslinje(fra: string, til: string): Promise<FinansD
   const ud: FinansDag[] = []
   for (let d = fra; d <= til; d = flytDage(d, 1)) {
     const nu = kort.get(d)
-    const sa = sammeDatoSidsteAar(d)
-    const su = flytDage(d, -364)          // 52 uger = samme ugedag
-    const saR = kort.get(sa)
+    const su = flytDage(d, -364)          // 52 uger = samme ugedag sidste år
+    const sd = sammeDatoSidsteAar(d)
     const suR = kort.get(su)
+    const sdR = kort.get(sd)
 
     ud.push({
       dato:       d,
@@ -215,10 +221,12 @@ export async function finansTidslinje(fra: string, til: string): Promise<FinansD
       omsaetning: nu?.omsaetning ?? 0,
       enheder:    nu?.enheder ?? 0,
       fakturaer:  nu?.fakturaer ?? 0,
-      sidsteAar:   saR ? { dato: sa, ugedag: ugedagAf(sa), omsaetning: saR.omsaetning, enheder: saR.enheder } : null,
-      sammeUgedag: suR ? { dato: su, ugedag: ugedagAf(su), omsaetning: suR.omsaetning, enheder: suR.enheder } : null,
+      sidsteAar:  suR ? { dato: su, ugedag: ugedagAf(su), omsaetning: suR.omsaetning, enheder: suR.enheder } : null,
+      sammeDato:  sdR ? { dato: sd, ugedag: ugedagAf(sd), omsaetning: sdR.omsaetning, enheder: sdR.enheder } : null,
       lukket:          lukket.get(d),
-      lukketSidsteAar: lukket.get(sa),
+      // Lukkedagen der betyder noget er den vi SAMMENLIGNER med — ellers ser et
+      // fald ud som en nedgang, når den rigtige forklaring er at der var lukket.
+      lukketSidsteAar: lukket.get(su),
     })
   }
   return ud
@@ -230,6 +238,8 @@ export interface PakkerDag {
   pakker:  string
   linjer:  number
   scannet: number
+  /** Stemplede timer på pakkeri-jobbet. Null når personen ikke er koblet. */
+  timer:   number | null
 }
 
 export interface PakkeriDag {
@@ -264,11 +274,19 @@ export async function pakkeriTidslinje(fra: string, til: string, jobNr = '16'): 
   const dagListe: string[] = []
   for (let d = fra; d <= til; d = flytDage(d, 1)) dagListe.push(d)
   const timerPrDag = new Map<string, number | null>()
+  // Timer pr. PERSON kræver koblingen mellem pakkerkode og Dan-Time-medarbejder
+  // (sættes i admin). Er den ikke sat, står personens timer som null i stedet
+  // for som nul — nul ville se ud som om vedkommende pakkede uden at være der.
+  const prPersonPrDag = new Map<string, Map<string, number>>()
   await Promise.all(dagListe.map(async d => {
     try {
       const job = (await timerPrJob(d)).find(j => j.jobNr === jobNr)
       timerPrDag.set(d, job ? job.timer : null)
     } catch { timerPrDag.set(d, null) }
+    try {
+      const folk = await pakkerTimerPrDag(d, jobNr)
+      prPersonPrDag.set(d, new Map(folk.map(f => [f.kode, f.timer])))
+    } catch { prPersonPrDag.set(d, new Map()) }
   }))
 
   type Akk = { linjer: number; scannet: number; pakkere: Map<string, PakkerDag> }
@@ -283,11 +301,21 @@ export async function pakkeriTidslinje(fra: string, til: string, jobNr = '16'): 
     const a = pr.get(d) ?? { linjer: 0, scannet: 0, pakkere: new Map<string, PakkerDag>() }
     a.linjer++
     if (r.scanned === true) a.scannet++
-    const p = a.pakkere.get(navn) ?? { pakker: navn, linjer: 0, scannet: 0 }
+    const p = a.pakkere.get(navn) ?? { pakker: navn, linjer: 0, scannet: 0, timer: null }
     p.linjer++
     if (r.scanned === true) p.scannet++
     a.pakkere.set(navn, p)
     pr.set(d, a)
+  }
+
+  // Læg personens stemplede timer på, hvor koblingen findes.
+  for (const [d, a] of Array.from(pr)) {
+    const folk = prPersonPrDag.get(d)
+    if (!folk) continue
+    for (const p of Array.from(a.pakkere.values())) {
+      const t = folk.get(p.pakker)
+      if (t !== undefined) p.timer = t
+    }
   }
 
   const dage: PakkeriDag[] = dagListe

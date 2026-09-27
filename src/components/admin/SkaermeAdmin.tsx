@@ -596,17 +596,42 @@ function Adgang({ grupper, screens }: { grupper: Gruppe[]; screens: Screen[] }) 
 
 // ─── Medarbejdere ────────────────────────────────────────────────────────────
 
-interface MedarbejderRk { lonnr: string; navn: string; initialer: string; manueltSat: boolean }
+interface MedarbejderRk {
+  lonnr: string; navn: string; initialer: string; manueltSat: boolean
+  pakkerKode: string | null
+}
+
+/**
+ * Gætter hvilken pakkerkode der hører til et navn.
+ *
+ * Koderne fra BC ser ud som "5CHRISTIAN", "6 PATRICK", "-JESPER" — altså
+ * fornavnet med tal eller tegn klistret på. Vi renser koden for alt andet end
+ * bogstaver og ser om den begynder med et af navnets led. Det er KUN et forslag:
+ * det skal bekræftes, for timerne bliver forkerte hvis to bliver byttet om.
+ */
+function gaetKode(navn: string, koder: string[]): string | null {
+  const led = navn.toLowerCase().split(/\s+/).filter(Boolean)
+  for (const k of koder) {
+    const rent = k.toLowerCase().replace(/[^a-zæøå]/g, '')
+    if (rent && led.some(d => d.length >= 3 && (rent.startsWith(d) || d.startsWith(rent)))) return k
+  }
+  return null
+}
 
 function Medarbejdere() {
   const [folk, setFolk]     = useState<MedarbejderRk[]>([])
+  const [koder, setKoder]   = useState<string[]>([])
   const [kladde, setKladde] = useState<Record<string, string>>({})
   const [gemt, setGemt]     = useState<string | null>(null)
   const [henter, setHenter] = useState(true)
 
   async function hent() {
     const res = await fetch('/api/admin/medarbejdere', { cache: 'no-store' })
-    if (res.ok) setFolk(await res.json())
+    if (res.ok) {
+      const d = await res.json()
+      setFolk(d.medarbejdere ?? [])
+      setKoder(d.pakkerKoder ?? [])
+    }
     setHenter(false)
   }
   useEffect(() => { hent() }, [])
@@ -624,10 +649,23 @@ function Medarbejdere() {
     hent()
   }
 
+  async function gemKode(lonnr: string, kode: string) {
+    const res = await fetch('/api/admin/medarbejdere', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lonnr, pakkerKode: kode }),
+    })
+    if (!res.ok) { alert((await res.json().catch(() => ({}))).error ?? 'Kunne ikke gemmes'); return }
+    setGemt(lonnr)
+    setTimeout(() => setGemt(null), 1500)
+    hent()
+  }
+
   if (henter) return <p className="text-sm text-gray-500">Henter medarbejdere …</p>
 
   const dubletter = new Set(
     folk.map(m => m.initialer).filter((v, i, a) => a.indexOf(v) !== i))
+  const koblede = new Set(folk.map(m => m.pakkerKode).filter(Boolean) as string[])
+  const ukoblede = koder.filter(k => !koblede.has(k))
 
   return (
     <div className="space-y-4">
@@ -647,26 +685,70 @@ function Medarbejdere() {
         )}
       </div>
 
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-gray-900">Pakkerkode fra Business Central</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          BC ved hvem der pakkede hvilke linjer; Dan-Time ved hvor længe folk stod der.
+          Koden herunder er broen mellem de to. Uden den kan timer kun vises for hele
+          pakkeriet — med den kan tidslinjerne også vise linjer pr. arbejdstime for den
+          enkelte. Sæt den kun på dem der rent faktisk pakker.
+        </p>
+        {ukoblede.length > 0 && (
+          <p className="mt-2 text-xs font-medium text-amber-700">
+            Ikke koblet endnu: {ukoblede.join(', ')} — deres timer tæller kun med i
+            afdelingens tal.
+          </p>
+        )}
+      </div>
+
       <div className="rounded-xl border border-gray-200 bg-white">
         {folk.length === 0 && <p className="p-4 text-sm text-gray-500">Ingen medarbejdere set endnu.</p>}
-        {folk.map(m => (
-          <div key={m.lonnr} className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 last:border-0">
-            <span className="w-16 shrink-0 font-mono text-xs text-gray-500">{m.lonnr}</span>
-            <span className="flex-1 text-sm text-gray-900">{m.navn}</span>
-            {!m.manueltSat && <span className="text-xs text-gray-400">foreslået</span>}
-            <input
-              value={kladde[m.lonnr] ?? m.initialer}
-              onChange={e => setKladde({ ...kladde, [m.lonnr]: e.target.value })}
-              onBlur={() => gem(m)}
-              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-              maxLength={6}
-              className={`w-20 rounded-lg border px-2 py-1 text-center text-sm font-semibold uppercase ${
-                dubletter.has(m.initialer) ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
-              } text-gray-900`}
-            />
-            {gemt === m.lonnr && <span className="text-xs text-emerald-600">gemt</span>}
-          </div>
-        ))}
+        {folk.map(m => {
+          const forslag = !m.pakkerKode ? gaetKode(m.navn, ukoblede) : null
+          return (
+            <div key={m.lonnr} className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-2 last:border-0">
+              <span className="w-16 shrink-0 font-mono text-xs text-gray-500">{m.lonnr}</span>
+              <span className="min-w-[10rem] flex-1 text-sm text-gray-900">{m.navn}</span>
+
+              {!m.manueltSat && <span className="text-xs text-gray-400">foreslået</span>}
+              <input
+                value={kladde[m.lonnr] ?? m.initialer}
+                onChange={e => setKladde({ ...kladde, [m.lonnr]: e.target.value })}
+                onBlur={() => gem(m)}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                maxLength={6}
+                title="Initialer på skærmene"
+                className={`w-20 rounded-lg border px-2 py-1 text-center text-sm font-semibold uppercase ${
+                  dubletter.has(m.initialer) ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
+                } text-gray-900`}
+              />
+
+              <select
+                value={m.pakkerKode ?? ''}
+                onChange={e => gemKode(m.lonnr, e.target.value)}
+                title="Pakkerkode i BC"
+                className="w-40 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900"
+              >
+                <option value="">— pakker ikke —</option>
+                {/* Koden kan stå på præcis én person. Er den taget, vises den kun
+                    på den der har den, så to ikke kan dele den ved et uheld. */}
+                {koder.filter(k => k === m.pakkerKode || !koblede.has(k)).map(k => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+
+              {forslag && (
+                <button
+                  onClick={() => gemKode(m.lonnr, forslag)}
+                  className="rounded-lg border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                >
+                  Er det {forslag}?
+                </button>
+              )}
+              {gemt === m.lonnr && <span className="text-xs text-emerald-600">gemt</span>}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

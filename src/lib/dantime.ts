@@ -64,6 +64,13 @@ async function run(): Promise<void> {
       "opdateret" TIMESTAMP(3) NOT NULL DEFAULT NOW()
     )
   `
+  // Pakkerkoden fra BC ("5CHRISTIAN", "6 PATRICK", "-JESPER"). Den er den eneste
+  // bro mellem de to verdener: BC ved hvem der pakkede hvilke linjer, Dan-Time
+  // ved hvor længe folk stod der. Uden koblingen kan timer kun vises for hele
+  // afdelingen. Navnene kan ikke matches automatisk — koderne har tal og
+  // bindestreger foran, og Dan-Time har fulde navne — så den sættes i admin.
+  await prisma.$executeRaw`ALTER TABLE "DanTimeMedarbejder" ADD COLUMN IF NOT EXISTS "pakkerKode" TEXT`
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "DanTimeMedarbejder_pakkerKode_idx" ON "DanTimeMedarbejder" ("pakkerKode")`
 }
 
 // ─── Initialer ───────────────────────────────────────────────────────────────
@@ -326,6 +333,8 @@ export async function hvemErPaaJobNu(jobNr: string): Promise<PaaJob[]> {
 
 export interface Medarbejder {
   lonnr: string; navn: string; initialer: string; manueltSat: boolean
+  /** Pakkerkoden fra BC, hvis medarbejderen pakker. */
+  pakkerKode: string | null
 }
 
 /**
@@ -366,8 +375,74 @@ export async function initialerPrLonnr(): Promise<Map<string, string>> {
 export async function listMedarbejdere(): Promise<Medarbejder[]> {
   await ensureDanTimeSchema()
   return prisma.$queryRaw<Medarbejder[]>`
-    SELECT lonnr, navn, initialer, "manueltSat" FROM "DanTimeMedarbejder" ORDER BY navn
+    SELECT lonnr, navn, initialer, "manueltSat", "pakkerKode"
+    FROM "DanTimeMedarbejder" ORDER BY navn
   `
+}
+
+/**
+ * Kobler en Dan-Time-medarbejder til pakkerkoden i BC. Tom streng rydder den.
+ *
+ * Koden er unik pr. person: sættes den samme kode på en anden, fjernes den fra
+ * den forrige, så timerne aldrig tælles to gange.
+ */
+export async function saetPakkerKode(lonnr: string, kode: string): Promise<void> {
+  await ensureDanTimeSchema()
+  const ren = kode.trim().toUpperCase().slice(0, 20)
+  if (ren) {
+    await prisma.$executeRaw`
+      UPDATE "DanTimeMedarbejder" SET "pakkerKode" = NULL
+      WHERE "pakkerKode" = ${ren} AND lonnr <> ${lonnr}
+    `
+  }
+  await prisma.$executeRaw`
+    UPDATE "DanTimeMedarbejder"
+    SET "pakkerKode" = ${ren || null}, "opdateret" = NOW()
+    WHERE lonnr = ${lonnr}
+  `
+}
+
+export interface PakkerTimer {
+  /** Pakkerkoden fra BC. */
+  kode:     string
+  navn:     string
+  timer:    number
+}
+
+/**
+ * Stemplede timer pr. PAKKER på en dag — kun dem der er koblet til en
+ * pakkerkode, og kun tid stemplet på det angivne job.
+ *
+ * Uden koblingen kan timer kun vises for hele afdelingen; det er netop den
+ * kobling `saetPakkerKode` laver.
+ */
+export async function pakkerTimerPrDag(dato: string, jobNr = '16'): Promise<PakkerTimer[]> {
+  await ensureDanTimeSchema()
+  const rows = await prisma.$queryRaw<{
+    kode: string; navn: string; ind: string; ud: string | null
+  }[]>`
+    SELECT m."pakkerKode" AS kode, m.navn, s.ind, s.ud
+    FROM "DanTimeStempling" s
+    JOIN "DanTimeMedarbejder" m ON m.lonnr = s.lonnr
+    WHERE s.dato = ${dato} AND s."jobNr" = ${jobNr} AND m."pakkerKode" IS NOT NULL
+  `
+
+  const nu = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Copenhagen', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  }).format(new Date())
+  const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+
+  const pr = new Map<string, PakkerTimer>()
+  for (const r of rows) {
+    let m = min(r.ud ?? nu) - min(r.ind)
+    if (m < 0) m += 24 * 60          // vagt hen over midnat
+    if (m <= 0) continue
+    const e = pr.get(r.kode) ?? { kode: r.kode, navn: r.navn, timer: 0 }
+    e.timer += m / 60
+    pr.set(r.kode, e)
+  }
+  for (const e of Array.from(pr.values())) e.timer = Math.round(e.timer * 100) / 100
+  return Array.from(pr.values())
 }
 
 /** Initialer sat i hånden markeres, så samplingen aldrig skriver dem over. */

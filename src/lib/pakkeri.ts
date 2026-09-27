@@ -96,6 +96,32 @@ async function hent(sti: string): Promise<any[] | null> {
   return ud
 }
 
+/**
+ * De pakkerkoder BC faktisk har brugt de seneste `dage` dage.
+ *
+ * Bruges i admin, så koblingen mellem BC-pakker og Dan-Time-medarbejder vælges
+ * fra en liste over rigtige koder — "5CHRISTIAN" og "6 PATRICK" er ikke noget
+ * man gætter sig til at stave rigtigt.
+ */
+export async function brugtePakkerKoder(dage = 90): Promise<string[]> {
+  const til = new Date()
+  const fra = new Date(til.getTime() - dage * 864e5)
+  const f = (d: Date) => d.toISOString().slice(0, 10)
+
+  const filter = encodeURIComponent(
+    `shipmentDate ge ${f(fra)} and shipmentDate le ${f(til)} and deleted eq false`,
+  )
+  const log = await hent(`salesEntries?$filter=${filter}&$select=packedBy`)
+  if (log === null) return []
+
+  const set = new Set<string>()
+  for (const r of log) {
+    const n = String(r.packedBy ?? '').trim()
+    if (n) set.add(n)
+  }
+  return Array.from(set).sort()
+}
+
 export async function pakkeriStatus(dato: string, jobNr = '16'): Promise<PakkeriStatus> {
   const tom: PakkeriStatus = {
     dato, ordrerIAlt: 0, ordrerUdenPakker: 0, linjerIAlt: 0, aabneLinjer: 0,

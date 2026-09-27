@@ -57,8 +57,11 @@ export default async function TidslinjerPage({
         fakturalinjer; kreditnotaer indgår ikke, så det er fakturering og ikke nettoomsætning.
         Pakketallene kommer fra salgslinje-loggen, som først skriver fra 14-09-2026 — før den
         dato findes de ikke, fordi salgslinjerne blev slettet ved bogføring.
-        Timer er stemplet tid på Dan-Time-job {jobNr} for hele pakkeriet; de kan ikke brydes ned
-        pr. person, før der findes en kobling mellem Dan-Time-medarbejderen og pakkerkoden i BC.
+        Sammenligningen med sidste år er <strong>samme ugedag</strong> (52 uger tilbage), ikke
+        samme dato — ugedagen afgør for meget i fisk til at 25/9 kan stilles op mod en torsdag.
+        Samme dato står med i tabellen. Timer er stemplet tid på Dan-Time-job {jobNr}; de vises
+        også pr. person for de pakkere der er koblet til deres BC-pakkerkode under
+        Skærme → Medarbejdere. Mangler koblingen, står der en streg frem for et tal.
       </p>
     </div>
   )

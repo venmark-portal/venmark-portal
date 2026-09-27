@@ -23,7 +23,7 @@ const BASISLINJE = '#c3c2b7'
 const LUKKET_BG  = 'rgba(137,135,129,0.14)'
 
 // ─── Typer (spejler src/lib/tidslinjer.ts) ──────────────────────────────────
-interface PakkerDag { pakker: string; linjer: number; scannet: number }
+interface PakkerDag { pakker: string; linjer: number; scannet: number; timer: number | null }
 interface PakkeriDag {
   dato: string; ugedag: number; linjer: number; scannet: number
   timer: number | null; pakkere: PakkerDag[]
@@ -33,8 +33,10 @@ interface PakkeriData { dage: PakkeriDag[]; pakkere: string[]; starter: string |
 interface FinansPunkt { dato: string; ugedag: number; omsaetning: number; enheder: number }
 interface FinansDag extends FinansPunkt {
   fakturaer: number
+  /** 52 uger tilbage — samme ugedag. Det er den sammenligning figurerne viser. */
   sidsteAar: FinansPunkt | null
-  sammeUgedag: FinansPunkt | null
+  /** Samme dato sidste år — kun i tabellen. */
+  sammeDato: FinansPunkt | null
   lukket?: string
   lukketSidsteAar?: string
 }
@@ -464,7 +466,7 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
 
           <Ramme
             titel="Omsætning pr. dag — i år mod sidste år"
-            undertitel="Faktureret beløb ekskl. moms. Grå baggrund = lukkedag. Sammenligningen er samme DATO sidste år; hold øje med at ugedagen kan være en anden."
+            undertitel="Faktureret beløb ekskl. moms. Sammenlignet med SAMME UGEDAG sidste år (52 uger tilbage), fordi ugedagen afgør alt i fisk — fredag mod torsdag ville ikke sige noget. Grå baggrund = lukkedag."
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
             <Linjer datoer={fDatoer} serier={omsSerier} farve={faste}
@@ -539,15 +541,24 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           {pDatoer.length > 0 && (
             <Tabel
               titel="Pakkeri dag for dag"
-              hoveder={['Dato', 'Ugedag', 'Linjer', 'Scannet', '%', 'Timer', 'Pr. time', ...pakkeri.pakkere]}
+              hoveder={['Dato', 'Ugedag', 'Linjer', 'Scannet', '%', 'Timer', 'Pr. time',
+                        ...pakkeri.pakkere.flatMap(n => [n, `${n} t`, `${n} /t`])]}
               raekker={pakkeri.dage.map(d => [
                 kortDato(d.dato), ugedagNavn(d.ugedag), kr.format(d.linjer), kr.format(d.scannet),
                 d.linjer ? `${Math.round((d.scannet / d.linjer) * 100)} %` : '—',
                 d.timer !== null ? en1.format(d.timer) : '—',
                 d.timer ? kr.format(Math.round(d.linjer / d.timer)) : '—',
-                ...pakkeri.pakkere.map(n => {
+                ...pakkeri.pakkere.flatMap(n => {
                   const p = d.pakkere.find(x => x.pakker === n)
-                  return p ? kr.format(p.linjer) : '—'
+                  if (!p) return ['—', '—', '—']
+                  return [
+                    kr.format(p.linjer),
+                    p.timer !== null ? en1.format(p.timer) : '—',
+                    // Personens egne linjer delt med personens egne stemplede timer.
+                    // Uden koblingen i admin er timerne ukendte, og så står der en streg
+                    // frem for et tal der ville se rigtigt ud.
+                    p.timer ? kr.format(Math.round(p.linjer / p.timer)) : '—',
+                  ]
                 }),
               ])}
             />
@@ -555,12 +566,16 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           {finans && (
             <Tabel
               titel="Omsætning dag for dag"
-              hoveder={['Dato', 'Ugedag', 'Omsætning', 'Enheder', 'Fakturaer', 'Sidste år', 'Ugedag', 'Note']}
+              hoveder={['Dato', 'Ugedag', 'Omsætning', 'Enheder', 'Fakturaer',
+                        'Samme ugedag sidste år', 'Dato', 'Samme dato sidste år', 'Note']}
               raekker={finans.map(d => [
                 kortDato(d.dato), ugedagNavn(d.ugedag), kr.format(d.omsaetning), en1.format(d.enheder),
                 kr.format(d.fakturaer),
                 d.sidsteAar ? kr.format(d.sidsteAar.omsaetning) : '—',
-                d.sidsteAar ? ugedagNavn(d.sidsteAar.ugedag) : '—',
+                d.sidsteAar ? kortDato(d.sidsteAar.dato) : '—',
+                // Samme dato er med for fuldstændighedens skyld — den rammer en anden
+                // ugedag og er derfor ikke den sammenligning figurerne bygger på.
+                d.sammeDato ? `${kr.format(d.sammeDato.omsaetning)} (${ugedagNavn(d.sammeDato.ugedag)})` : '—',
                 [d.lukket, d.lukketSidsteAar && `sidste år: ${d.lukketSidsteAar}`].filter(Boolean).join(' · ') || '',
               ])}
             />
