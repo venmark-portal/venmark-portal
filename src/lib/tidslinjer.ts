@@ -209,11 +209,17 @@ export async function finansTidslinje(fra: string, til: string): Promise<FinansD
 
   const ud: FinansDag[] = []
   for (let d = fra; d <= til; d = flytDage(d, 1)) {
+    // Weekender og lukkeperioder er nul i BEGGE år og gør kun kurven til en
+    // savklinge. Springes de over, ligger arbejdsdagene side om side og trenden
+    // kan ses. En dag hvor bare ét af årene har omsætning, bliver stående — så
+    // en lukkedag vi handlede sidste år stadig er synlig.
     const nu = kort.get(d)
     const su = flytDage(d, -364)          // 52 uger = samme ugedag sidste år
     const sd = sammeDatoSidsteAar(d)
     const suR = kort.get(su)
     const sdR = kort.get(sd)
+
+    if ((nu?.omsaetning ?? 0) === 0 && (suR?.omsaetning ?? 0) === 0) continue
 
     ud.push({
       dato:       d,

@@ -393,6 +393,22 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
     const k = (pakkeri.dage ?? []).reduce((s, d) => s + d.linjerKoblede, 0)
     return l > 0 ? Math.round((k / l) * 100) : null
   })()
+
+  // Linjer pr. arbejdstime PR. PAKKER. Kun dem der stempler har timer, så kun de
+  // navne optræder — en pakker uden stempling ville ellers få en kurve der så
+  // beregnet ud uden at være det.
+  const medTimer = (pakkeri.pakkere ?? []).filter(n =>
+    (pakkeri.dage ?? []).some(d => {
+      const p = d.pakkere.find(x => x.pakker === n)
+      return p && p.timer !== null && p.timer > 0
+    }))
+  const prTimePrPakker = medTimer.map(navn => ({
+    navn,
+    vaerdier: pakkeri.dage.map(d => {
+      const p = d.pakkere.find(x => x.pakker === navn)
+      return p && p.timer && p.timer > 0 ? Math.round(p.linjer / p.timer) : null
+    }),
+  }))
   const scanSerier = [
     { navn: 'Alle samlet', vaerdier: pakkeri.dage?.map(d => d.linjer > 0 ? Math.round((d.scannet / d.linjer) * 100) : null) ?? [] },
     ...(pakkeri.pakkere ?? []).map(navn => ({
@@ -477,7 +493,7 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
 
           <Ramme
             titel="Omsætning pr. dag — i år mod sidste år"
-            undertitel="Faktureret beløb ekskl. moms. Sammenlignet med SAMME UGEDAG sidste år (52 uger tilbage), fordi ugedagen afgør alt i fisk — fredag mod torsdag ville ikke sige noget. Grå baggrund = lukkedag."
+            undertitel="Faktureret beløb ekskl. moms. Sammenlignet med SAMME UGEDAG sidste år (52 uger tilbage), fordi ugedagen afgør alt i fisk — fredag mod torsdag ville ikke sige noget. Dage uden omsætning i nogen af årene er udeladt, så arbejdsdagene ligger side om side. Grå baggrund = lukkedag."
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
             <Linjer datoer={fDatoer} serier={omsSerier} farve={faste}
@@ -487,7 +503,7 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
 
           <Ramme
             titel="Antal enheder pr. dag"
-            undertitel="Solgte enheder på fakturalinjerne — vist for sig, fordi kroner og enheder ikke kan dele akse."
+            undertitel="Solgte enheder på fakturalinjerne. Samme forskydning som omsætningen — mod samme ugedag sidste år. Vist for sig, fordi kroner og enheder ikke kan dele akse."
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
             <Linjer datoer={fDatoer} serier={enhSerier} farve={faste}
@@ -537,6 +553,19 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
               <Linjer datoer={pDatoer} serier={prTimeSerie} farve={() => SERIE[2]} format={v => kr.format(v)} />
             </Ramme>
           </div>
+
+          <Ramme
+            titel="Linjer pr. arbejdstime — pr. pakker"
+            undertitel={
+              prTimePrPakker.length === 0
+                ? 'Ingen pakkere er koblet til Dan-Time endnu. Koblingen sættes under Skærme → Medarbejdere.'
+                : `Personens egne linjer delt med personens egne stemplede timer. Kun ${medTimer.join(', ')} stempler i Dan-Time — de øvrige pakkere har ingen timer at regne på.`
+            }
+            tom={prTimePrPakker.length === 0 ? 'Mangler kobling mellem pakkerkode og Dan-Time.' : undefined}
+          >
+            <Linjer datoer={pDatoer} serier={prTimePrPakker} farve={farveAf} format={v => kr.format(v)} />
+            <Forklaring navne={medTimer} farve={farveAf} />
+          </Ramme>
 
           <Ramme
             titel="Andel scannet"
