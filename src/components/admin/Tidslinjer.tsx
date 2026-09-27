@@ -498,22 +498,33 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
   //                 kurven en flad streg langs bunden.
   //   under 0 %   — kan kun opstå hvis et af tallene er negativt (kreditvægt),
   //                 og et negativt indeks betyder ingenting.
+  // Et indekstal kan kun læses hvis BEGGE sider har rigtig handel bag sig.
+  // Reglerne, i den rækkefølge de rammer:
+  //   · mangler en af siderne helt      → ingen sammenligning
+  //   · under 25 % eller over 300 %     → det er ikke en udvikling, det er en
+  //                                       datafejl (fx en enkelt bulkordre mod
+  //                                       en stille dag), og den flader resten ud
+  // Rammer ÉN af de to målestokke ud over båndet, ryger HELE dagen — vi kan ikke
+  // vide hvilken af dem der er den forkerte, og en enlig kurve inviterer til at
+  // drage en konklusion af et tal vi netop har mistillid til.
+  const GULV = 25
   const LOFT = 300
-  const indeks = (nu: number, saa: number | undefined | null): number | null => {
-    if (saa === undefined || saa === null || saa <= 0) return null
-    const v = Math.round((nu / saa) * 100)
-    return v < 0 || v > LOFT ? null : v
+  const raat = (nu: number, saa: number | undefined | null): number | null =>
+    saa === undefined || saa === null || saa <= 0 || nu <= 0 ? null : Math.round((nu / saa) * 100)
+
+  const dagOk = (d: FinansDag): boolean => {
+    const o = raat(d.omsaetning, d.sidsteAar?.omsaetning)
+    const e = raat(d.enheder,    d.sidsteAar?.enheder)
+    if (o === null || e === null) return false
+    return o >= GULV && o <= LOFT && e >= GULV && e <= LOFT
   }
 
   const pctSerier = [
-    { navn: 'Omsætning', vaerdier: finans?.map(d => indeks(d.omsaetning, d.sidsteAar?.omsaetning)) ?? [] },
-    { navn: 'Enheder',   vaerdier: finans?.map(d => indeks(d.enheder,    d.sidsteAar?.enheder))    ?? [] },
+    { navn: 'Omsætning', vaerdier: finans?.map(d => dagOk(d) ? raat(d.omsaetning, d.sidsteAar?.omsaetning) : null) ?? [] },
+    { navn: 'Kilo',      vaerdier: finans?.map(d => dagOk(d) ? raat(d.enheder,    d.sidsteAar?.enheder)    : null) ?? [] },
   ]
   const pctFarve = (n: string) => (n === 'Omsætning' ? SERIE[0] : SERIE[1])
-  const lugede = (finans ?? []).filter(d => {
-    const o = d.sidsteAar?.omsaetning
-    return o !== undefined && o !== null && o > 0 && Math.round((d.omsaetning / o) * 100) > LOFT
-  }).length
+  const lugede = (finans ?? []).filter(d => !dagOk(d)).length
 
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
   const omsIAlt   = sum(finans?.map(d => d.omsaetning) ?? [])
@@ -585,25 +596,25 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           </Ramme>
 
           <Ramme
-            titel="I år i forhold til sidste år — omsætning og antal"
+            titel="I år i forhold til sidste år — omsætning og kilo"
             undertitel={
               'I år delt med samme ugedag sidste år. 100 % er stregen: samme som sidste år. ' +
-              'Kroner og enheder må dele akse her, fordi begge er indekstal — ligger de langt ' +
-              'fra hinanden, er prisen flyttet sig og ikke mængden.' +
-              (lugede > 0
-                ? ` ${lugede} ${lugede === 1 ? 'dag er' : 'dage er'} udeladt med over 300 % — en stor ordre mod en stille dag sidste år ville ellers trykke resten flad.`
-                : '')
+              'Kroner og kilo må dele akse her, fordi begge er indekstal — ligger de langt ' +
+              'fra hinanden, er prisen flyttet sig og ikke mængden. ' +
+              'Dage uden handel i et af årene er udeladt, og det samme er dage under 25 % ' +
+              'eller over 300 %: dér er det en datafejl og ikke en udvikling.' +
+              (lugede > 0 ? ` ${lugede} ${lugede === 1 ? 'dag' : 'dage'} udeladt i perioden.` : '')
             }
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
             <Linjer datoer={fDatoer} serier={pctSerier} farve={pctFarve}
                     format={v => `${v} %`} lukkede={lukkede} reference={100} />
-            <Forklaring navne={['Omsætning', 'Enheder']} farve={pctFarve} />
+            <Forklaring navne={['Omsætning', 'Kilo']} farve={pctFarve} />
           </Ramme>
 
           <Ramme
-            titel="Antal enheder pr. dag"
-            undertitel="Solgte enheder på fakturalinjerne. Samme forskydning som omsætningen — mod samme ugedag sidste år. Vist for sig, fordi kroner og enheder ikke kan dele akse."
+            titel="Solgte kilo pr. dag"
+            undertitel="Mængde omregnet til varens basisenhed, så kartoner, spande og stykker tæller med i den rigtige størrelse. Samme forskydning som omsætningen — mod samme ugedag sidste år. Vist for sig, fordi kroner og kilo ikke kan dele akse."
             tom={fDatoer.length === 0 ? 'Ingen dage i perioden.' : undefined}
           >
             <Linjer datoer={fDatoer} serier={enhSerier} farve={faste}
@@ -710,7 +721,7 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           {finans && (
             <Tabel
               titel="Omsætning dag for dag"
-              hoveder={['Dato', 'Ugedag', 'Omsætning', 'Enheder', 'Fakturaer',
+              hoveder={['Dato', 'Ugedag', 'Omsætning', 'Kilo', 'Fakturaer',
                         'Samme ugedag sidste år', 'Dato', 'Samme dato sidste år', 'Note']}
               raekker={finans.map(d => [
                 kortDato(d.dato), ugedagNavn(d.ugedag), kr.format(d.omsaetning), en1.format(d.enheder),

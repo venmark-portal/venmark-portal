@@ -91,7 +91,8 @@ export async function synkSalgDage(fra: string, til: string): Promise<{ dage: nu
 
   const filter = encodeURIComponent(`postingDate ge ${fra} and postingDate le ${til} and type eq 'Item'`)
   const linjer = await hentAlle(
-    `postedSalesInvoiceLines?$filter=${filter}&$select=postingDate,quantity,lineAmount,documentNumber`,
+    `postedSalesInvoiceLines?$filter=${filter}` +
+    `&$select=postingDate,quantity,quantityBase,unitOfMeasureCode,lineAmount,documentNumber`,
   )
   if (linjer === null) throw new Error('BC-appen mangler postedSalesInvoiceLines')
 
@@ -103,7 +104,22 @@ export async function synkSalgDage(fra: string, til: string): Promise<{ dage: nu
     if (!d) continue
     const e = pr.get(d) ?? { omsaetning: 0, enheder: 0, linjer: 0, fakturaer: new Set<string>() }
     e.omsaetning += Number(l.lineAmount ?? 0)
-    e.enheder    += Number(l.quantity ?? 0)
+
+    // MÆNGDE: `quantity` står i LINJENS enhed, og der er 25 forskellige i brug —
+    // KG, STK, BAKKE, DÅSE, 10 L DUNK. At lægge dem sammen svarer til at addere
+    // kilo og stykker: den 29-08-2025 var 31.632 af dagens 34.769 "enheder" to
+    // linjer fiskeafskær i STK, og de druknede alt andet.
+    //
+    // `quantityBase` er omregnet til varens basisenhed og er det eneste tal der
+    // kan summeres på tværs. Det kommer først med BC-app 29.0.147.399; indtil
+    // den er inde falder vi tilbage på KUN kg-linjerne, som i det mindste er
+    // sammenlignelige indbyrdes.
+    const basis = Number(l.quantityBase ?? 0)
+    if (basis) e.enheder += basis
+    else if (String(l.unitOfMeasureCode ?? '').trim().toUpperCase() === 'KG') {
+      e.enheder += Number(l.quantity ?? 0)
+    }
+
     e.linjer     += 1
     if (l.documentNumber) e.fakturaer.add(String(l.documentNumber))
     pr.set(d, e)
