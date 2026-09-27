@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getDeadlineForDelivery, getDeadlineForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
+import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getEffectiveDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
 import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage } from '@/lib/businesscentral'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
@@ -92,13 +92,20 @@ export async function POST(req: NextRequest) {
         floor = earliestDeliveryForItem(c.cutoffWeekday, c.cutoffHour, new Date(), c.leadDays ?? 0, holidaySet)
         floor.setHours(0, 0, 0, 0)
       }
-      const floorForward   = floor ? ddMidnight >= floor : false
+      // Med leveringstid er gulvet "varen hjemme" → sammenlign med den EFFEKTIVE dato (pak/afsendelse),
+      // som klientens fristReachedFor og BC's coverage. Legacy (ingen leveringstid) = leveringsdato.
+      let cmpDate = ddMidnight
+      if (floor && (c?.leadDays ?? 0) > 0 && method) {
+        cmpDate = new Date(getEffectiveDateForMethodDelivery(deliveryDate, method, holidaySet))
+        cmpDate.setHours(0, 0, 0, 0)
+      }
+      const floorForward   = floor ? cmpDate >= floor : false
       const coveredByAfgang = !!a.naesteLevering && dStr >= a.naesteLevering
       const isForward = floorForward || coveredByAfgang
 
       // 1. Frist-vare til for tidlig dato UDEN lager OG uden afgang der dækker → afvis.
       //    (En købsordre der ankommer senest leveringsdatoen dækker — spejler klientens isItemAvailable.)
-      if (floor && ddMidnight < floor && disp <= 0 && !coveredByAfgang) {
+      if (floor && !floorForward && disp <= 0 && !coveredByAfgang) {
         tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${floor.toLocaleDateString('da-DK')})`)
         continue
       }
