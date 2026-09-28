@@ -159,6 +159,35 @@ function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/**
+ * Åbn til-vindue for en IKKE-streng vare (fx salater: produktionen laver mere frem til 11:30).
+ * Frist = (leveringsdato − leadtid i arbejdsdage), aldrig senere end ordre-deadlinens dag, kl. Åbn til
+ * — og aldrig senere end selve ordre-deadline. FØR fristen kan der genskaffes → ubegrænset;
+ * EFTER afgør lageret. Null = ingen gyldig Åbn til. Bruges af både klient (rowMaxQty) og server
+ * (order/route), så de altid er enige.
+ */
+export function aabnTilFrist(
+  aabnTil: string | null | undefined,
+  deliveryDate: Date,
+  orderDeadline: Date,
+  leadDays: number = 0,
+  holidays: Set<string> = new Set(),
+): Date | null {
+  if (!aabnTil || aabnTil.startsWith('00:00') || aabnTil === 'PT0S') return null
+  const { hour, minute } = parseCutoffTime(aabnTil)
+  const d = new Date(deliveryDate); d.setHours(0, 0, 0, 0)
+  let left = leadDays
+  while (left > 0) {
+    d.setDate(d.getDate() - 1)
+    const w = d.getDay()
+    if (w !== 0 && w !== 6 && !holidays.has(localDateStr(d))) left--
+  }
+  const dlDay = new Date(orderDeadline); dlDay.setHours(0, 0, 0, 0)
+  if (d > dlDay) d.setTime(dlDay.getTime())
+  d.setHours(hour, minute, 0, 0)
+  return d < orderDeadline ? d : new Date(orderDeadline)
+}
+
 /** Parser BC Time-felt ("HH:MM:SS.fffffff" eller "PTHHM...") til { hour, minute } */
 export function parseCutoffTime(timeStr: string | null | undefined): { hour: number; minute: number } {
   if (!timeStr || timeStr.startsWith('00:00')) return { hour: 14, minute: 0 }

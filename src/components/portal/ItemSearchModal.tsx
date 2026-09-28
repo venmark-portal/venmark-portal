@@ -78,14 +78,7 @@ function computeStatus(
 
   if (isToday) {
     if (avail.lukAfgang) return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
-    if (avail.aabnTil) {
-      const p = parseAabnTil(avail.aabnTil)
-      if (p) {
-        const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
-        if (nowSec > p.hh * 3600 + p.mm * 60)
-          return { blocked: true, blockLabel: `Frist kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
-      }
-    }
+    // Åbn til passeret blokerer ikke — efter fristen afgør lageret (se OrderList.getItemAvailStatus).
     const disp = avail.disponibelt
     if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
