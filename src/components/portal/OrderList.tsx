@@ -5,7 +5,7 @@ import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star, MessageSquare,
 } from 'lucide-react'
-import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
+import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 
@@ -281,14 +281,8 @@ function getItemAvailStatus(
     if (avail.lukAfgang)
       return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
 
-    if (avail.aabnTil) {
-      const p = parseAabnTil(avail.aabnTil)
-      if (p) {
-        const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
-        if (nowSec > p.hh * 3600 + p.mm * 60)
-          return { blocked: true, blockLabel: `Frist kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
-      }
-    }
+    // Åbn til passeret i dag blokerer IKKE længere: Åbn til er et genskaffelses-vindue — efter
+    // fristen afgør lageret (disponibel nedenfor + rowMaxQty-loftet), jf. Claus 2026-09-28.
 
     // Auktionsvare — blokér kun hvis priser er opdateret i dag
     if (avail.auktionsKategori) {
@@ -1444,8 +1438,17 @@ export default function OrderList({
     const itemFrist = getFristDato(itemNo)
     const eff = itemFrist && deadline ? (itemFrist <= deadline ? itemFrist : deadline)
               : (itemFrist ?? deadline ?? null)
-    // Frist passeret → lageret afgør alene; "Maks X"/Udsolgt siger det, en frist-tekst forvirrer.
-    if (eff && eff.getTime() <= Date.now()) return ''
+    // Frist passeret → lageret afgør ("Maks X" vises). Ikke-streng Åbn til-vare (salater): fortæl at
+    // der laves flere til næste arbejdsdag. Øvrige: ingen tekst — en passeret frist forvirrer.
+    if (eff && eff.getTime() <= Date.now()) {
+      if (!a || !a.aabnTil || a.strengtLager) return ''
+      const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+      const n = new Date(today0)
+      do { n.setDate(n.getDate() + 1) } while (!isWorkday(n))
+      const diff = Math.round((n.getTime() - today0.getTime()) / 86400000)
+      const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][n.getDay()]
+      return `${GENSKAF_PREFIX} ${diff === 1 ? 'i morgen' : `${wd} ${n.getDate()}/${n.getMonth() + 1}`}`
+    }
     if (eff) {
       // Fristen er et GENSKAFFELSES-vindue (fx salater: produktionen laver mere frem til 11:30), ikke
       // en bestillingsfrist for det der ALLEREDE er på lager. Har varen lager til datoen → neutral info
@@ -1495,6 +1498,13 @@ export default function OrderList({
     if (cov === -1) return null   // BC: ubegrænset (autoritativt)
     const avail = itemAvailabilities[itemNo]
     if (!avail || !deliveryDate) return (cov !== undefined && cov >= 0) ? cov : null
+    // Åbn til-vindue (ikke-streng, fx salater): FØR fristen laver produktionen mere → ubegrænset,
+    // uanset lager/coverage. EFTER fristen falder vi igennem til lager-loftet nedenfor.
+    if (!avail.strengtLager && avail.aabnTil) {
+      const dl = selectedMethod ? getDeadlineForMethodDelivery(deliveryDate, selectedMethod, calendarDays) : getDeadlineForDelivery(deliveryDate)
+      const f = aabnTilFrist(avail.aabnTil, deliveryDate, dl, avail.leadDage ?? 0, portalHolidays)
+      if (f && Date.now() < f.getTime()) return null
+    }
     const deliveryStr  = localYmd(deliveryDate)
     const todayStr     = localYmd(new Date())
     const effectiveStr = effectiveDate ? localYmd(effectiveDate) : deliveryStr

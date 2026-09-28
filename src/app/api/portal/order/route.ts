@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getEffectiveDateForMethodDelivery, earliestDeliveryForItem } from '@/lib/dateUtils'
+import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
 import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage } from '@/lib/businesscentral'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
@@ -111,6 +111,11 @@ export async function POST(req: NextRequest) {
       }
       // 2. Antals-loft: ALLE varetyper cappes ved disponibelt (intet oversalg), UNDTAGET
       //    auktions-fri-bestilling (priser ikke stemplet i dag) + forward-dækkede datoer.
+      // Åbn til-vindue (ikke-streng, fx salater): før fristen laves der mere → intet loft (= klientens rowMaxQty).
+      if (!a.strengtLager && a.aabnTil) {
+        const f = aabnTilFrist(a.aabnTil, deliveryDate, deadline, a.leadDage ?? 0, holidaySet)
+        if (f && Date.now() < f.getTime()) continue
+      }
       const auctionFree = a.auktionsKategori && (a.priserOpdateret ? a.priserOpdateret.slice(0, 10) !== todayStr : true)
       if (!auctionFree && !isForward && disp > 0 && l.quantity > disp)
         overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
