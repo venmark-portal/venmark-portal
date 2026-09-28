@@ -208,6 +208,10 @@ interface ItemAvailStatus {
 }
 
 // Parser BC OData Time "PT10H30M00S" eller "10:30:00" → { hh, mm } eller null (0T = ingen begrænsning)
+// Frist-tekst der er INFO (genskaffelses-vindue, varen har lager), ikke en rød deadline. Rendereren
+// skelner på dette præfiks (også i ItemSearchModal).
+const GENSKAF_PREFIX = 'Vi genskaffer flere'
+
 function parseAabnTil(s: string): { hh: number; mm: number } | null {
   const iso = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
   if (iso) {
@@ -698,7 +702,9 @@ export function OrderRow({
         </div>
       )}
       {!blockedLabel && aabnTilLabel && (
-        <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
+        <div className={`mb-1 flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 w-fit ${
+          aabnTilLabel.startsWith(GENSKAF_PREFIX) ? 'font-medium text-sky-700 bg-sky-50' : 'font-bold text-red-600 bg-red-50'
+        }`}>
           <Clock size={9} />
           {aabnTilLabel}
         </div>
@@ -1438,8 +1444,16 @@ export default function OrderList({
     const itemFrist = getFristDato(itemNo)
     const eff = itemFrist && deadline ? (itemFrist <= deadline ? itemFrist : deadline)
               : (itemFrist ?? deadline ?? null)
-    if (auktionOnly && eff && eff.getTime() <= Date.now()) return ''
-    if (eff) return formatFristLabel(eff)
+    // Frist passeret → lageret afgør alene; "Maks X"/Udsolgt siger det, en frist-tekst forvirrer.
+    if (eff && eff.getTime() <= Date.now()) return ''
+    if (eff) {
+      // Fristen er et GENSKAFFELSES-vindue (fx salater: produktionen laver mere frem til 11:30), ikke
+      // en bestillingsfrist for det der ALLEREDE er på lager. Har varen lager til datoen → neutral info
+      // (kunden skal ikke tro der intet er). Kun uden lager er fristen en reel deadline → rød tekst.
+      const cap = rowMaxQty(itemNo)
+      const harLager = cap == null || cap > 0
+      return harLager ? formatGenskafLabel(eff) : formatFristLabel(eff)
+    }
     const dag = getFristDagLabel(itemNo)
     return dag ? base.replace('Bestil inden', `Bestil ${dag} inden`) : base
   }
@@ -1453,6 +1467,9 @@ export default function OrderList({
     const hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0')
     return `Bestil ${dag} inden ${hh}:${mm}`
   }
+  // "Vi genskaffer flere frem til [i dag|i morgen|wd d/m] kl. HH:MM" — neutral info (se GENSKAF_PREFIX).
+  const formatGenskafLabel = (d: Date): string =>
+    formatFristLabel(d).replace(/^Bestil (.+) inden (\d\d:\d\d)$/, `${GENSKAF_PREFIX} frem til $1 kl. $2`)
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate
     ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
