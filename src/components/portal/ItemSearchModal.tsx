@@ -424,12 +424,19 @@ export default function ItemSearchModal({
                     {getBlockLabel ? getBlockLabel(item.number, status.blockLabel) : status.blockLabel}
                   </div>
                 )}
-                {!status.blockLabel && status.aabnTilLabel && (!getFristLabel || getFristLabel(item.number, status.aabnTilLabel)) && (
-                  <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
-                    <Clock size={9} />
-                    {getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel}
-                  </div>
-                )}
+                {!status.blockLabel && status.aabnTilLabel && (() => {
+                  const txt = getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel
+                  if (!txt) return null
+                  const info = txt.startsWith('Vi genskaffer')   // = OrderList.GENSKAF_PREFIX → neutral, ikke rød
+                  return (
+                    <div className={`mb-1 flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 w-fit ${
+                      info ? 'font-medium text-sky-700 bg-sky-50' : 'font-bold text-red-600 bg-red-50'
+                    }`}>
+                      <Clock size={9} />
+                      {txt}
+                    </div>
+                  )
+                })()}
 
                 <div className="flex items-center gap-2">
                   {/* Checkbox i favMode */}
