@@ -35,18 +35,22 @@ export async function GET(req: NextRequest) {
   const chainGrp   = (session?.user as any)?.bcChainPriceGroup as string ?? ''
   const userId     = (session?.user as any)?.id                as string
 
-  const category = req.nextUrl.searchParams.get('category') ?? ''
-  if (!category) return NextResponse.json({ error: 'category mangler' }, { status: 400 })
+  // Én eller FLERE kategorier (kommasepareret) — "Alle varer"/hovedkategori henter i batches.
+  // Loft på 10 pr. kald, så et kald ikke vokser sig ubegrænset stort.
+  const categories = (req.nextUrl.searchParams.get('category') ?? '')
+    .split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
+  if (categories.length === 0) return NextResponse.json({ error: 'category mangler' }, { status: 400 })
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Hent priser + varenumre i kategori + blokerede + rangering parallelt
-  const [portalPrices, categoryNos, blockedRows, webshopVisible] = await Promise.all([
+  // Hent priser + varenumre i kategori(er) + blokerede + rangering parallelt
+  const [portalPrices, categoryLists, blockedRows, webshopVisible] = await Promise.all([
     getPortalPrices(customerNo, priceGrp, chainGrp),
-    getItemNumbersByCategory(category),
+    Promise.all(categories.map(c => getItemNumbersByCategory(c))),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
     getWebshopVisibleItemNos().catch(() => null),
   ])
+  const categoryNos = Array.from(new Set(categoryLists.flat()))
 
   const blockedSet  = new Set(blockedRows.map(b => b.bcItemNumber))
   const filteredNos = categoryNos.filter(no =>

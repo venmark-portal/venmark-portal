@@ -158,6 +158,21 @@ function buildCatTree(cats: BCItemCategory[]): CatNode[] {
   return roots
 }
 
+// "Alle varer"-chippen i katalog-navigationen (pseudo-kategori, findes ikke i BC).
+const ALLE_VARER = '__ALLE__'
+
+// Kategori-træ → flad liste i visningsrækkefølge (forælder før børn), med sti-navn til overskriften
+// ("Fersk fisk › Fars og pluk"). Forælderen er med, da varer også kan ligge direkte på den.
+function flattenCats(nodes: CatNode[], prefix = ''): { code: string; name: string }[] {
+  const out: { code: string; name: string }[] = []
+  for (const n of nodes) {
+    const name = prefix ? `${prefix} › ${n.displayName}` : n.displayName
+    out.push({ code: n.code, name })
+    out.push(...flattenCats(n.children, name))
+  }
+  return out
+}
+
 function findCatNode(nodes: CatNode[], code: string): CatNode | null {
   return nodes.find(n => n.code === code) ?? null
 }
@@ -1264,6 +1279,14 @@ export default function OrderList({
   const [categoryItems, setCategoryItems]           = useState<EnrichedItem[]>([])
   const [categoryPriceTiers, setCategoryPriceTiers] = useState<PriceTier[]>([])
   const [categoryLoading, setCategoryLoading]       = useState(false)
+  // Grupperet katalog ("Alle varer" eller en hovedkategori m. underkategorier): kategorierne
+  // hentes i batches, efterhånden som kunden scroller. catGroups = de indlæste sektioner.
+  const [catGroups, setCatGroups]     = useState<{ code: string; name: string; items: EnrichedItem[] }[]>([])
+  const [catQueue, setCatQueue]       = useState<{ code: string; name: string }[]>([])
+  const [catNext, setCatNext]         = useState(0)
+  const [catGroupLoading, setCatGroupLoading] = useState(false)
+  const catGroupToken = useRef(0)       // ny visning → gamle svar ignoreres
+  const catSentinel   = useRef<HTMLDivElement | null>(null)
 
   // Vis-pris for en vare i søgemodalen: kundens aftalte trappepris → invoice-estimat → varekort.
   // (Uden dette viser søgningen varekortets rå unitPrice — fx 999-system-prisen.)
@@ -1925,9 +1948,17 @@ export default function OrderList({
   const l1Node         = catalogPath.length >= 1 ? findCatNode(l0Cats, catalogPath[0]) : null
   const l2Node         = catalogPath.length >= 2 ? findCatNode(l1Node?.children ?? [], catalogPath[1]) : null
 
+  // Grupperet visning: "Alle varer" ELLER en valgt kategori der har underkategorier (før: "Vælg
+  // underkategori"). Enkelt-kategori uden børn bruger den oprindelige enkelt-hentning.
+  const activeNode = activeCategory === ALLE_VARER || catalogPath.length === 0 ? null
+    : catalogPath.length === 1 ? l1Node
+    : catalogPath.length === 2 ? l2Node
+    : findCatNode(l2Node?.children ?? [], catalogPath[2])
+  const groupedMode = activeCategory === ALLE_VARER || (!!activeNode && activeNode.children.length > 0)
+
   // Hent varer i valgt kategori ved navigation
   useEffect(() => {
-    if (!activeCategory) {
+    if (!activeCategory || groupedMode) {
       setCategoryItems([])
       setCategoryPriceTiers([])
       return
@@ -1950,6 +1981,64 @@ export default function OrderList({
     return () => { cancelled = true }
   }, [activeCategory]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Grupperet katalog: kø af kategorier, hentes i batches ved scroll ─────────
+  // Ny visning → nulstil og byg køen (hele træet for "Alle varer", ellers den valgte gren).
+  useEffect(() => {
+    catGroupToken.current++
+    setCatGroups([]); setCatNext(0); setCatGroupLoading(false)
+    if (!groupedMode) { setCatQueue([]); return }
+    setCatQueue(activeCategory === ALLE_VARER ? flattenCats(l0Cats) : (activeNode ? flattenCats([activeNode]) : []))
+  }, [activeCategory, groupedMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Hent næste "side": kategorier i batches à 6 (ét API-kald pr. batch) indtil ≥ 30 nye varer eller
+  // køen er tom — tomme kategorier springes over, så én side aldrig ender tom.
+  const loadMoreCats = useCallback(async () => {
+    if (catGroupLoading || catNext >= catQueue.length) return
+    const token = catGroupToken.current
+    setCatGroupLoading(true)
+    let next = catNext
+    let loaded = 0
+    const newGroups: { code: string; name: string; items: EnrichedItem[] }[] = []
+    const tiers: PriceTier[] = []
+    const nos: string[] = []
+    try {
+      while (next < catQueue.length && loaded < 30) {
+        const batch = catQueue.slice(next, next + 6)
+        next += batch.length
+        const res = await fetch(`/api/portal/category-items?category=${encodeURIComponent(batch.map(b => b.code).join(','))}`)
+        if (token !== catGroupToken.current) return
+        const data = res.ok ? await res.json() : { items: [], priceTiers: [] }
+        const items: EnrichedItem[] = data.items ?? []
+        for (const b of batch) {
+          const its = items.filter(i => i.itemCategoryCode === b.code)
+          if (its.length) { newGroups.push({ ...b, items: its }); loaded += its.length }
+        }
+        tiers.push(...(data.priceTiers ?? []))
+        nos.push(...items.map(i => i.number))
+      }
+      if (token !== catGroupToken.current) return
+      setCatGroups(prev => [...prev, ...newGroups])
+      setCategoryPriceTiers(prev => [...prev, ...tiers])
+      setCatNext(next)
+      if (nos.length) ensureAvailability(nos)
+    } catch { /* næste scroll prøver igen */ }
+    finally { if (token === catGroupToken.current) setCatGroupLoading(false) }
+  }, [catGroupLoading, catNext, catQueue, ensureAvailability])
+
+  // Første side når køen er bygget.
+  useEffect(() => {
+    if (catQueue.length && catNext === 0 && catGroups.length === 0) loadMoreCats()
+  }, [catQueue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Uendelig scroll: bunden af listen i syne (400px forvarsel) → næste side.
+  useEffect(() => {
+    const el = catSentinel.current
+    if (!el || !groupedMode) return
+    const io = new IntersectionObserver(e => { if (e[0]?.isIntersecting) loadMoreCats() }, { rootMargin: '400px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [groupedMode, loadMoreCats])
+
   const specialReservedNos = new Set(
     Array.from(specialReservations.keys())
       .map(vId => specialVarer.find(v => v.id === vId)?.bcItemNumber)
@@ -1959,6 +2048,29 @@ export default function OrderList({
   const searchedLines = Array.from(lines.values()).filter(
     l => !promoNos.has(l.item.number) && !favNos.has(l.item.number) && !venmarkNos.has(l.item.number) && !standingNos.has(l.item.number) && !specialReservedNos.has(l.item.number)
   )
+
+  // Én katalog-række (enkelt kategori OG grupperet visning) — samme status/loft/frist som resten.
+  const renderCatalogRow = (item: EnrichedItem, keyPrefix: string) => {
+    const st = rowAvailStatus(item.number)
+    return (
+      <OrderRow
+        key={`${keyPrefix}-${item.number}`}
+        item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
+        onQty={qty => setQty(item, qty)}
+        priceTiers={[...priceTiers, ...categoryPriceTiers]}
+        isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+        selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+        onOpenDetail={() => setDetailItem(item)}
+        unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+        blockedLabel={st.blockLabel}
+        disponibeltLabel={st.disponibeltLabel}
+        disponibeltColor={st.disponibeltColor}
+        aabnTilLabel={st.aabnTilLabel}
+        infoNote={rowInfoNote(item.number)}
+        estimatedPrice={estimatedPrices[item.number]}
+      />
+    )
+  }
 
   // Ugedagsnavn til sektion-header
   const weekdayName = ['', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'][selectedWeekday] ?? ''
@@ -2131,6 +2243,14 @@ export default function OrderList({
               }`}
             >
               Mine varer
+            </button>
+            <button
+              onClick={() => setCatalogPath([ALLE_VARER])}
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                activeCategory === ALLE_VARER ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Alle varer
             </button>
             {l0Cats.map(cat => (
               <button
@@ -2470,36 +2590,50 @@ export default function OrderList({
                   : i === 1
                   ? findCatNode(l1Node?.children ?? [], code)
                   : findCatNode(l2Node?.children ?? [], code)
-                return <span key={code}>{i > 0 && <span className="mx-1 opacity-50">›</span>}{node?.displayName ?? code}</span>
+                return <span key={code}>{i > 0 && <span className="mx-1 opacity-50">›</span>}{code === ALLE_VARER ? 'Alle varer' : (node?.displayName ?? code)}</span>
               })}
-              <span className="opacity-50 ml-1">— alle varer</span>
+              {activeCategory !== ALLE_VARER && <span className="opacity-50 ml-1">— alle varer</span>}
             </div>
-            {categoryLoading && (
+
+            {/* Grupperet: én sektion pr. kategori, næste side hentes ved scroll / "Vis flere" */}
+            {groupedMode && (
+              <>
+                {catGroups.map(g => (
+                  <div key={`grp-${g.code}`}>
+                    <div className="sticky top-0 z-10 px-3 py-1.5 bg-gray-100/95 backdrop-blur border-y border-gray-200 text-xs font-bold text-gray-700">
+                      {g.name} <span className="font-normal text-gray-400">({g.items.length})</span>
+                    </div>
+                    <div className="divide-y divide-blue-200">
+                      {g.items.map(item => renderCatalogRow(item, `grp-${g.code}`))}
+                    </div>
+                  </div>
+                ))}
+                <div ref={catSentinel} />
+                {catGroupLoading && (
+                  <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
+                )}
+                {!catGroupLoading && catNext < catQueue.length && (
+                  <div className="px-4 py-4 text-center">
+                    <button onClick={() => loadMoreCats()} className="rounded-full bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">
+                      Vis flere varer
+                    </button>
+                  </div>
+                )}
+                {!catGroupLoading && catQueue.length > 0 && catNext >= catQueue.length && catGroups.length === 0 && (
+                  <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen varer i denne kategori</div>
+                )}
+              </>
+            )}
+
+            {!groupedMode && categoryLoading && (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
             )}
-            {!categoryLoading && categoryItems.length === 0 && (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Vælg underkategori</div>
+            {!groupedMode && !categoryLoading && categoryItems.length === 0 && (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen varer i denne kategori</div>
             )}
-            {!categoryLoading && categoryItems.length > 0 && (
+            {!groupedMode && !categoryLoading && categoryItems.length > 0 && (
               <div className="divide-y divide-blue-200">
-                {categoryItems.map(item => (
-                  <OrderRow
-                    key={`cat-${item.number}`}
-                    item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
-                    onQty={qty => setQty(item, qty)}
-                    priceTiers={[...priceTiers, ...categoryPriceTiers]}
-                    isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
-                    selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
-                    onOpenDetail={() => setDetailItem(item)}
-                    unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
-                    blockedLabel={rowAvailStatus(item.number).blockLabel}
-                    disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
-                    disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
-                    aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
-                    infoNote={rowInfoNote(item.number)}
-                    estimatedPrice={estimatedPrices[item.number]}
-                  />
-                ))}
+                {categoryItems.map(item => renderCatalogRow(item, 'cat'))}
               </div>
             )}
           </>
