@@ -78,14 +78,7 @@ function computeStatus(
 
   if (isToday) {
     if (avail.lukAfgang) return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
-    if (avail.aabnTil) {
-      const p = parseAabnTil(avail.aabnTil)
-      if (p) {
-        const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
-        if (nowSec > p.hh * 3600 + p.mm * 60)
-          return { blocked: true, blockLabel: `Frist kl. ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')} overskredet`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
-      }
-    }
+    // Åbn til passeret blokerer ikke — efter fristen afgør lageret (se OrderList.getItemAvailStatus).
     const disp = avail.disponibelt
     if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
@@ -424,12 +417,19 @@ export default function ItemSearchModal({
                     {getBlockLabel ? getBlockLabel(item.number, status.blockLabel) : status.blockLabel}
                   </div>
                 )}
-                {!status.blockLabel && status.aabnTilLabel && (!getFristLabel || getFristLabel(item.number, status.aabnTilLabel)) && (
-                  <div className="mb-1 flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit">
-                    <Clock size={9} />
-                    {getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel}
-                  </div>
-                )}
+                {!status.blockLabel && status.aabnTilLabel && (() => {
+                  const txt = getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel
+                  if (!txt) return null
+                  const info = txt.startsWith('Vi genskaffer')   // = OrderList.GENSKAF_PREFIX → neutral, ikke rød
+                  return (
+                    <div className={`mb-1 flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 w-fit ${
+                      info ? 'font-medium text-sky-700 bg-sky-50' : 'font-bold text-red-600 bg-red-50'
+                    }`}>
+                      <Clock size={9} />
+                      {txt}
+                    </div>
+                  )
+                })()}
 
                 <div className="flex items-center gap-2">
                   {/* Checkbox i favMode */}
