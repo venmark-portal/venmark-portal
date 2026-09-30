@@ -358,8 +358,13 @@ export async function tabteKunder(fra = 7, til = 21, antal = 60): Promise<TabtKu
   // de ligger i gruppen PERSONALE og er ikke en kæde.
   const kaede = new Map<string, string>()   // kundenr. → navn
   for (const c of grupper) {
+    const navn = String(c.name ?? c.number)
+    // XVEN i navnet markerer en kunde der ikke skal følges op på (Claus, 30-09).
+    // 96 af kartotekets kunder er markeret sådan, og uden filteret fyldte de
+    // listen med butikker ingen skulle ringe til.
+    if (/xven/i.test(navn)) continue
     if (KAEDEGRUPPER.has(String(c.postingGroup ?? '').trim().toUpperCase())) {
-      kaede.set(String(c.number), String(c.name ?? c.number))
+      kaede.set(String(c.number), navn)
     }
   }
   // Kan grupperne ikke hentes, er listen meningsløs — så hellere tom end forkert.
