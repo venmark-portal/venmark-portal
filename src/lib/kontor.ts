@@ -15,8 +15,15 @@ async function bcHent(sti: string, params: Record<string, string>): Promise<any[
   return (await res.json()).value ?? []
 }
 
-/** Så mange tegn er der plads til på skærmen (Claus, målt på den rigtige skærm). */
-const MAX_TEGN = 75
+/**
+ * Så mange tegn sendes med til skærmen.
+ *
+ * Tallet var 75, målt da skriften var større. Med den mindre skrift er der
+ * plads til omtrent det dobbelte, og CSS'ens `truncate` klipper alligevel ved
+ * kanten — så det her skal bare ikke være strammere end skærmen selv. Sættes
+ * det for lavt, ryger slutningen af en besked der havde plads.
+ */
+const MAX_TEGN = 160
 
 const klip = (s: string, n: number = MAX_TEGN) => {
   const r = String(s ?? '').replace(/\s+/g, ' ').trim()
@@ -324,37 +331,50 @@ export interface TabtKunde {
  * Vi henter et vindue der er bredere end `til`, så en kunde der købte for nylig
  * ikke fejlagtigt ser ud til at være væk.
  */
+/** Kædekunderne — de eneste der er interessante her (Claus, 30-09). */
+const KAEDEGRUPPER = new Set(['F. HANDEL', 'COOP', 'DAGROFA'])
+
 export async function tabteKunder(fra = 7, til = 21, antal = 60): Promise<TabtKunde[]> {
   const dag = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10)
-  const fakturaer = await bcHent('postedSalesInvoices', {
-    '$filter': `postingDate ge ${dag(til + 7)}`,
-    '$top':    '5000',
-  })
+  const siden = dag(til + 7)
 
-  // Personalet handler som privatkunder og skal ikke med. De kendes udelukkende
-  // på DEBITORBOGFØRINGSGRUPPEN PERSONALE (Claus) — ikke prisgruppen, for den
-  // kan en rigtig kunde også have. Hverken navn eller kundenummer røber det.
-  // Kan gruppen ikke hentes, viser vi hellere for meget end at skjule en rigtig
-  // kunde i tavshed.
-  const personale = new Set<string>()
-  try {
-    for (const c of await bcHent('customerGroups', { '$top': '5000' })) {
-      if (String(c.postingGroup ?? '').trim().toUpperCase() === 'PERSONALE') {
-        personale.add(String(c.number))
-      }
+  // KILDEN ER LEVERINGER, IKKE FAKTURAER.
+  //
+  // Nogle kædebutikker er gennemfakturerede: varerne køres ud til butikken, men
+  // regningen sendes samlet et andet sted hen. Ser man kun på fakturaer, ligner
+  // sådan en butik en kunde der er holdt op med at købe — og det er præcis den
+  // fejl denne liste ikke må lave.
+  //
+  // Leveringer fanger dem alle. Fakturaer tages med som supplement: en direkte
+  // faktura uden levering er sjælden, men den findes.
+  const [leveringer, fakturaer, grupper] = await Promise.all([
+    bcHent('deliveryShipments', { '$filter': `postingDate ge ${siden}`, '$select': 'customerNumber,customerName,postingDate' }),
+    bcHent('postedSalesInvoices', { '$filter': `postingDate ge ${siden}`, '$select': 'customerNumber,customerName,postingDate' })
+      .catch(() => [] as any[]),
+    bcHent('customerGroups', { '$select': 'number,name,postingGroup' }).catch(() => [] as any[]),
+  ])
+
+  // Kun kædekunder. Personalet forsvinder af sig selv med denne afgrænsning —
+  // de ligger i gruppen PERSONALE og er ikke en kæde.
+  const kaede = new Map<string, string>()   // kundenr. → navn
+  for (const c of grupper) {
+    if (KAEDEGRUPPER.has(String(c.postingGroup ?? '').trim().toUpperCase())) {
+      kaede.set(String(c.number), String(c.name ?? c.number))
     }
-  } catch (e) {
-    console.error('[kontor] customerGroups:', e instanceof Error ? e.message : e)
   }
+  // Kan grupperne ikke hentes, er listen meningsløs — så hellere tom end forkert.
+  if (kaede.size === 0) return []
 
   const sidste = new Map<string, { navn: string; dato: string }>()
-  for (const f of fakturaer) {
-    const nr = String(f.customerNumber ?? '')
-    if (!nr || personale.has(nr)) continue
-    const dato = String(f.postingDate ?? '').slice(0, 10)
+  const noter = (nr: string, navnFraBilag: string, dato: string) => {
+    if (!nr || !kaede.has(nr) || !dato) return
     const kendt = sidste.get(nr)
-    if (!kendt || dato > kendt.dato) sidste.set(nr, { navn: String(f.customerName ?? nr), dato })
+    if (!kendt || dato > kendt.dato) {
+      sidste.set(nr, { navn: kaede.get(nr) || navnFraBilag || nr, dato })
+    }
   }
+  for (const l of leveringer) noter(String(l.customerNumber ?? ''), String(l.customerName ?? ''), String(l.postingDate ?? '').slice(0, 10))
+  for (const f of fakturaer)  noter(String(f.customerNumber ?? ''), String(f.customerName ?? ''), String(f.postingDate ?? '').slice(0, 10))
 
   const idag = new Date(new Date().toISOString().slice(0, 10)).getTime()
   const ud: TabtKunde[] = []

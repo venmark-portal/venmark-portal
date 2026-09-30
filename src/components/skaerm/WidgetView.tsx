@@ -85,12 +85,15 @@ function Beskeder({ data }: { data: BeskedFeed }) {
             <div key={i} className="flex items-baseline gap-[0.4vw] border-b border-white/10 py-[0.2vh]">
               {/* Webordre med "besked til Venmark" er den ene slags ordre nogen skal
                   reagere på — den får kraftigere farve, så den ikke drukner. */}
-              <span className={`shrink-0 rounded px-[0.3vw] text-[1.25vh] font-semibold ${
+              {/* En tand mindre end før (1,55 → 1,35vh), så der er plads til mere
+                  af selve beskeden. CSS'ens truncate klipper ved kanten, så
+                  teksten fylder linjen ud uanset skærmbredde. */}
+              <span className={`shrink-0 rounded px-[0.3vw] text-[1.1vh] font-semibold ${
                 b.harBesked ? 'bg-amber-400/40 text-amber-100' : s.farve
               }`}>{s.navn}</span>
-              <span className="w-[4.5vw] shrink-0 text-[1.45vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
-              <span className="w-[7vw] shrink-0 truncate text-[1.55vh] text-slate-300" title={b.fra}>{b.fra}</span>
-              <span className={`min-w-0 flex-1 truncate text-[1.55vh] ${b.harBesked ? 'text-amber-100' : 'text-white'}`}>{b.tekst}</span>
+              <span className="w-[4vw] shrink-0 text-[1.3vh] tabular-nums text-slate-500">{klokkeslaet(b.tid)}</span>
+              <span className="w-[6.5vw] shrink-0 truncate text-[1.35vh] text-slate-300" title={b.fra}>{b.fra}</span>
+              <span className={`min-w-0 flex-1 truncate text-[1.35vh] ${b.harBesked ? 'text-amber-100' : 'text-white'}`}>{b.tekst}</span>
             </div>
           )
         })}
@@ -461,7 +464,15 @@ function Saelgere({ data }: { data: SaelgerStat }) {
   const pct = (d: number, i: number) => (i === 0 ? 0 : Math.round((d / i) * 100))
 
   return (
-    <Frame title={`Sælgere i dag${data.linjerIAlt ? ` (${nf.format(data.linjerIAlt)} linjer · ${pct(data.hurtigeIAlt, data.linjerIAlt)}% hurtig)` : ''}`}>
+    <Frame title={
+      `Sælgere i dag${data.linjerIAlt
+        ? ` (${nf.format(data.linjerIAlt)} linjer · ${pct(data.hurtigeIAlt, data.linjerIAlt)}% hurtig` +
+          // Tempoet lige nu, og det højeste minut i dag som målestok for hvad
+          // der kan lade sig gøre når det spidser til.
+          (data.prMinut !== null ? ` · ${nf1.format(data.prMinut)}/min` : '') +
+          (data.topPrMinut > 1 ? ` · top ${nf.format(data.topPrMinut)}` : '') + ')'
+        : ''}`
+    }>
       {data.mangler
         ? <p className="text-[1.9vh] text-amber-400">Afventer BC-opdatering: {data.mangler}</p>
         : data.saelgere.length === 0
@@ -502,18 +513,20 @@ function Telefoni({ data }: { data: TelefoniStat }) {
         ? <p className="text-[2vh] text-slate-400">Ingen opkald endnu i dag.</p>
         : (
           <Rullende>
-            <div className="flex items-baseline gap-[0.5vw] border-b border-white/20 pb-[0.3vh] text-[1.5vh] uppercase tracking-wide text-slate-400">
+            {/* Samme skriftstørrelse som beskederne (1,35vh) — de to felter står
+                ved siden af hinanden, og forskellig størrelse så tilfældig ud. */}
+            <div className="flex items-baseline gap-[0.5vw] border-b border-white/20 pb-[0.3vh] text-[1.15vh] uppercase tracking-wide text-slate-400">
               <span className="min-w-0 flex-1">Person</span>
               <span className="w-[3.5vw] shrink-0 text-right">Ind</span>
               <span className="w-[3.5vw] shrink-0 text-right">Ud</span>
               <span className="w-[4.5vw] shrink-0 text-right">Min</span>
             </div>
             {data.personer.map(p => (
-              <div key={p.navn} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.3vh]">
-                <span className="min-w-0 flex-1 truncate text-[2vh] text-white">{p.navn}</span>
-                <span className="w-[3.5vw] shrink-0 text-right text-[2vh] tabular-nums text-emerald-300">{nf.format(p.ind)}</span>
-                <span className="w-[3.5vw] shrink-0 text-right text-[2vh] tabular-nums text-sky-300">{nf.format(p.ud)}</span>
-                <span className="w-[4.5vw] shrink-0 text-right text-[2vh] font-semibold tabular-nums text-white">{nf.format(min(p.sekunder))}</span>
+              <div key={p.navn} className="flex items-baseline gap-[0.5vw] border-b border-white/10 py-[0.25vh]">
+                <span className="min-w-0 flex-1 truncate text-[1.35vh] text-white">{p.navn}</span>
+                <span className="w-[3.5vw] shrink-0 text-right text-[1.35vh] tabular-nums text-emerald-300">{nf.format(p.ind)}</span>
+                <span className="w-[3.5vw] shrink-0 text-right text-[1.35vh] tabular-nums text-sky-300">{nf.format(p.ud)}</span>
+                <span className="w-[4.5vw] shrink-0 text-right text-[1.35vh] font-semibold tabular-nums text-white">{nf.format(min(p.sekunder))}</span>
               </div>
             ))}
             {/* Ubesvarede kan IKKE tages fra trunk-loggen — dér svarer omstillingen
