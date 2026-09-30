@@ -83,6 +83,7 @@ export default async function PortalLayout({
               <a href="/portal/beskeder"       className="hover:text-gray-900 transition-colors">Beskeder</a>
               <a href="/portal/reklamationer"  className="hover:text-gray-900 transition-colors">Reklamationer</a>
               <a href="/portal/profil"         className="hover:text-gray-900 transition-colors">Profil</a>
+              <a href="/portal/hjaelp"         className="hover:text-gray-900 transition-colors">Hjælp</a>
             </nav>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{session.user?.name}</span>
