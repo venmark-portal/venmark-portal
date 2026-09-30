@@ -10,6 +10,7 @@ import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kont
 import type { PakkeriStatus } from '@/lib/pakkeri'
 import type { SaelgerStat } from '@/lib/saelgere'
 import type { TelefoniStat } from '@/lib/telefoni'
+import type { KalenderSvar } from '@/lib/kalender'
 
 export interface WidgetPayload {
   widgetId:  string
@@ -46,6 +47,7 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
     case 'pakkeri-status':   return <Pakkeri data={payload.data as PakkeriStatus} />
     case 'saelger-linjer':   return <Saelgere data={payload.data as SaelgerStat} />
     case 'telefoni':         return <Telefoni data={payload.data as TelefoniStat} />
+    case 'kalender':         return <Kalender data={payload.data as KalenderSvar} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
 }
@@ -561,6 +563,60 @@ function Telefoni({ data }: { data: TelefoniStat }) {
                 </div>
               )
             })()}
+          </Rullende>
+        )}
+    </Frame>
+  )
+}
+
+function Kalender({ data }: { data: KalenderSvar }) {
+  const dk = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' })
+  const idag = dk.format(new Date())
+
+  // Graph leverer allerede tidspunkterne i dansk tid (Prefer-headeren), så de
+  // klippes direkte ud af strengen. new Date() ville lægge en tidszone oveni.
+  const kl = (iso: string) => iso.slice(11, 16)
+  const dagAf = (iso: string) => iso.slice(0, 10)
+
+  const dage = [idag, dk.format(new Date(Date.now() + 864e5))]
+
+  return (
+    <Frame title="Kalender">
+      {data.mangler
+        ? <p className="text-[1.6vh] text-amber-400">Afventer tilladelse: {data.mangler}</p>
+        : data.aftaler.length === 0
+        ? <p className="text-[1.6vh] text-slate-400">Ingen aftaler i dag eller i morgen.</p>
+        : (
+          <Rullende>
+            {dage.map(d => {
+              const paaDagen = data.aftaler.filter(a => dagAf(a.start) === d)
+              if (paaDagen.length === 0) return null
+              return (
+                <div key={d} className="mb-[0.5vh]">
+                  <div className="border-b border-white/20 pb-[0.2vh] text-[1.2vh] font-semibold uppercase tracking-wide text-sky-400">
+                    {d === idag ? 'I dag' : 'I morgen'}
+                  </div>
+                  {paaDagen.map(a => (
+                    <div key={a.id + a.person} className="flex items-baseline gap-[0.4vw] border-b border-white/10 py-[0.15vh]">
+                      {/* Tidspunktet er det vigtigste (Claus) — derfor forrest,
+                          i fast bredde og med tabulartal, så kolonnen flugter. */}
+                      <span className="w-[5.5vw] shrink-0 text-[1.35vh] font-semibold tabular-nums text-white">
+                        {a.heledag ? 'hele dagen' : `${kl(a.start)}–${kl(a.slut)}`}
+                      </span>
+                      <span className="w-[7vw] shrink-0 truncate text-[1.3vh] text-slate-400" title={a.person}>
+                        {a.person}
+                      </span>
+                      <span className={`min-w-0 flex-1 truncate text-[1.35vh] ${
+                        a.aflyst ? 'text-slate-500 line-through' : 'text-slate-200'
+                      }`}>
+                        {a.emne}
+                        {a.sted && <span className="text-slate-500"> · {a.sted}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </Rullende>
         )}
     </Frame>

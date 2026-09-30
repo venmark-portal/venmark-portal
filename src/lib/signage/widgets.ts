@@ -14,6 +14,7 @@ import {
 import { pakkeriStatus, type PakkeriStatus } from '@/lib/pakkeri'
 import { saelgerStat, type SaelgerStat } from '@/lib/saelgere'
 import { telefoniStat, type TelefoniStat } from '@/lib/telefoni'
+import { kalenderIDagOgIMorgen, type KalenderSvar } from '@/lib/kalender'
 
 export interface WidgetParamDef {
   key:     string
@@ -221,6 +222,14 @@ DEFS.push(
     ttlSec:      300,
     params: [],
     async fetch(): Promise<TelefoniStat> { return telefoniStat() },
+  },
+  {
+    id:          'kalender',
+    name:        'Kalender i dag og i morgen',
+    description: 'Aftaler fra alle Outlook-kalendere i huset — i dag og i morgen, med tidspunktet først.',
+    ttlSec:      300,
+    params: [],
+    async fetch(): Promise<KalenderSvar> { return kalenderIDagOgIMorgen() },
   },
 )
 
