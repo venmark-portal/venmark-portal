@@ -89,13 +89,23 @@ export async function hentAftaler(fra: string, til: string): Promise<KalenderSva
     return { aftaler: [], personer: [], mangler: e instanceof Error ? e.message : String(e) }
   }
 
+  // At LÆSE en kalender og at FINDE UD AF hvem der har en, er to forskellige
+  // rettigheder. Calendars.Read giver kun det første; brugerlisten kræver
+  // User.ReadBasic.All. Uden den kan vi kun læse postkasser vi kender adressen
+  // på i forvejen — og så er "alle der bruger kalenderen" ikke muligt.
   let brugere: any[] | null
   try {
     brugere = await graphHent(
       '/users?$select=id,displayName,mail,accountEnabled&$top=999', token,
     )
   } catch (e) {
-    if (e instanceof TilladelseMangler) return { aftaler: [], personer: [], mangler: e.message }
+    if (e instanceof TilladelseMangler) {
+      return {
+        aftaler: [], personer: [],
+        mangler: 'User.ReadBasic.All mangler — Calendars.Read kan læse kalenderne, ' +
+                 'men ikke slå op hvem der har en',
+      }
+    }
     throw e
   }
 
