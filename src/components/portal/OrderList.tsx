@@ -94,6 +94,50 @@ interface SpecialReservation {
   kg: number
 }
 
+// ─── Dagens priser ───────────────────────────────────────────────────────────
+
+/**
+ * Fortæller om dagens priser er sat.
+ *
+ * Kilden er "Portal Priser Opdateret" i BC's Venmark Setup — det tidsstempel
+ * prisrunden sætter når den er kørt færdig. Det ligger på hver disponibel-række,
+ * fordi det er en opsætningsværdi der følger med svaret; alle rækker har samme
+ * værdi, så den første der har den er nok.
+ *
+ * Det er den SAMME dato portalen i forvejen bruger til at afgøre om auktionsvarer
+ * kan bestilles frit. Kunden så konsekvensen uden at kunne se årsagen — nu står
+ * den øverst.
+ */
+function PriserOpdateretBanner({
+  avail, idag,
+}: { avail: Record<string, BCItemAvailability>; idag: string }) {
+  const stempel = Object.values(avail).find(a => a?.priserOpdateret)?.priserOpdateret ?? null
+  // Ingen rækker hentet endnu (siden er ved at loade) — sig hellere ingenting
+  // end at påstå at priserne ikke er opdateret.
+  if (Object.keys(avail).length === 0) return null
+
+  const opdateret = !!stempel && stempel.slice(0, 10) === idag
+  const kl = stempel ? stempel.slice(11, 16) : null
+
+  return (
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
+      opdateret
+        ? 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
+        : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
+    }`}>
+      <span className="text-base leading-none">{opdateret ? '✓' : '⏳'}</span>
+      {opdateret ? (
+        <span>Dagens priser <strong>er opdateret</strong>{kl && ` kl. ${kl}`}.</span>
+      ) : (
+        <span>
+          Dagens priser er <strong>ikke opdateret endnu</strong> — især auktionsfisk kan ændre sig.
+          Skriv evt. din maks. pris i bemærkning.
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── Katalog-kategori-træ ─────────────────────────────────────────────────────
 
 type CatNode = { code: string; displayName: string; sortNo: number; presentationOrder: number; children: CatNode[] }
@@ -2120,6 +2164,8 @@ export default function OrderList({
 
   return (
     <div className="space-y-4">
+      <PriserOpdateretBanner avail={itemAvailabilities} idag={localYmd(new Date())} />
+
       {/* Kurven følger med ned ad siden, så man altid kan se hvad der er valgt og
           komme videre uden at scrolle til bunden. top-offset = højden på portalens
           egen sticky topbar (mobil ~52px, desktop ~65px). */}
