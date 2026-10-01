@@ -116,8 +116,22 @@ function PriserOpdateretBanner({
   // end at påstå at priserne ikke er opdateret.
   if (Object.keys(avail).length === 0) return null
 
-  const opdateret = !!stempel && stempel.slice(0, 10) === idag
-  const kl = stempel ? stempel.slice(11, 16) : null
+  // BC leverer tidsstemplet i UTC ("2026-10-01T06:34:44.737Z"). At klippe tegn
+  // ud af strengen gav 06:34, hvor prisrunden i virkeligheden kørte 08.34 dansk
+  // tid — to timer galt om sommeren, én om vinteren. Både klokkeslæt OG dato
+  // omregnes, ellers rammer datosammenligningen forkert for en kørsel lige
+  // omkring midnat.
+  const d = stempel ? new Date(stempel) : null
+  const gyldig = !!d && !isNaN(d.getTime())
+  const dkDato = gyldig
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(d as Date)
+    : null
+  const kl = gyldig
+    ? new Intl.DateTimeFormat('da-DK', {
+        timeZone: 'Europe/Copenhagen', hour: '2-digit', minute: '2-digit',
+      }).format(d as Date)
+    : null
+  const opdateret = dkDato === idag
 
   return (
     <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
