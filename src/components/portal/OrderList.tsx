@@ -62,6 +62,10 @@ interface Props {
   itemCutoffs?:      Map<string, { cutoffWeekday: number; cutoffHour: number; leadDays?: number; itemCategoryCode?: string }>
   allCategories?:    BCItemCategory[]
   itemAvailabilities?: Record<string, BCItemAvailability>
+  /** Kurv fra sidste besøg — varekortene er slået op forfra, så priserne er dagens. */
+  gemtKurv?: { item: EnrichedItem; quantity: number; uom: string }[]
+  /** Hvornår kurven sidst blev rørt (ISO). */
+  gemtKurvTid?: string | null
   shipmentMethods?:             BCShipmentMethod[]
   customerShipmentMethodCode?:  string
   calendarDays?:                BCCalendarDay[]
@@ -1157,6 +1161,7 @@ function DeliveryPicker({
 export default function OrderList({
   promotions, stdFavorites = [], favorites, venmarkItems = [], standingOrders = [], deliveryDays: initialDeliveryDays, customerId, priceTiers = [], initialFavNos = [],
   requirePoNumber = false, itemCutoffs = new Map(), allCategories = [], itemAvailabilities: initialAvail = {},
+  gemtKurv = [], gemtKurvTid = null,
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
   estimatedPrices: initialEst = {} as Record<string, number>,
   zeroPriceNos = [],
@@ -1305,7 +1310,20 @@ export default function OrderList({
     ? (() => { const d = deliveryDays[Math.max(0, firstValid)]; return d.getDay() === 0 ? 7 : d.getDay() })()
     : 1
 
-  const [lines, setLines]             = useState<Map<string, OrderLine>>(() => new Map())
+  // Kurven genskabes fra sidste besøg. Antallet er det gemte; varekortet med pris,
+  // enheder og disponibel er slået op forfra på serveren, så intet er fra i går.
+  const [lines, setLines]             = useState<Map<string, OrderLine>>(() => {
+    const m = new Map<string, OrderLine>()
+    for (const l of gemtKurv) {
+      if (l?.item?.number && l.quantity > 0) {
+        m.set(l.item.number, { item: l.item, quantity: l.quantity, uom: l.uom })
+      }
+    }
+    return m
+  })
+  // Sandt indtil kunden selv har rørt kurven. Bruges til at skelne "systemet
+  // skar ned i noget du havde gemt" fra "du skiftede selv dato".
+  const kurvGenskabt = useRef(gemtKurv.length > 0)
   // Portal-bemærkning pr. linje (itemNo → tekst, maks 30 tegn). Sendes til salgslinjens
   // "Portal Kundebemærkning" ved indsendelse.
   const [lineNotes, setLineNotes]     = useState<Map<string, string>>(() => new Map())
@@ -1701,9 +1719,70 @@ export default function OrderList({
       }
     }
     if (mutated) setLines(next)
-    if (changes.length && isDateChange) setDateChangeNotice(changes)
+    // Beskeden skal også frem ved FØRSTE kørsel hvis kurven er genskabt fra
+    // sidste besøg: så er det ikke kunden der lige har skiftet dato, det er en
+    // vare der er blevet udsolgt siden hun lagde den i. Det skal hun vide, ikke
+    // opdage ved at tallet er et andet end hun huskede.
+    if (changes.length && (isDateChange || (firstRun && kurvGenskabt.current))) {
+      setDateChangeNotice(changes)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverageMax])
+
+  // ── Opdatér efter inaktivitet ──────────────────────────────────────────────
+  // Står fanen åben mens kunden laver noget andet, kan priser og disponibel nå
+  // at ændre sig. Efter 30 minutter uden aktivitet hentes de friske tal, så man
+  // ikke bestiller på et billede fra formiddagen.
+  //
+  // Vi måler på hvornår fanen SIDST var synlig frem for musebevægelser: en fane
+  // i baggrunden er den rigtige definition af inaktiv, og det er præcis dér
+  // tallene når at blive gamle.
+  const sidstAktiv = useRef(Date.now())
+  const [forAeldet, setForAeldet] = useState(false)
+
+  useEffect(() => {
+    const INAKTIV_MS = 30 * 60 * 1000
+    const vedSkift = () => {
+      if (document.visibilityState === 'hidden') { sidstAktiv.current = Date.now(); return }
+      if (Date.now() - sidstAktiv.current < INAKTIV_MS) return
+      setForAeldet(true)
+    }
+    document.addEventListener('visibilitychange', vedSkift)
+    return () => document.removeEventListener('visibilitychange', vedSkift)
+  }, [])
+
+  // ── Gem kurven, så den er der ved næste besøg ──────────────────────────────
+  // Kun varenummer, antal og enhed sendes — ALDRIG prisen. Varerne slås op
+  // forfra ved indlæsning, så kunden aldrig ser gårsdagens pris.
+  //
+  // Debounce: man taster 2-5-12 i et antalsfelt, og uden forsinkelsen blev der
+  // skrevet tre gange. 1,2 sekund er længere end en indtastning og kortere end
+  // tiden til man lukker fanen.
+  const gemtSignatur = useRef<string>('')
+  useEffect(() => {
+    const payload = Array.from(lines.values())
+      .map(l => ({ itemNo: l.item.number, quantity: l.quantity, uom: l.uom }))
+      .sort((a, b) => a.itemNo.localeCompare(b.itemNo))
+    const sig = JSON.stringify(payload)
+
+    // Første render med en genskabt kurv ændrer intet — så lad være at skrive
+    // den tilbage uændret.
+    if (gemtSignatur.current === '' && kurvGenskabt.current) {
+      gemtSignatur.current = sig
+      return
+    }
+    if (sig === gemtSignatur.current) return
+
+    const t = setTimeout(() => {
+      gemtSignatur.current = sig
+      fetch('/api/portal/kurv', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linjer: payload }),
+        keepalive: true,   // nåede at blive sendt selvom fanen lukkes
+      }).catch(() => { /* at gemme må aldrig vælte bestillingen */ })
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [lines])
 
   // ── DEBUG (?debug=1) — udskriv disponibel-tal pr. vare til konsollen ─────────
   // Viser hvorfor rowMaxQty capper/frigiver: daekketFra (kan skaffes), coverage-værdi,
@@ -1934,6 +2013,13 @@ export default function OrderList({
         body:    JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
+      // Ordren er sendt — så skal den gemte kurv væk, ellers dukker den samme
+      // bestilling op igen næste gang kunden åbner siden.
+      gemtSignatur.current = '[]'
+      fetch('/api/portal/kurv', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linjer: [] }), keepalive: true,
+      }).catch(() => {})
       setSubmitted(true)
     } catch (e: any) {
       setError(e.message ?? 'Ukendt fejl — prøv igen')
@@ -2179,6 +2265,33 @@ export default function OrderList({
   return (
     <div className="space-y-4">
       <PriserOpdateretBanner avail={itemAvailabilities} idag={localYmd(new Date())} />
+
+      {/* Fanen har ligget stille i over en halv time — tallene på skærmen kan
+          være fra før dagens prisrunde eller fra før noget blev udsolgt. */}
+      {forAeldet && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+          <span>
+            <strong>Siden har ligget åben et stykke tid.</strong> Priser og mængder kan have ændret sig.
+          </span>
+          <button
+            onClick={() => window.location.reload()}
+            className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+          >
+            Hent friske tal
+          </button>
+        </div>
+      )}
+
+      {/* Kurven er genskabt fra sidste besøg. Sig det — ellers undrer man sig
+          over hvorfor der allerede ligger noget. */}
+      {kurvGenskabt.current && gemtKurvTid && lines.size > 0 && !submitted && (
+        <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900 ring-1 ring-blue-200">
+          Din kurv fra {new Intl.DateTimeFormat('da-DK', {
+            timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit',
+            hour: '2-digit', minute: '2-digit',
+          }).format(new Date(gemtKurvTid))} er hentet frem. Priser og mængder er dagens.
+        </div>
+      )}
 
       {/* Kurven følger med ned ad siden, så man altid kan se hvad der er valgt og
           komme videre uden at scrolle til bunden. top-offset = højden på portalens

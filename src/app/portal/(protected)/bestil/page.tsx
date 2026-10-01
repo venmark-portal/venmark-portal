@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttributeValues, getItemsUoMs, getCustomerFavorites, getStandingOrderLines, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos, getItemAvailabilities, getPortalShipmentMethods, getPortalCalendarDays, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getCustomerLocationCode } from '@/lib/businesscentral'
+import { hentKurv } from '@/lib/kurv'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
@@ -55,7 +56,7 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   // langsom. Den hentes SCOPET til de viste varer nedenfor (som BC's hurtig indtastning slår
   // skyggen op for favoritterne). Kategori/søgning henter disponibilitet på-forlangende.
   // custLocation (kundens lokation) hentes nu PARALLELT i phase-1 i stedet for sekventielt før.
-  const [custLocation, portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await _mark('phase1', Promise.all([
+  const [custLocation, portalPrices, blockedRows, promoRows, dbFavRows, bcStandardLines, standingLines, itemCutoffs, allCategories, webshopVisible, portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays, gemtKurv] = await _mark('phase1', Promise.all([
     getCustomerLocationCode(customerNo).catch(() => ''),
     getPortalPrices(customerNo, priceGrp, chainGrp),
     prisma.blockedItem.findMany({ where: { customerId: userId } }),
@@ -78,6 +79,9 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
     getCustomerPortalShipmentMethods(customerNo).catch(() => []),
     getPortalCalendarDays(today8601, toDate90str).catch(() => []),
+    // Gemt kurv fra sidste besøg — kun varenr., antal og enhed. Varerne slås op
+    // forfra nedenfor, så priser og lofter altid er dagens.
+    hentKurv(userId).catch(() => ({ linjer: [], gemtAt: null })),
   ]))
 
   const blockedSet = new Set(blockedRows.map((b) => b.bcItemNumber))
@@ -132,7 +136,14 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
     .filter(l => !blockedSet.has(l.itemNo) && !l.itemNo.toUpperCase().startsWith('X') && visFilter(l.itemNo))
     .map(l => l.itemNo)
 
-  const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos]))
+  // Den gemte kurv kan indeholde varer der hverken er favorit eller fast ordre —
+  // fx noget kunden fandt via søgningen. De skal med i opslaget, ellers kan
+  // linjen ikke genskabes med pris og disponibel.
+  const kurvNos = gemtKurv.linjer
+    .map(l => l.itemNo)
+    .filter(n => n && !blockedSet.has(n) && !n.toUpperCase().startsWith('X'))
+
+  const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos, ...kurvNos]))
 
   // ── Hent varekortdetaljer + disponibilitet (SCOPET til de viste varer) parallelt ──────
   const [bcItems, itemAvailabilities] = await _mark('items+avail', Promise.all([
@@ -241,6 +252,21 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
       qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number
     }[]
 
+  // ── Gemt kurv med FRISKE varekort ───────────────────────────────────────────
+  // Antallet kommer fra det gemte; alt andet — pris, enheder, disponibel — er
+  // slået op lige nu. Er en vare forsvundet fra sortimentet siden sidst, falder
+  // linjen bare ud. Er den udsolgt, skæres antallet ned af den clamp der i
+  // forvejen kører når disponibel er hentet, og kunden får besked.
+  const kurvLinjer = gemtKurv.linjer
+    .map(l => {
+      const item = itemMap.get(l.itemNo)
+      if (!item) return null
+      return { item, quantity: l.quantity, uom: l.uom || item.baseUnitOfMeasureCode }
+    })
+    .filter(Boolean) as {
+      item: NonNullable<ReturnType<typeof itemMap.get>>; quantity: number; uom: string
+    }[]
+
   // ── Trappepriser til klient ─────────────────────────────────────────────────
   const priceTiers = portalPrices.map((p) => ({
     itemNo:          p.itemNo,
@@ -303,6 +329,8 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
         itemCutoffs={itemCutoffs as any}
         allCategories={allCategories}
         itemAvailabilities={Object.fromEntries(itemAvailabilities)}
+        gemtKurv={kurvLinjer as any}
+        gemtKurvTid={gemtKurv.gemtAt}
         shipmentMethods={allowedMethods.length > 0 ? allowedMethods : (customerMethod ? [customerMethod] : [])}
         customerShipmentMethodCode={customerMethod?.code ?? ''}
         calendarDays={calendarDays}
