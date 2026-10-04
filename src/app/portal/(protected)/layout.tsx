@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import PortalNav from '@/components/portal/PortalNav'
+import VersionVagt from '@/components/portal/VersionVagt'
 import SessionProvider from '@/components/portal/SessionProvider'
 import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
 import TicketNotifier from '@/components/portal/TicketNotifier'
@@ -133,6 +134,7 @@ export default async function PortalLayout({
 
         <TicketNotifier />
         <PushSubscribeButton />
+        <VersionVagt />
         {/* Mobil-bundnavigation */}
         <PortalNav />
       </div>
