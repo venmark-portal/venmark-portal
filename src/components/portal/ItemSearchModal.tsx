@@ -314,9 +314,13 @@ export default function ItemSearchModal({
           >
             <Filter size={16} />
           </button>
-          <button onClick={lukPaent} className="rounded-full p-1 hover:bg-gray-100">
-            <X size={18} className="text-gray-500" />
-          </button>
+          {/* Krydset forsvinder så snart der er tastet et antal: så er den eneste vej ud
+              knappen "Indsæt og luk søgning", og antallet kan ikke blive væk ved et uheld. */}
+          {antalMedTal === 0 && (
+            <button onClick={lukPaent} className="rounded-full p-1 hover:bg-gray-100" aria-label="Luk søgning">
+              <X size={18} className="text-gray-500" />
+            </button>
+          )}
         </div>
 
         {/* ── Kategori-filter ── */}
@@ -629,19 +633,19 @@ export default function ItemSearchModal({
             </>
           ) : (
             <>
-              <span className="flex-1 text-xs text-gray-400">
+              <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
                 {results.length > 0
                   ? antalMedTal > 0
-                    ? `${antalMedTal} vare${antalMedTal !== 1 ? 'r' : ''} klar til indsæt`
+                    ? `${antalMedTal} vare${antalMedTal !== 1 ? 'r' : ''} klar`
                     : `${results.length} varer — sæt antal`
                   : ''}
               </span>
               {antalMedTal > 0 ? (
                 <button
                   onClick={handleAdd}
-                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
+                  className="shrink-0 whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
                 >
-                  Indsæt {antalMedTal} {antalMedTal === 1 ? 'vare' : 'varer'}
+                  Indsæt og luk søgning
                 </button>
               ) : (
                 <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
