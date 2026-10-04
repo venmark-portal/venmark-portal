@@ -392,7 +392,13 @@ export function getDeliveryDatesForMethod(
     else if (generalCal.has(iso)) canDeliver = generalCal.get(iso)  === 'Open'
     else                          canDeliver = delivers[weekday]
 
-    if (canDeliver) dates.push(new Date(delivery))
+    // Deadlinen skal stadig kunne nås. earliestDispatch ovenfor kan lande på en lørdag eller
+    // søndag — vi afsender ikke der, og getDeadlineForMethodDelivery snapper derfor afsendelsen
+    // tilbage til fredagen. Uden dette tjek tilbød portalen mandagslevering hele weekenden,
+    // selv om fristen var fredag kl. 9, og api/portal/order afviste så ordren bagefter.
+    // De to funktioner skal være enige: datoen vises kun hvis dens egen deadline er i fremtiden.
+    if (canDeliver && getDeadlineForMethodDelivery(delivery, method, calendarDays) > now)
+      dates.push(new Date(delivery))
     cursor.setDate(cursor.getDate() + 1)
   }
 
