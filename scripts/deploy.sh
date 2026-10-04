@@ -42,6 +42,14 @@ log "Skifter over"
 rm -rf .next-forrige
 if [ -d .next ]; then mv .next .next-forrige; fi
 mv .next-new .next
+
+# Byggeriet skriver sin egen distDir ind i manifestet. Efter flytningen hedder mappen .next,
+# og så skal manifestet også sige .next. `next start` læser i dag konfigurationen direkte og
+# går ikke galt af det, men et manifest der peger på en mappe der ikke findes, er en fælde
+# der venter på en opgradering.
+if [ -f .next/required-server-files.json ]; then
+  sed -i 's/"distDir":"\.next-new"/"distDir":".next"/' .next/required-server-files.json
+fi
 pm2 restart venmark >/dev/null
 
 log "Tjekker at portalen svarer"
