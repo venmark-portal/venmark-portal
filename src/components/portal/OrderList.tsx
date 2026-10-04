@@ -2012,7 +2012,39 @@ export default function OrderList({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const raa = await res.text().catch(() => '')
+        let svar: any = null
+        try { svar = JSON.parse(raa) } catch { /* ikke JSON */ }
+
+        // Serveren har sagt hvor meget der ER tilbage. Sæt linjerne ned i stedet for at
+        // lade kunden selv finde dem og regne baglæns — hun skal kun tage stilling til
+        // om det reducerede antal er i orden.
+        const lofter: { itemNo: string; navn: string; maks: number }[] =
+          Array.isArray(svar?.lofter) ? svar.lofter : []
+        if (lofter.length > 0) {
+          setLines(prev => {
+            const n = new Map(prev)
+            for (const t of lofter) {
+              const l = n.get(t.itemNo)
+              if (l && l.quantity > t.maks) n.set(t.itemNo, { ...l, quantity: t.maks })
+            }
+            return n
+          })
+          setError(
+            `Der er ikke nok tilbage til den valgte leveringsdato: ` +
+            lofter.map(t => `${t.navn} (sat ned til ${t.maks})`).join(', ') +
+            `. Send bestillingen igen hvis det er i orden.`,
+          )
+          return
+        }
+
+        throw new Error(
+          typeof svar?.error === 'string' && svar.error.trim()
+            ? svar.error.trim()
+            : (raa.trim() || `Noget gik galt (${res.status}) — prøv igen`),
+        )
+      }
       // Ordren er sendt — så skal den gemte kurv væk, ellers dukker den samme
       // bestilling op igen næste gang kunden åbner siden.
       gemtSignatur.current = '[]'

@@ -77,6 +77,10 @@ export async function POST(req: NextRequest) {
     const todayStr   = new Date().toISOString().split('T')[0]
     const tooEarly: string[] = []
     const overCap:  string[] = []
+    // Samme afvisning, men i maskinlæsbar form. Uden den kunne portalen kun vise kunden en
+    // sætning og lade hende selv finde linjen og regne baglæns; nu kan den sætte antallet
+    // ned til det der faktisk er, og lade hende sende igen.
+    const lofter: { itemNo: string; navn: string; maks: number }[] = []
     // Linjer der KUN er dækket af en kommende afgang (købsordre/montage) — ikke af lager, ikke af
     // frist-gulvet. De har en ENDELIG mængde på vej, så loftet skal komme fra BC's coverage.
     const afgangLines: { itemNo: string; name: string; qty: number }[] = []
@@ -117,8 +121,10 @@ export async function POST(req: NextRequest) {
         if (f && Date.now() < f.getTime()) continue
       }
       const auctionFree = a.auktionsKategori && (a.priserOpdateret ? a.priserOpdateret.slice(0, 10) !== todayStr : true)
-      if (!auctionFree && !isForward && disp > 0 && l.quantity > disp)
+      if (!auctionFree && !isForward && disp > 0 && l.quantity > disp) {
         overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
+        lofter.push({ itemNo: l.bcItemNumber, navn: l.itemName || l.bcItemNumber, maks: Math.round(disp * 10) / 10 })
+      }
       // 3. Dækket KUN af afgang (lager ≤ 0, ikke frist-forward) → loftet = BC coverage (mængden på vej).
       if (!auctionFree && !floorForward && coveredByAfgang && disp <= 0)
         afgangLines.push({ itemNo: l.bcItemNumber, name: l.itemName || l.bcItemNumber, qty: l.quantity })
@@ -134,7 +140,10 @@ export async function POST(req: NextRequest) {
           const ln = afgangLines.find(x => x.itemNo === row.itemNo)
           if (!ln || row.unlimited) continue
           if (row.maxQty <= 0) tooEarly.push(`${ln.name} (ikke dækket til denne dato)`)
-          else if (ln.qty > row.maxQty) overCap.push(`${ln.name}: maks ${Math.round(row.maxQty * 10) / 10}`)
+          else if (ln.qty > row.maxQty) {
+            overCap.push(`${ln.name}: maks ${Math.round(row.maxQty * 10) / 10}`)
+            lofter.push({ itemNo: ln.itemNo, navn: ln.name, maks: Math.round(row.maxQty * 10) / 10 })
+          }
         }
       } catch { /* fail open */ }
     }
@@ -146,7 +155,7 @@ export async function POST(req: NextRequest) {
     }
     if (overCap.length) {
       return NextResponse.json(
-        { error: `For stort antal — ${overCap.join(', ')}. Vi har ikke mere til denne leveringsdato.` },
+        { error: `For stort antal — ${overCap.join(', ')}. Vi har ikke mere til denne leveringsdato.`, lofter },
         { status: 422 }
       )
     }
