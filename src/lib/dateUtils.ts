@@ -1,3 +1,18 @@
+// Hele denne fil regner i LOKAL tid: setHours(14,0) betyder "kl. 14 dansk tid". Det holder
+// kun hvis processen kører med TZ=Europe/Copenhagen. Serveren står som UTC, og uden TZ i
+// pm2-opsætningen (ecosystem.config.js) blev hver deadline 1-2 timer for sen — portalen tog
+// imod ordrer efter fristen, og forsiden skrev "Deadline i dag kl. 09:00" kl. 10. Derfor
+// råber vi op i loggen frem for at regne videre på et forkert ur.
+if (typeof window === 'undefined') {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  if (tz !== 'Europe/Copenhagen') {
+    console.error(
+      `[dateUtils] FORKERT TIDSZONE: processen kører i "${tz}", ikke Europe/Copenhagen. ` +
+      `Alle bestillingsfrister og leveringsdatoer bliver forkerte. Sæt TZ=Europe/Copenhagen.`,
+    )
+  }
+}
+
 /** Returnerer true hvis dato er en hverdag (man-fre) */
 export function isBusinessDay(date: Date): boolean {
   const d = date.getDay()

@@ -3,8 +3,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning, MessageSquare } from 'lucide-react'
-import { getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods } from '@/lib/businesscentral'
-import { parseCutoffTime } from '@/lib/dateUtils'
+import { getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getPortalCalendarDays, type BCCalendarDay } from '@/lib/businesscentral'
+import { getDeliveryDatesForMethod, getDeadlineForMethodDelivery, getDeadlineForDelivery, addBusinessDays } from '@/lib/dateUtils'
 import AuktionForsideWidget from '@/components/portal/AuktionForsideWidget'
 
 export default async function PortalDashboard() {
@@ -48,31 +48,52 @@ export default async function PortalDashboard() {
   `
   const openTickets = Number(openRows[0]?.cnt ?? 0)
 
+  // Lokal YYYY-MM-DD (IKKE toISOString — den skifter til UTC og rykker datoen en dag tilbage)
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const om90 = new Date(); om90.setDate(om90.getDate() + 90)
+
   // Hent kundens leveringsmetode for korrekt cutoff-tid
-  const [portalShipmentMethods, customerShipMethodCode, customerAllowedCodes] = await Promise.all([
+  const [portalShipmentMethods, customerShipMethodCode, customerAllowedCodes, calendarDays] = await Promise.all([
     getPortalShipmentMethods().catch(() => []),
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
-    getCustomerPortalShipmentMethods(customerNo).catch(() => []),
+    // Eksplicitte typer på fallbacks: med fire elementer falder Promise.all tilbage til sin
+    // array-overload, og [] bliver ellers udledt som never[].
+    getCustomerPortalShipmentMethods(customerNo).catch(() => [] as string[]),
+    getPortalCalendarDays(ymd(new Date()), ymd(om90)).catch(() => [] as BCCalendarDay[]),
   ])
   const allowedMethods = customerAllowedCodes.length > 0
     ? portalShipmentMethods.filter(m => customerAllowedCodes.includes(m.code))
     : portalShipmentMethods.filter(m => m.code === customerShipMethodCode)
   const customerMethod = allowedMethods[0] ?? portalShipmentMethods.find(m => m.code === customerShipMethodCode)
 
-  // Næste leveringsdato og deadline
-  const today    = new Date()
-  const weekday  = today.getDay()
-  const daysAdd  = weekday === 5 ? 3 : weekday === 6 ? 2 : 1
-  const nextDelivery = new Date(today)
-  nextDelivery.setDate(today.getDate() + daysAdd)
+  // Næste leveringsdato og deadline.
+  //
+  // Forsiden havde sin egen regel ("+1 dag, fredag +3") og sin egen deadline ("i dag kl.
+  // cutoffTime"). Den kunne derfor sige noget andet end den side man rent faktisk bestiller
+  // på — og den vidste ikke om dagens frist var passeret. Nu bruges SAMME to funktioner som
+  // bestillingssiden, så de to sider ikke kan komme på tværs af hinanden.
+  const today = new Date()
+  const nextDelivery = customerMethod
+    ? getDeliveryDatesForMethod(customerMethod, calendarDays, today, 1)[0]
+    : addBusinessDays(today, 1)
+  const deadline = nextDelivery
+    ? (customerMethod
+        ? getDeadlineForMethodDelivery(nextDelivery, customerMethod, calendarDays)
+        : getDeadlineForDelivery(nextDelivery))
+    : null
 
-  // Brug metodens cutoff-tid hvis tilgængeligt, ellers fredag=12, alle andre=14
-  const { hour: deadlineHr, minute: deadlineMin } = customerMethod
-    ? parseCutoffTime(customerMethod.cutoffTime)
-    : { hour: weekday === 5 ? 12 : 14, minute: 0 }
-  const deadline   = new Date(today)
-  deadline.setHours(deadlineHr, deadlineMin, 0, 0)
-  const pastDeadline = today > deadline
+  // "i dag" / "i morgen" / ugedagen — en deadline der er passeret ruller videre til næste
+  // afsendelsesdag, og så er "Deadline i dag" forkert.
+  const dagOrd = (d: Date): string => {
+    const dage = Math.round(
+      (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() -
+       new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)
+    if (dage === 0) return 'i dag'
+    if (dage === 1) return 'i morgen'
+    return d.toLocaleDateString('da-DK', { weekday: 'long' })
+  }
+  const klokken = (d: Date) =>
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
   const statusLabel: Record<string, { label: string; color: string }> = {
     DRAFT:      { label: 'Kladde',       color: 'text-gray-500 bg-gray-100' },
@@ -90,19 +111,19 @@ export default async function PortalDashboard() {
         <h1 className="text-2xl font-bold text-gray-900">
           Hej, {session?.user?.name?.split(' ')[0]} 👋
         </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {pastDeadline
-            ? `Deadline passeret — næste levering ${nextDelivery.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })}`
-            : `Bestil inden kl. ${String(deadlineHr).padStart(2,'0')}:${String(deadlineMin).padStart(2,'0')} for levering i morgen`}
-        </p>
+        {nextDelivery && deadline && (
+          <p className="mt-1 text-sm text-gray-500">
+            Bestil {dagOrd(deadline)} inden kl. {klokken(deadline)} for levering {dagOrd(nextDelivery)}
+          </p>
+        )}
       </div>
 
       {/* Deadline-banner */}
-      {!pastDeadline && (
+      {nextDelivery && deadline && (
         <div className="flex items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <Clock size={18} className="shrink-0" />
           <span>
-            <strong>Deadline i dag kl. {String(deadlineHr).padStart(2,'0')}:{String(deadlineMin).padStart(2,'0')}</strong> — Næste levering:{' '}
+            <strong>Deadline {dagOrd(deadline)} kl. {klokken(deadline)}</strong> — Næste levering:{' '}
             {nextDelivery.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })}
           </span>
         </div>

@@ -146,17 +146,25 @@ export default function ItemSearchModal({
   const [hasMore,    setHasMore]    = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Alle varer modalen har vist, på tværs af søgninger. `results` holder kun det SIDSTE
+  // søgeresultat, så uden denne forsvandt et antal man havde tastet i den forrige søgning
+  // tavst når man søgte videre — man havde skrevet 3,76 kg, og de nåede aldrig kurven.
+  const seteVarer = useRef<Map<string, EnrichedItem>>(new Map())
+
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 50)
   }, [])
 
+  // Via ref: effekten må ikke binde sig til en gammel lukPaent, ellers ville Escape lukke
+  // med det antal der var tastet dengang effekten kørte.
+  const lukRef = useRef<() => void>(() => {})
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') lukRef.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
 
   useEffect(() => {
     fetch('/api/products/categories')
@@ -195,6 +203,7 @@ export default function ItemSearchModal({
           setHasMore(false)
         } else {
           const items = data.value ?? []
+          for (const it of items as EnrichedItem[]) seteVarer.current.set(it.number, it)
           setResults(items)
           setHasMore(favMode && items.length === PAGE_SIZE)
           // Hent disponibilitet for søgeresultaterne (ikke i initial-scopet)
@@ -240,12 +249,26 @@ export default function ItemSearchModal({
 
   function handleAdd() {
     if (!onAddItems) return
-    const toAdd = results
-      .filter(r => (quantities.get(r.number) ?? 0) > 0)
-      .map(r => ({ item: r, quantity: quantities.get(r.number)! }))
+    // Tag fra ALLE sete varer, ikke kun det aktuelle søgeresultat.
+    const toAdd: { item: EnrichedItem; quantity: number }[] = []
+    quantities.forEach((qty, nr) => {
+      const vare = seteVarer.current.get(nr)
+      if (vare && qty > 0) toAdd.push({ item: vare, quantity: qty })
+    })
     if (toAdd.length === 0) return
     onAddItems(toAdd)
     onClose()
+  }
+
+  /**
+   * Luk. Har man tastet antal, indsættes de i stedet for at blive smidt væk — et tastet
+   * antal er en beslutning, og linjen kan fjernes igen i bestillingslisten hvor man kan se
+   * den. Før forsvandt den lydløst, hvilket især ramte mobil, hvor "Indsæt"-knappen lå
+   * under bundmenuen og aldrig blev set.
+   */
+  function lukPaent() {
+    if (onAddItems && antalMedTal > 0) handleAdd()
+    else onClose()
   }
 
   function handleAddFavorites() {
@@ -258,12 +281,20 @@ export default function ItemSearchModal({
 
   const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const selectedCatLabel = selCat ? (categories.find(c => c.code === selCat)?.displayName ?? selCat) : null
-  const itemsWithQty = results.filter(r => (quantities.get(r.number) ?? 0) > 0).length
+  // Tælles på tværs af søgninger — ellers viste bunden "0 varer klar" selv om man havde
+  // tastet antal i en tidligere søgning, og knappen var der slet ikke.
+  let antalMedTal = 0
+  quantities.forEach(q => { if (q > 0) antalMedTal++ })
+  lukRef.current = lukPaent
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center">
-      <div className="w-full max-w-lg rounded-t-2xl bg-white shadow-xl md:rounded-2xl flex flex-col max-h-[90vh]">
+    // z-[60]: bundmenuen er z-40 og lå før OVEN PÅ modalens bund, så "Indsæt X varer"
+    // simpelthen ikke var synlig på mobil. Modalen skal være øverst.
+    // dvh frem for vh: på mobil regner vh med browserens adresselinje væk, så de nederste
+    // ~60px — altså knappen — lå uden for skærmen.
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 md:items-center">
+      <div className="w-full max-w-lg rounded-t-2xl bg-white shadow-xl md:rounded-2xl flex flex-col max-h-[90dvh]">
 
         {/* ── Søgelinje ── */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 shrink-0">
@@ -283,7 +314,7 @@ export default function ItemSearchModal({
           >
             <Filter size={16} />
           </button>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-100">
+          <button onClick={lukPaent} className="rounded-full p-1 hover:bg-gray-100">
             <X size={18} className="text-gray-500" />
           </button>
         </div>
@@ -566,7 +597,7 @@ export default function ItemSearchModal({
         </div>
 
         {/* ── Bund ── */}
-        <div className="border-t border-gray-100 px-4 py-3 shrink-0 flex items-center gap-3">
+        <div className="border-t border-gray-100 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shrink-0 flex items-center gap-3">
           {favMode ? (
             <>
               <span className="flex-1 text-xs text-gray-400">
@@ -600,17 +631,17 @@ export default function ItemSearchModal({
             <>
               <span className="flex-1 text-xs text-gray-400">
                 {results.length > 0
-                  ? itemsWithQty > 0
-                    ? `${itemsWithQty} vare${itemsWithQty !== 1 ? 'r' : ''} klar til indsæt`
+                  ? antalMedTal > 0
+                    ? `${antalMedTal} vare${antalMedTal !== 1 ? 'r' : ''} klar til indsæt`
                     : `${results.length} varer — sæt antal`
                   : ''}
               </span>
-              {itemsWithQty > 0 ? (
+              {antalMedTal > 0 ? (
                 <button
                   onClick={handleAdd}
                   className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
                 >
-                  Indsæt {itemsWithQty} {itemsWithQty === 1 ? 'vare' : 'varer'}
+                  Indsæt {antalMedTal} {antalMedTal === 1 ? 'vare' : 'varer'}
                 </button>
               ) : (
                 <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
