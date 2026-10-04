@@ -1695,6 +1695,8 @@ export default function OrderList({
   const rowMaxQtyClampRef = useRef(rowMaxQty)
   useEffect(() => { rowMaxQtyClampRef.current = rowMaxQty }, [rowMaxQty])
   const clampDateKeyRef = useRef<string | null>(null)
+  /** Varer lagt i kurven før deres antals-loft var hentet — se addSearchedItems. */
+  const ukendtLoftRef = useRef<Set<string>>(new Set())
   const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
 
   useEffect(() => {
@@ -1709,21 +1711,29 @@ export default function OrderList({
     const changes: { name: string; from: number; to: number }[] = []
     const next = new Map(cur)
     let mutated = false
+    // Blev en vare reduceret, som kunden lagde i FØR loftet var hentet? Så er det hendes
+    // eget nyligt tastede tal der ændrer sig, og det skal hun have at vide — uanset at
+    // det hverken er et datoskift eller en genskabt kurv.
+    let nytLoftRamte = false
     for (const [no, l] of cur) {
       const cap = getMax(no)                       // null = ubegrænset → aldrig reducér
       if (cap != null && cap >= 0 && l.quantity > cap) {
         changes.push({ name: l.item.description || no, from: l.quantity, to: cap })
+        if (ukendtLoftRef.current.has(no)) nytLoftRamte = true
         if (cap <= 0) next.delete(no)
         else next.set(no, { ...l, quantity: cap })
         mutated = true
       }
     }
+    // Loftet er kendt nu — så er varen ikke længere "uden loft".
+    for (const no of Array.from(ukendtLoftRef.current))
+      if (getMax(no) != null) ukendtLoftRef.current.delete(no)
     if (mutated) setLines(next)
     // Beskeden skal også frem ved FØRSTE kørsel hvis kurven er genskabt fra
     // sidste besøg: så er det ikke kunden der lige har skiftet dato, det er en
     // vare der er blevet udsolgt siden hun lagde den i. Det skal hun vide, ikke
     // opdage ved at tallet er et andet end hun huskede.
-    if (changes.length && (isDateChange || (firstRun && kurvGenskabt.current))) {
+    if (changes.length && (isDateChange || nytLoftRamte || (firstRun && kurvGenskabt.current))) {
       setDateChangeNotice(changes)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1960,6 +1970,10 @@ export default function OrderList({
         let q = (existing?.quantity ?? 0) + quantity
         // Håndhæv antals-loftet defensivt — søgning må ikke omgå rowMaxQty (oversalg).
         const cap = rowMaxQty(item.number)
+        // Intet loft kendt endnu: varen er lige søgt frem, og disponibel er først på vej.
+        // Husk den, så kunden FÅR besked hvis antallet bliver sat ned når tallene lander —
+        // ellers ændrer hendes eget tal sig bag om ryggen på hende.
+        if (cap == null) ukendtLoftRef.current.add(item.number)
         if (cap != null && q > cap) q = cap
         if (q <= 0) { next.delete(item.number); continue }
         next.set(item.number, { item, quantity: q, uom: existing?.uom ?? item.baseUnitOfMeasureCode })
@@ -3038,12 +3052,20 @@ export default function OrderList({
             {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
             {/* Send-knap */}
+            {/* Vent på disponibel før der kan sendes. En vare man lige har søgt frem har
+                endnu intet antals-loft i browseren — det hentes få hundrede millisekunder
+                efter. Trykkede man send inden, slap et for stort antal igennem, og først
+                serveren sagde fra. Knappen er kun spærret mens tallene faktisk hentes. */}
             <button
               onClick={handleSubmit}
-              disabled={submitting || pastDeadline}
+              disabled={submitting || pastDeadline || coverageLoading}
               className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
             >
-              {submitting ? (addMode ? 'Tilføjer…' : 'Sender…') : pastDeadline ? 'Deadline passeret' : addMode ? `Tilføj ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} til ordren` : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+              {submitting ? (addMode ? 'Tilføjer…' : 'Sender…')
+                : coverageLoading ? 'Tjekker disponibel…'
+                : pastDeadline ? 'Deadline passeret'
+                : addMode ? `Tilføj ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} til ordren`
+                : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
             </button>
           </div>
         </div>
