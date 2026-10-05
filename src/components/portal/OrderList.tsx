@@ -4,6 +4,7 @@ import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star, MessageSquare,
+  AlertTriangle,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
@@ -1698,6 +1699,8 @@ export default function OrderList({
   /** Varer lagt i kurven før deres antals-loft var hentet — se addSearchedItems. */
   const ukendtLoftRef = useRef<Set<string>>(new Set())
   const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
+  /** Bestillingen gik IKKE igennem. Vises som dialog — en rød linje over knappen var for nem at overse. */
+  const [sendFejl, setSendFejl] = useState<{ besked: string; aendret: { name: string; from: number; to: number }[] } | null>(null)
 
   useEffect(() => {
     if (Object.keys(coverageMax).length === 0) return
@@ -2037,19 +2040,21 @@ export default function OrderList({
         const lofter: { itemNo: string; navn: string; maks: number }[] =
           Array.isArray(svar?.lofter) ? svar.lofter : []
         if (lofter.length > 0) {
+          const aendret: { name: string; from: number; to: number }[] = []
           setLines(prev => {
             const n = new Map(prev)
             for (const t of lofter) {
               const l = n.get(t.itemNo)
-              if (l && l.quantity > t.maks) n.set(t.itemNo, { ...l, quantity: t.maks })
+              if (l && l.quantity > t.maks) {
+                aendret.push({ name: t.navn, from: l.quantity, to: t.maks })
+                n.set(t.itemNo, { ...l, quantity: t.maks })
+              }
             }
             return n
           })
-          setError(
-            `Der er ikke nok tilbage til den valgte leveringsdato: ` +
-            lofter.map(t => `${t.navn} (sat ned til ${t.maks})`).join(', ') +
-            `. Send bestillingen igen hvis det er i orden.`,
-          )
+          const kort = `Der var ikke nok tilbage til den valgte leveringsdato. Vi har sat antallet ned — tjek det og send igen.`
+          setError(kort)
+          setSendFejl({ besked: kort, aendret })
           return
         }
 
@@ -2068,7 +2073,13 @@ export default function OrderList({
       }).catch(() => {})
       setSubmitted(true)
     } catch (e: any) {
-      setError(e.message ?? 'Ukendt fejl — prøv igen')
+      // Netværksfejl kommer også her: så nåede bestillingen aldrig frem, og det er
+      // vigtigere at sige end selve den tekniske årsag.
+      const besked = typeof e?.message === 'string' && e.message.trim()
+        ? e.message.trim()
+        : 'Vi kunne ikke få forbindelse til Venmark. Tjek nettet og prøv igen.'
+      setError(besked)
+      setSendFejl({ besked, aendret: [] })
     } finally {
       setSubmitting(false)
     }
@@ -3095,6 +3106,54 @@ export default function OrderList({
       )}
 
       {/* Messagebox: antal reduceret efter dato-/leveringsskift */}
+      {/* Bestillingen gik IKKE igennem.
+          En rød linje over Send-knappen var for nem at overse — især på en telefon, hvor
+          man scroller videre og tror ordren er afsendt. Derfor en dialog man skal lukke
+          selv: klik ved siden af lukker den ikke, og overskriften siger det vigtigste
+          først — at bestillingen ikke er sendt. Kurven står urørt, så der er intet tabt. */}
+      {sendFejl && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center gap-3 bg-red-600 px-5 py-4 text-white">
+              <AlertTriangle size={26} className="shrink-0" />
+              <h3 className="text-lg font-bold leading-tight">Bestillingen blev ikke sendt</h3>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-[15px] leading-relaxed text-gray-800">{sendFejl.besked}</p>
+
+              {sendFejl.aendret.length > 0 && (
+                <ul className="mt-3 space-y-1 rounded-lg bg-amber-50 px-3 py-2 text-sm">
+                  {sendFejl.aendret.map((c, i) => (
+                    <li key={i} className="flex justify-between gap-3">
+                      <span className="min-w-0 text-gray-800">{c.name}</span>
+                      <span className="whitespace-nowrap font-semibold">
+                        <span className="text-gray-400 line-through">{c.from}</span>
+                        {' → '}
+                        <span className="text-red-600">{c.to === 0 ? 'fjernet' : c.to}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <p className="mt-3 text-sm text-gray-500">
+                Din kurv står som den var — der er ikke gået noget tabt.
+              </p>
+            </div>
+
+            <div className="border-t border-gray-100 px-5 py-3">
+              <button
+                onClick={() => setSendFejl(null)}
+                className="w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white transition hover:bg-blue-700 active:scale-[0.98]"
+              >
+                Tilbage til bestillingen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {dateChangeNotice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDateChangeNotice(null)}>
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
