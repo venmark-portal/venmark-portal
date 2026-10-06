@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, UserPlus, X, Tag, RefreshCw } from 'lucide-react'
 
 interface Contact { id?: string; name: string; email: string; phone: string; role: string }
-interface DeliveryCode { id: string; code: string; name: string; description: string | null; contacts: Contact[] }
+interface DeliveryCode { id: string; code: string; name: string; description: string | null; ownRoute: boolean; contacts: Contact[] }
 
-const EMPTY_CODE = { code: '', name: '', description: '', contacts: [] as Contact[] }
+const EMPTY_CODE = { code: '', name: '', description: '', ownRoute: false, contacts: [] as Contact[] }
 const EMPTY_CONTACT: Contact = { name: '', email: '', phone: '', role: 'transporter' }
 
 export default function LeveringskoderPage() {
@@ -44,7 +44,7 @@ export default function LeveringskoderPage() {
   }
 
   function openEdit(c: DeliveryCode) {
-    setForm({ code: c.code, name: c.name, description: c.description ?? '', contacts: c.contacts.map(ct => ({ ...ct })) })
+    setForm({ code: c.code, name: c.name, description: c.description ?? '', ownRoute: Boolean(c.ownRoute), contacts: c.contacts.map(ct => ({ ...ct })) })
     setError('')
     setModal(c)
   }
@@ -96,7 +96,7 @@ export default function LeveringskoderPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Leveringskoder</h1>
-          <p className="text-sm text-gray-500">Koder med tilknyttede transportørkontakter</p>
+          <p className="text-sm text-gray-500">Koder med tilknyttede transportørkontakter. &quot;Egen rute&quot; = køres med egne biler og vises for chauffører og i ruteplanen.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={syncFromBC} disabled={syncing}
@@ -127,6 +127,9 @@ export default function LeveringskoderPage() {
                   <div className="flex items-center gap-3">
                     <span className="rounded-lg bg-blue-100 px-2.5 py-0.5 text-sm font-bold text-blue-800 font-mono">{c.code}</span>
                     <span className="font-semibold text-gray-900">{c.name}</span>
+                    {c.ownRoute && (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Egen rute</span>
+                    )}
                   </div>
                   {c.description && <p className="mt-1 text-xs text-gray-500">{c.description}</p>}
                   {c.contacts.length > 0 && (
@@ -183,6 +186,15 @@ export default function LeveringskoderPage() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
                   placeholder="Valgfri noter" />
               </div>
+              <label className="flex items-start gap-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={form.ownRoute}
+                  onChange={e => setForm(f => ({ ...f, ownRoute: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300" />
+                <span>
+                  <span className="font-medium">Egen rute</span>
+                  <span className="block text-xs text-gray-500">Køres med Venmarks egne biler. Vises for chauffører i appen og på ruteplanlægningen.</span>
+                </span>
+              </label>
 
               {/* Kontakter */}
               <div>

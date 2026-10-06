@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { getAccessToken, bcBaseUrl } from '@/lib/businesscentral'
+import { ensureRouteSchema, materializeRouteIfMissing } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -30,13 +31,24 @@ export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get('date') ?? today()
   const allVehicles = req.nextUrl.searchParams.get('alle') === '1'
 
-  // Hent chaufførens bcDriverCode til packedBy
+  // Hent chaufførens bcDriverCode til packedBy + standardbil/kode til "Min bil"
+  await ensureRouteSchema()
   const driverRows = await prisma.$queryRaw<any[]>`
-    SELECT "bcDriverCode", name FROM "DriverUser" WHERE id = ${driverId} LIMIT 1
+    SELECT "bcDriverCode", name, "defaultVehicleLabel", "bcShipmentMethodCode"
+    FROM "DriverUser" WHERE id = ${driverId} LIMIT 1
   `
   const bcDriverCode = driverRows[0]?.bcDriverCode ?? driverRows[0]?.name ?? 'UKENDT'
+  const myVehicle    = driverRows[0]?.defaultVehicleLabel ?? 'Bil 1'
+  const myCode       = driverRows[0]?.bcShipmentMethodCode ?? null
 
-  // Hent KØB*-ordrenumre fra ruteplanen for denne dato
+  // Ingen gemt rute endnu → dan den automatisk ud fra faste rutenumre (samme som Rute-fanen)
+  try { await materializeRouteIfMissing(date) } catch (err) {
+    console.error('Auto-rute (pak) fejlede:', err instanceof Error ? err.message : err)
+  }
+
+  // Hent KØB*-ordrenumre fra ruteplanen for denne dato.
+  // "Min bil" = bilen har mig som chauffør, ELLER hedder som min standardbil, ELLER
+  // stoppet har min leveringskode (bilerne gemmes typisk uden chauffør).
   let kobQuery: any[]
   if (allVehicles) {
     kobQuery = await prisma.$queryRaw<any[]>`
@@ -57,14 +69,19 @@ export async function GET(req: NextRequest) {
       JOIN "RouteVehicle" v ON v."routeId" = r.id
       JOIN "RouteStop" s ON s."vehicleId" = v.id
       WHERE r."bookingDate"::date = ${date}::date
-        AND v."driverId" = ${driverId}
         AND s."kobSalesOrderNo" IS NOT NULL
+        AND (v."driverId" = ${driverId}
+          OR v."vehicleLabel" = ${myVehicle}
+          OR (${myCode}::text IS NOT NULL AND s."deliveryCodeOverride" = ${myCode}))
       ORDER BY s."customerName"
     `
   }
 
   if (kobQuery.length === 0) {
-    return NextResponse.json({ date, bcDriverCode, customers: [], noRoute: true })
+    const anyRoute = await prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*) AS n FROM "DeliveryRoute" WHERE "bookingDate"::date = ${date}::date
+    `
+    return NextResponse.json({ date, bcDriverCode, customers: [], noRoute: Number(anyRoute[0]?.n ?? 0) === 0 })
   }
 
   // Hent BC linjer parallelt for alle KØB*-ordrer

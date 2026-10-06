@@ -140,7 +140,7 @@ export default function ChauffeurPakPage() {
 
       {noRoute && (
         <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200 text-sm text-amber-800">
-          Ingen rute planlagt for i dag — gem ruten i admin-siden for at se din bil.
+          Ingen rute for i dag — der blev ikke fundet ordrer i BC til egne ruter.
         </div>
       )}
 

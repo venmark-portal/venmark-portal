@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
+import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes } from '@/lib/route-plan-db'
+import { isOwnRouteCode } from '@/lib/route-plan'
 
 export const runtime = 'nodejs'
 
@@ -28,23 +29,29 @@ export async function GET(req: NextRequest) {
   const date = url.searchParams.get('date') ?? defaultDate()
   const alle = url.searchParams.get('alle') === '1'
 
-  // Hent chaufførens standard leveringskode + bil
-  await prisma.$executeRaw`
-    ALTER TABLE "DriverUser" ADD COLUMN IF NOT EXISTS "bcShipmentMethodCode" TEXT
-  `
+  await ensureRouteSchema()
+
+  // Chaufførens standard leveringskode
   const driverRows = await prisma.$queryRaw<any[]>`
     SELECT "bcShipmentMethodCode", "defaultVehicleLabel"
     FROM "DriverUser" WHERE id = ${driverId} LIMIT 1
   `
-  const driverCode    = alle ? null : (driverRows[0]?.bcShipmentMethodCode ?? null)
-  const driverVehicle = driverRows[0]?.defaultVehicleLabel ?? 'Bil 1'
+  const bcDriverCode = driverRows[0]?.bcShipmentMethodCode ?? null
+  const driverCode   = alle ? null : bcDriverCode
 
-  // Sikr kolonnen eksisterer (kan mangle på ældre rækker)
-  await prisma.$executeRaw`ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "bcCustomerNo" TEXT`
+  // Ingen gemt rute for dagen → dan den automatisk ud fra faste rutenumre/standardbiler.
+  // Ruten tæller fra første øjeblik; admin kan stadig rette den bagefter.
+  let bcError: string | null = null
+  let autoCreated = false
+  try {
+    autoCreated = await materializeRouteIfMissing(date)
+  } catch (err) {
+    bcError = err instanceof Error ? err.message : String(err)
+    console.error('Auto-rute fejlede:', bcError)
+  }
 
-  // Hent gemte rutestop fra DB
   const routeRows = await prisma.$queryRaw<any[]>`
-    SELECT r.id AS "routeId", r.notes AS "routeNotes",
+    SELECT r.id AS "routeId", r.notes AS "routeNotes", r.status AS "routeStatus",
       v.id AS "vehicleId", v."vehicleLabel", v."driverId" AS "vehicleDriverId",
       s.id AS "stopId", s."sortOrder", s."driverId" AS "stopDriverId",
       s."bcSalesOrderNo", s."bcSalesOrderId",
@@ -60,134 +67,100 @@ export async function GET(req: NextRequest) {
     ORDER BY v."sortOrder", s."sortOrder"
   `
 
-  // Hvis gemt rute har stops — brug dem
-  const hasStops = routeRows.some(r => r.stopId)
-  if (hasStops) {
-    // Filtrer stops på chaufførens leveringskode (deliveryCodeOverride)
-    const filtered = driverCode
-      ? routeRows.filter(r => !r.stopId || r.deliveryCodeOverride === driverCode || r.deliveryCodeOverride === null)
-      : routeRows
+  // Koder der vises som faner for chauffører (egen rute)
+  const own = await loadOwnCodes()
+  const ownCodes = Array.from(own.keys()).filter(c => isOwnRouteCode(c, own)).sort()
 
-    // Hent leveringsprofiler + åbne tickets for unikke kunder
-    const customerNos = [...new Set(filtered.map(r => r.bcCustomerNo).filter(Boolean))]
-    const profileMap  = new Map<string, any>()
-    const ticketMap   = new Map<string, any[]>()
-
-    if (customerNos.length > 0) {
-      const placeholders = customerNos.map((_, i) => `$${i + 1}`).join(', ')
-      const profileRows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT c."bcCustomerNumber",
-          dp."doorCode", dp."keyboxCode", dp."alarmCode", dp."deliveryDescription"
-        FROM "Customer" c
-        JOIN "DeliveryProfile" dp ON dp."customerId" = c.id
-        WHERE c."bcCustomerNumber" IN (${placeholders})`,
-        ...customerNos
-      )
-      for (const p of profileRows) profileMap.set(p.bcCustomerNumber, p)
-
-      const ticketRows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT c."bcCustomerNumber", t.id, t.subject, t.body, t."createdAt", t.status
-        FROM "Customer" c
-        JOIN "Ticket" t ON t."customerId" = c.id
-        WHERE c."bcCustomerNumber" IN (${placeholders})
-          AND t.status IN ('OPEN', 'IN_PROGRESS')
-          AND t.type = 'COMPLAINT'
-        ORDER BY t."createdAt" DESC`,
-        ...customerNos
-      )
-      for (const t of ticketRows) {
-        if (!ticketMap.has(t.bcCustomerNumber)) ticketMap.set(t.bcCustomerNumber, [])
-        ticketMap.get(t.bcCustomerNumber)!.push({
-          id: t.id, subject: t.subject, body: t.body, createdAt: t.createdAt, status: t.status,
-        })
-      }
-    }
-
-    const vMap = new Map<string, any>()
-    for (const r of filtered) {
-      if (!r.vehicleId) continue
-      if (!vMap.has(r.vehicleId)) {
-        vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, stops: [] })
-      }
-      if (r.stopId) {
-        const profile = r.bcCustomerNo ? profileMap.get(r.bcCustomerNo) : null
-        const tickets = r.bcCustomerNo ? (ticketMap.get(r.bcCustomerNo) ?? []) : []
-        vMap.get(r.vehicleId)!.stops.push({
-          id:              r.stopId,
-          sortOrder:       r.sortOrder,
-          bcSalesOrderNo:  r.bcSalesOrderNo,
-          deliveryCode:    r.deliveryCodeOverride ?? null,
-          isExtraTask:     Boolean(r.isExtraTask),
-          extraTaskTitle:  r.extraTaskTitle,
-          extraTaskNote:   r.extraTaskNote,
-          customerName:    r.customerName,
-          customerAddress: r.customerAddress,
-          customerPhone:   r.customerPhone,
-          totalWeightKg:   r.totalWeightKg,
-          status:          r.stopStatus ?? 'PENDING',
-          deliveredAt:     r.deliveredAt,
-          failureNote:     r.failureNote,
-          packedStatus:    r.packedStatus,
-          deliveryProfile: profile ? {
-            doorCode:            profile.doorCode,
-            keyboxCode:          profile.keyboxCode,
-            alarmCode:           profile.alarmCode,
-            deliveryDescription: profile.deliveryDescription,
-          } : null,
-          openTickets: tickets,
-        })
-      }
-    }
-    return NextResponse.json({
-      date,
-      preliminary: false,
-      driverCode: driverRows[0]?.bcShipmentMethodCode ?? null,
-      notes:    routeRows[0]?.routeNotes ?? '',
-      vehicles: Array.from(vMap.values()),
-    })
+  const base = {
+    date,
+    preliminary: false,
+    autoCreated,
+    bcError,
+    driverCode: bcDriverCode,
+    ownCodes,
+    routeStatus: routeRows[0]?.routeStatus ?? null,
+    notes: routeRows[0]?.routeNotes ?? '',
   }
 
-  // Ingen gemte stops — hent alle BC-ordrer og vis som foreløbig rute
-  try {
-    const allOrders = await getSalesOrdersForDelivery(date, { fetchLines: false })
-    const bcDriverCode = driverRows[0]?.bcShipmentMethodCode ?? null
-
-    if (allOrders.length === 0) {
-      return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '', driverCode: bcDriverCode })
-    }
-
-    // Grupper efter leveringskode → vehicle
-    const groupMap = new Map<string, any[]>()
-    for (const o of allOrders) {
-      const code = o.deliveryCodes[0] ?? 'VENMARK'
-      if (!groupMap.has(code)) groupMap.set(code, [])
-      groupMap.get(code)!.push(o)
-    }
-
-    const vehicles = Array.from(groupMap.entries()).map(([code, orders]) => ({
-      vehicleId:    `bc-${code}`,
-      vehicleLabel: code,
-      stops: orders.map((o, i) => ({
-        id:              `bc-${o.id}`,
-        sortOrder:       i,
-        bcSalesOrderNo:  o.number,
-        deliveryCode:    code,
-        isExtraTask:     false,
-        extraTaskTitle:  null,
-        extraTaskNote:   null,
-        customerName:    o.customerName,
-        customerAddress: [o.shipToAddress, o.shipToCity].filter(Boolean).join(', '),
-        customerPhone:   o.shipToPhone ?? null,
-        totalWeightKg:   o.totalWeightKg,
-        status:          'PENDING' as const,
-        deliveredAt:     null,
-        failureNote:     null,
-        packedStatus:    null,
-      })),
-    }))
-
-    return NextResponse.json({ date, preliminary: true, notes: '', driverCode: bcDriverCode, vehicles })
-  } catch {
-    return NextResponse.json({ date, preliminary: true, vehicles: [], notes: '', driverCode: null })
+  if (!routeRows.some(r => r.stopId)) {
+    return NextResponse.json({ ...base, vehicles: [] })
   }
+
+  // Filtrer stops på chaufførens leveringskode (deliveryCodeOverride)
+  const filtered = driverCode
+    ? routeRows.filter(r => !r.stopId || r.deliveryCodeOverride === driverCode || r.deliveryCodeOverride === null)
+    : routeRows
+
+  // Hent leveringsprofiler + åbne tickets for unikke kunder
+  const customerNos = Array.from(new Set(filtered.map(r => r.bcCustomerNo).filter(Boolean)))
+  const profileMap  = new Map<string, any>()
+  const ticketMap   = new Map<string, any[]>()
+
+  if (customerNos.length > 0) {
+    const placeholders = customerNos.map((_, i) => `$${i + 1}`).join(', ')
+    const profileRows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT c."bcCustomerNumber",
+        dp."doorCode", dp."keyboxCode", dp."alarmCode", dp."deliveryDescription"
+      FROM "Customer" c
+      JOIN "DeliveryProfile" dp ON dp."customerId" = c.id
+      WHERE c."bcCustomerNumber" IN (${placeholders})`,
+      ...customerNos
+    )
+    for (const p of profileRows) profileMap.set(p.bcCustomerNumber, p)
+
+    const ticketRows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT c."bcCustomerNumber", t.id, t.subject, t.body, t."createdAt", t.status
+      FROM "Customer" c
+      JOIN "Ticket" t ON t."customerId" = c.id
+      WHERE c."bcCustomerNumber" IN (${placeholders})
+        AND t.status IN ('OPEN', 'IN_PROGRESS')
+        AND t.type = 'COMPLAINT'
+      ORDER BY t."createdAt" DESC`,
+      ...customerNos
+    )
+    for (const t of ticketRows) {
+      if (!ticketMap.has(t.bcCustomerNumber)) ticketMap.set(t.bcCustomerNumber, [])
+      ticketMap.get(t.bcCustomerNumber)!.push({
+        id: t.id, subject: t.subject, body: t.body, createdAt: t.createdAt, status: t.status,
+      })
+    }
+  }
+
+  const vMap = new Map<string, any>()
+  for (const r of filtered) {
+    if (!r.vehicleId) continue
+    if (!vMap.has(r.vehicleId)) {
+      vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, stops: [] })
+    }
+    if (r.stopId) {
+      const profile = r.bcCustomerNo ? profileMap.get(r.bcCustomerNo) : null
+      const tickets = r.bcCustomerNo ? (ticketMap.get(r.bcCustomerNo) ?? []) : []
+      vMap.get(r.vehicleId)!.stops.push({
+        id:              r.stopId,
+        sortOrder:       r.sortOrder,
+        bcSalesOrderNo:  r.bcSalesOrderNo,
+        deliveryCode:    r.deliveryCodeOverride ?? null,
+        isExtraTask:     Boolean(r.isExtraTask),
+        extraTaskTitle:  r.extraTaskTitle,
+        extraTaskNote:   r.extraTaskNote,
+        customerName:    r.customerName,
+        customerAddress: r.customerAddress,
+        customerPhone:   r.customerPhone,
+        totalWeightKg:   r.totalWeightKg,
+        status:          r.stopStatus ?? 'PENDING',
+        deliveredAt:     r.deliveredAt,
+        failureNote:     r.failureNote,
+        packedStatus:    r.packedStatus,
+        deliveryProfile: profile ? {
+          doorCode:            profile.doorCode,
+          keyboxCode:          profile.keyboxCode,
+          alarmCode:           profile.alarmCode,
+          deliveryDescription: profile.deliveryDescription,
+        } : null,
+        openTickets: tickets,
+      })
+    }
+  }
+
+  return NextResponse.json({ ...base, vehicles: Array.from(vMap.values()) })
 }

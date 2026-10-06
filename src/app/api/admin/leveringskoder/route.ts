@@ -3,13 +3,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getShipmentMethods } from '@/lib/businesscentral'
+import { ensureRouteSchema } from '@/lib/route-plan-db'
 import { randomUUID } from 'crypto'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
+  await ensureRouteSchema()
   const codes = await prisma.$queryRaw<any[]>`
-    SELECT dc.id, dc.code, dc.name, dc.description, dc."createdAt",
+    SELECT dc.id, dc.code, dc.name, dc.description, dc."ownRoute", dc."createdAt",
       COALESCE(
         json_agg(
           json_build_object(
@@ -20,10 +22,10 @@ export async function GET() {
       ) AS contacts
     FROM "DeliveryCode" dc
     LEFT JOIN "DeliveryContact" ct ON ct."deliveryCodeId" = dc.id
-    GROUP BY dc.id, dc.code, dc.name, dc.description, dc."createdAt"
+    GROUP BY dc.id, dc.code, dc.name, dc.description, dc."ownRoute", dc."createdAt"
     ORDER BY dc.code ASC
   `
-  return NextResponse.json(codes)
+  return NextResponse.json(codes.map(c => ({ ...c, ownRoute: Boolean(c.ownRoute) })))
 }
 
 export async function POST(req: NextRequest) {
@@ -53,14 +55,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Manuel opret
-  const { code, name, description, contacts } = body
+  const { code, name, description, contacts, ownRoute } = body
   if (!code || !name) return NextResponse.json({ error: 'Kode og navn er påkrævet' }, { status: 400 })
 
+  await ensureRouteSchema()
   const id = randomUUID()
   const now = new Date().toISOString()
   await prisma.$executeRaw`
-    INSERT INTO "DeliveryCode" (id, code, name, description, "createdAt")
-    VALUES (${id}, ${code.toUpperCase()}, ${name}, ${description ?? null}, ${now}::timestamp)
+    INSERT INTO "DeliveryCode" (id, code, name, description, "ownRoute", "createdAt")
+    VALUES (${id}, ${code.toUpperCase()}, ${name}, ${description ?? null}, ${Boolean(ownRoute)}, ${now}::timestamp)
   `
   if (contacts?.length) {
     for (const c of contacts) {

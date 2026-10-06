@@ -3,14 +3,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { Save, CheckCircle2, XCircle, ArrowLeft, Plus, GripVertical, Map as MapIcon, Trash2 } from 'lucide-react'
+import { isOwnRouteCode, normalizeCode, mergeKobIntoLovenco } from '@/lib/route-plan'
 
 interface BCOrder {
   id: string; number: string; customerNumber: string; customerName: string
-  shipToPostCode: string; shipToCity: string
-  totalWeightKg: number; deliveryCodes: string[]
+  shipToAddress?: string; shipToPostCode: string; shipToCity: string
+  totalWeightKg: number; portalRouteOrder?: number; deliveryCodes: string[]
 }
 
-interface DeliveryCode { id: string; code: string; name: string }
+interface DeliveryCode { id: string; code: string; name: string; ownRoute?: boolean | null }
+
+function ownMapOf(codes: DeliveryCode[]): Map<string, boolean | null> {
+  return new Map(codes.map(dc => [String(dc.code).toUpperCase().trim(), dc.ownRoute ?? null]))
+}
 
 interface PlanRow {
   id: string            // BC order id (primær) eller 'extra-<uuid>'
@@ -35,39 +40,8 @@ interface PlanRow {
   stopStatus?: string   // PENDING | DELIVERED | FAILED
 }
 
-function isVisibleCode(code: string): boolean {
-  const u = code.toUpperCase().trim()
-  return u === 'LOVENCO' || /^[AKS]/.test(u)
-}
-
-function mergeKobIntoLovenco(rows: PlanRow[]): PlanRow[] {
-  const absorbed = new Set<string>()
-  const out: PlanRow[] = []
-  for (const row of rows) {
-    if (absorbed.has(row.id)) continue
-    if (!row.isExtraTask && row.code === 'LOVENCO' && row.originalCode === 'LOVENCO' && row.address) {
-      const partner = rows.find(r =>
-        !absorbed.has(r.id) && !r.isExtraTask &&
-        r.id !== row.id &&
-        r.code === 'LOVENCO' &&
-        /^KØB/i.test(r.originalCode) &&
-        r.address.toLowerCase() === row.address.toLowerCase() &&
-        r.postCode === row.postCode
-      )
-      if (partner) {
-        absorbed.add(partner.id)
-        out.push({
-          ...row,
-          weightKg: row.weightKg + partner.weightKg,
-          merged: [{ id: partner.id, number: partner.number, originalCode: partner.originalCode, weightKg: partner.weightKg }],
-        })
-        continue
-      }
-    }
-    out.push(row)
-  }
-  return out
-}
+// Hvilke koder der er "egen rute" + KØB→LOVENCO-sammenlægning ligger i src/lib/route-plan.ts
+// (deles med chauffør-API'ets automatiske rute).
 
 function mkKey() { return Math.random().toString(36).slice(2) }
 
@@ -110,6 +84,8 @@ export default function LeveringDagPage() {
       setBcError(d.bcError ?? null)
       setDcodes(d.deliveryCodes ?? [])
       setNotes((d.routeRows ?? [])[0]?.routeNotes ?? '')
+      const ownMap = ownMapOf(d.deliveryCodes ?? [])
+      const isVisibleCode = (c: string) => isOwnRouteCode(c, ownMap)
 
       const profiles: Record<string, { routeOrder: number; defaultVehicle: number }> = d.routeProfiles ?? {}
 
@@ -134,7 +110,7 @@ export default function LeveringDagPage() {
         const codes: string[] = Array.isArray(o.deliveryCodes) ? o.deliveryCodes : []
         const originalCode = codes.find(c => isVisibleCode(c)) ?? codes[0] ?? '–'
         if (!isVisibleCode(originalCode)) continue
-        const code = /^KØB/i.test(originalCode) ? 'LOVENCO' : originalCode
+        const code = normalizeCode(originalCode)
         const existing = routeMap.get(o.id)
         const profile  = profiles[o.customerNumber ?? '']
         const defaultVehicle = profile?.defaultVehicle ?? 0
@@ -212,7 +188,8 @@ export default function LeveringDagPage() {
   }, [load])
 
   const allBils = Array.from(new Set([...bils, ...rows.map(r => r.bil)])).sort()
-  const allCodes = Array.from(new Set(dcodes.map(dc => dc.code).filter(isVisibleCode))).sort()
+  const ownMapNow = ownMapOf(dcodes)
+  const allCodes = Array.from(new Set(dcodes.map(dc => dc.code).filter(c => isOwnRouteCode(c, ownMapNow)))).sort()
 
   function updateRow(id: string, patch: Partial<PlanRow>) {
     setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))

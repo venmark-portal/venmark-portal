@@ -5,11 +5,12 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import {
-  Truck, MapPin, Phone, Package, CheckCircle2, XCircle,
+  Truck, MapPin, Phone, CheckCircle2, XCircle,
   Clock, ChevronDown, ChevronUp, LogOut, AlertTriangle,
-  Camera, Navigation, ChevronLeft, ChevronRight, Calendar,
-  Info, MessageCircleWarning, DoorOpen, KeyRound, ShieldAlert,
+  Camera, Navigation, ChevronLeft, ChevronRight,
+  Info, MessageCircleWarning, DoorOpen, KeyRound, ShieldAlert, GripVertical,
 } from 'lucide-react'
+import { applyOrder } from '@/lib/route-plan'
 
 function defaultDate(): string {
   const now = new Date()
@@ -74,6 +75,10 @@ const STATUS_LABEL: Record<string, string> = {
   SKIPPED:   'Sprunget over',
 }
 
+// Træk-og-slip med én finger: håndtaget fanger pointeren (virker på touch, mus og pen).
+const SCROLL_MARGIN = 90   // px fra skærmkant hvor listen ruller af sig selv
+const SCROLL_STEP   = 12
+
 export default function ChauffeurRutePage() {
   const { data: session } = useSession()
   const [vehicles,    setVehicles]    = useState<Vehicle[]>([])
@@ -81,13 +86,22 @@ export default function ChauffeurRutePage() {
   const [notes,       setNotes]       = useState('')
   const [date,        setDate]        = useState(() => defaultDate())
   const [loading,     setLoading]     = useState(true)
-  const [preliminary, setPreliminary] = useState(false)
+  const [bcError,     setBcError]     = useState<string | null>(null)
+  const [routeStatus, setRouteStatus] = useState<string | null>(null)
+  const [ownCodes,    setOwnCodes]    = useState<string[]>([])
+  const [driverCode,  setDriverCode]  = useState<string | null>(null)
   const [codeFilter,  setCodeFilter]  = useState<string | null>(null) // null = ikke sat endnu
   const [expanded,     setExpanded]     = useState<Set<string>>(new Set())
   const [infoOpen,     setInfoOpen]     = useState<Set<string>>(new Set())
   const [updating,     setUpdating]     = useState<Set<string>>(new Set())
   const [failNotes,    setFailNotes]    = useState<Record<string, string>>({})
+  const [dragId,       setDragId]       = useState<string | null>(null)
+  const [reorderError, setReorderError] = useState<string | null>(null)
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({})
+  const vehiclesRef   = useRef<Vehicle[]>([])
+  const dragRef       = useRef<{ stopId: string; vehicleId: string; lastY: number; timer: number | null } | null>(null)
+
+  useEffect(() => { vehiclesRef.current = vehicles }, [vehicles])
 
   const load = useCallback(async (d: string) => {
     setLoading(true)
@@ -97,7 +111,10 @@ export default function ChauffeurRutePage() {
     const data = await res.json()
     setAllVehicles(data.vehicles ?? [])
     setNotes(data.notes ?? '')
-    setPreliminary(data.preliminary ?? false)
+    setBcError(data.bcError ?? null)
+    setRouteStatus(data.routeStatus ?? null)
+    setOwnCodes(data.ownCodes ?? [])
+    setDriverCode(data.driverCode ?? null)
     // Sæt standard-filter til chaufførens kode (kun første gang)
     if (data.driverCode) setCodeFilter(prev => prev === null ? data.driverCode : prev)
     setLoading(false)
@@ -135,6 +152,86 @@ export default function ChauffeurRutePage() {
       return n
     })
   }
+
+  // ─── Træk-og-slip ──────────────────────────────────────────────────────────
+
+  /** Ny rækkefølge for bilens synlige stops når det trukne stop står ved y. */
+  function orderAtY(vehicleId: string, stopId: string, y: number): string[] | null {
+    const container = document.querySelector<HTMLElement>(`[data-vehicle="${vehicleId}"]`)
+    if (!container) return null
+    const cards  = Array.from(container.querySelectorAll<HTMLElement>('[data-stop]'))
+    const ids    = cards.map(c => c.dataset.stop!)
+    if (!ids.includes(stopId)) return null
+    const others = cards.filter(c => c.dataset.stop !== stopId)
+    let target = others.length
+    for (let i = 0; i < others.length; i++) {
+      const r = others[i].getBoundingClientRect()
+      if (y < r.top + r.height / 2) { target = i; break }
+    }
+    const next = others.map(c => c.dataset.stop!)
+    next.splice(target, 0, stopId)
+    return next.every((id, i) => id === ids[i]) ? null : next
+  }
+
+  function moveDragged(y: number) {
+    const d = dragRef.current
+    if (!d) return
+    const next = orderAtY(d.vehicleId, d.stopId, y)
+    if (!next) return
+    setVehicles(vs => vs.map(v => v.vehicleId !== d.vehicleId ? v : { ...v, stops: applyOrder(v.stops, next) }))
+  }
+
+  function startDrag(e: React.PointerEvent<HTMLElement>, vehicleId: string, stopId: string) {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    dragRef.current = { stopId, vehicleId, lastY: e.clientY, timer: null }
+    setDragId(stopId)
+    setReorderError(null)
+    // Rul listen når fingeren holdes nær top/bund af skærmen
+    dragRef.current.timer = window.setInterval(() => {
+      const d = dragRef.current
+      if (!d) return
+      const bottomEdge = window.innerHeight - SCROLL_MARGIN - 64 // 64 = bund-navigation
+      if (d.lastY < SCROLL_MARGIN)      window.scrollBy(0, -SCROLL_STEP)
+      else if (d.lastY > bottomEdge)    window.scrollBy(0,  SCROLL_STEP)
+      else return
+      moveDragged(d.lastY)
+    }, 16)
+  }
+
+  function dragMove(e: React.PointerEvent<HTMLElement>) {
+    const d = dragRef.current
+    if (!d) return
+    d.lastY = e.clientY
+    moveDragged(e.clientY)
+  }
+
+  async function endDrag() {
+    const d = dragRef.current
+    dragRef.current = null
+    setDragId(null)
+    if (!d) return
+    if (d.timer) window.clearInterval(d.timer)
+
+    const vehicle = vehiclesRef.current.find(v => v.vehicleId === d.vehicleId)
+    if (!vehicle) return
+    const orderedStopIds = vehicle.stops.map(s => s.id)
+
+    const res = await fetch('/api/chauffeur/rute/reorder', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ vehicleId: d.vehicleId, orderedStopIds }),
+    })
+    if (res.ok) {
+      // Samme rækkefølge i den ufiltrerede liste, så fane-skift beholder den
+      setAllVehicles(vs => vs.map(v => v.vehicleId !== d.vehicleId ? v : { ...v, stops: applyOrder(v.stops, orderedStopIds) }))
+    } else {
+      setReorderError('Kunne ikke gemme rækkefølgen — prøv igen')
+      load(date)
+    }
+  }
+
+  // ─── Levering ──────────────────────────────────────────────────────────────
 
   async function deliverWithPhoto(stopId: string, file: File) {
     setUpdating(prev => new Set(prev).add(stopId))
@@ -208,8 +305,15 @@ export default function ChauffeurRutePage() {
     ? new Date(date + 'T12:00:00').toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
     : ''
 
+  // Faner: kun "egen rute"-koder (plus chaufførens egen kode, hvis den af en eller anden grund ikke er flaget)
+  const presentCodes = Array.from(new Set(allVehicles.flatMap(v => v.stops.map(s => s.deliveryCode ?? v.vehicleLabel)))).filter(Boolean) as string[]
+  const chipCodes = (ownCodes.length > 0
+    ? presentCodes.filter(c => ownCodes.includes(c) || c === driverCode)
+    : presentCodes
+  ).sort()
+
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 space-y-4">
+    <div className={`mx-auto max-w-lg px-4 py-6 space-y-4 ${dragId ? 'select-none' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -242,7 +346,7 @@ export default function ChauffeurRutePage() {
       </div>
 
       {/* Leveringskode-filter */}
-      {allVehicles.length > 0 && (
+      {chipCodes.length > 0 && (
         <div className="flex gap-1.5 flex-wrap">
           <button
             onClick={() => setCodeFilter(null)}
@@ -252,7 +356,7 @@ export default function ChauffeurRutePage() {
           >
             Alle
           </button>
-          {Array.from(new Set(allVehicles.flatMap(v => v.stops.map(s => s.deliveryCode ?? v.vehicleLabel)))).filter(Boolean).sort().map(label => (
+          {chipCodes.map(label => (
             <button
               key={label}
               onClick={() => setCodeFilter(label === codeFilter ? null : label)}
@@ -282,11 +386,13 @@ export default function ChauffeurRutePage() {
         </div>
       )}
 
-      {/* Foreløbig rute */}
-      {preliminary && (
-        <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200 text-sm text-amber-800">
-          Foreløbig rute — ikke endeligt planlagt af admin endnu
+      {bcError && (
+        <div className="rounded-xl bg-red-50 p-3 ring-1 ring-red-200 text-sm text-red-700">
+          Kunne ikke hente ordrer fra BC: {bcError}
         </div>
+      )}
+      {reorderError && (
+        <div className="rounded-xl bg-red-50 p-3 ring-1 ring-red-200 text-sm text-red-700">{reorderError}</div>
       )}
 
       {/* Generelle noter */}
@@ -297,21 +403,25 @@ export default function ChauffeurRutePage() {
         </div>
       )}
 
-      {/* Ingen rute */}
-      {vehicles.length === 0 && !preliminary && (
-        <div className="rounded-xl bg-white p-8 text-center ring-1 ring-gray-200 text-sm text-gray-400">
-          Ingen rute planlagt for {dkDate || date}
-        </div>
+      {total > 0 && (
+        <p className="px-1 text-xs text-gray-400">
+          {routeStatus === 'AUTO' ? 'Rækkefølge efter faste rutenumre. ' : ''}
+          Hold på <GripVertical size={11} className="inline -mt-0.5" /> og træk for at flytte et stop — det gemmes med det samme.
+        </p>
       )}
-      {vehicles.length === 0 && preliminary && (
+
+      {/* Ingen rute */}
+      {vehicles.length === 0 && (
         <div className="rounded-xl bg-white p-8 text-center ring-1 ring-gray-200 text-sm text-gray-400">
-          Ingen ordrer fundet i BC for {dkDate || date}
+          {allVehicles.length === 0
+            ? `Ingen ordrer til egne ruter ${dkDate || date}`
+            : `Ingen stops med koden ${codeFilter} ${dkDate || date}`}
         </div>
       )}
 
       {/* Biler + stops */}
       {vehicles.map(v => (
-        <div key={v.vehicleId} className="space-y-2">
+        <div key={v.vehicleId} className="space-y-2" data-vehicle={v.vehicleId}>
           <div className="flex items-center gap-2 px-1">
             <Truck size={14} className="text-blue-600" />
             <span className="text-sm font-semibold text-gray-700">{v.vehicleLabel}</span>
@@ -322,8 +432,8 @@ export default function ChauffeurRutePage() {
             const isInfoOpen  = infoOpen.has(s.id)
             const isUpdating  = updating.has(s.id)
             const isDone      = s.status !== 'PENDING'
+            const isDragging  = dragId === s.id
             const showFailBox = isExpanded && s.status === 'PENDING'
-            const isPrelim    = s.id.startsWith('bc-')
             const hasInfo     = Boolean(
               s.deliveryProfile?.doorCode || s.deliveryProfile?.keyboxCode ||
               s.deliveryProfile?.alarmCode || s.deliveryProfile?.deliveryDescription ||
@@ -332,14 +442,33 @@ export default function ChauffeurRutePage() {
 
             return (
               <div key={s.id}
-                className={`rounded-2xl bg-white ring-1 transition-all ${
+                data-stop={s.id}
+                className={`rounded-2xl bg-white ring-1 transition-shadow ${
+                  isDragging ? 'ring-2 ring-blue-400 shadow-xl relative z-10' :
                   s.status === 'DELIVERED' ? 'ring-green-200 bg-green-50' :
                   s.status === 'FAILED'    ? 'ring-red-200 bg-red-50' :
                   'ring-gray-200'
                 }`}
               >
                 {/* Stop-header */}
-                <div className="flex items-start gap-2 p-4">
+                <div className="flex items-start gap-1 p-3 pl-1">
+                {/* Træk-håndtag — kun stops der ikke er afleveret */}
+                {!isDone ? (
+                  <button
+                    type="button"
+                    aria-label="Flyt stop"
+                    onPointerDown={e => startDrag(e, v.vehicleId, s.id)}
+                    onPointerMove={dragMove}
+                    onPointerUp={endDrag}
+                    onPointerCancel={endDrag}
+                    style={{ touchAction: 'none' }}
+                    className={`shrink-0 -my-1 flex h-12 w-9 items-center justify-center rounded-lg text-gray-300 active:bg-blue-50 active:text-blue-500 ${isDragging ? 'cursor-grabbing text-blue-500' : 'cursor-grab'}`}
+                  >
+                    <GripVertical size={20} />
+                  </button>
+                ) : (
+                  <span className="shrink-0 w-9" />
+                )}
                 <button
                   onClick={() => toggleExpand(s.id)}
                   className="flex-1 flex items-start gap-3 text-left min-w-0"
@@ -407,7 +536,7 @@ export default function ChauffeurRutePage() {
                     {s.deliveryProfile?.doorCode && (
                       <div className="flex gap-2 items-center">
                         <DoorOpen size={14} className="shrink-0 text-amber-600" />
-                        <span className="text-gray-700">Dørode: <span className="font-mono font-bold text-gray-900">{s.deliveryProfile.doorCode}</span></span>
+                        <span className="text-gray-700">Dørkode: <span className="font-mono font-bold text-gray-900">{s.deliveryProfile.doorCode}</span></span>
                       </div>
                     )}
                     {s.deliveryProfile?.keyboxCode && (
@@ -473,9 +602,7 @@ export default function ChauffeurRutePage() {
                     )}
 
                     {/* Handlinger */}
-                    {isPrelim ? (
-                      <div className="text-xs text-amber-600 text-center py-1">Ruten er ikke endeligt planlagt endnu</div>
-                    ) : !isDone ? (
+                    {!isDone ? (
                       <div className="space-y-2">
                         {/* Skjult fil-input til kamera */}
                         <input

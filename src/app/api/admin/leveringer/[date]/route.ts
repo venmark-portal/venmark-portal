@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
-
+import { ensureRouteSchema } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -54,6 +54,7 @@ export async function GET(
   let profileRows: any[] = []
 
   try {
+    await ensureRouteSchema()
     ;[routeRows, driverRows, codeRows, profileRows] = await Promise.all([
       prisma.$queryRaw<any[]>`
         SELECT r.id as "routeId", r.status as "routeStatus", r.notes as "routeNotes",
@@ -73,7 +74,7 @@ export async function GET(
         SELECT id, name, phone, "isDefault"
         FROM "DriverUser" WHERE "isActive" = true ORDER BY "isDefault" DESC, name ASC
       `,
-      prisma.$queryRaw<any[]>`SELECT id, code, name FROM "DeliveryCode" ORDER BY code ASC`,
+      prisma.$queryRaw<any[]>`SELECT id, code, name, "ownRoute" FROM "DeliveryCode" ORDER BY code ASC`,
       prisma.$queryRaw<any[]>`SELECT "customerNo", "routeOrder", "defaultVehicle" FROM "CustomerRouteProfile"`,
     ])
   } catch (dbErr) {
