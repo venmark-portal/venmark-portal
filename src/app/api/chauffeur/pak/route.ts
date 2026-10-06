@@ -10,14 +10,18 @@ function today() {
   return new Date().toISOString().slice(0, 10)
 }
 
-// Hent BC salgslinjer for en ordre (kun Item-linjer)
+// Varenumre der ikke er fysiske varer og derfor ikke skal pakkes:
+// 999999 = fragt/ekspedition/gebyr (BC: Salgsopsætning → "Fragt varenummer").
+const NON_PACKABLE_ITEMS = new Set(['999999'])
+
+// Hent BC salgslinjer for en ordre (kun Item-linjer, uden gebyr-linjer)
 async function fetchBCLines(orderNo: string, headers: Record<string, string>, base: string) {
   const filter = encodeURIComponent(`documentNo eq '${orderNo}' and type eq 'Item'`)
   const url = `${base}/portalSalesLines?$filter=${filter}&$top=200`
   const res = await fetch(url, { headers, cache: 'no-store' })
   if (!res.ok) return []
   const data = await res.json()
-  return data.value ?? []
+  return (data.value ?? []).filter((l: any) => !NON_PACKABLE_ITEMS.has(String(l.lineObjectNumber ?? '').trim()))
 }
 
 // GET /api/chauffeur/pak?date=YYYY-MM-DD
