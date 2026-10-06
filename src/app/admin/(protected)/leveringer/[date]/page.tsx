@@ -151,7 +151,10 @@ export default function LeveringDagPage() {
           code,
           originalCode,
           bil:            existing?.bil ?? defaultBil,
-          routeOrder:     existing?.sort ?? profile?.routeOrder ?? (o.portalRouteOrder > 0 ? o.portalRouteOrder : 5000),
+          // Kundens standard-rutenummer først. Dagens gemte stop har kun sin
+          // position (0,1,2…) som sortOrder — vistes den, blev rutenumrene
+          // overskrevet med løbenumre ved næste "Gem rute".
+          routeOrder:     profile?.routeOrder ?? existing?.sort ?? (o.portalRouteOrder > 0 ? o.portalRouteOrder : 5000),
           defaultVehicle,
           stopId:         existing?.stopId,
           stopStatus:     existing?.stopStatus ?? 'PENDING',
