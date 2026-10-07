@@ -1,0 +1,49 @@
+'use client'
+
+// Indløser billetten fra /admin/kunde-som/<kundenr> og lander på portalens forside
+// som kunden. Siden er åben i middlewaren — den skal pr. definition kunne nås uden
+// at være logget ind, for det er netop den der giver adgangen.
+//
+// Billetten indløses her i browseren frem for server-side, fordi NextAuth skal sætte
+// sessions-cookien gennem sit eget login-kald. Den er engangs, så et genbesøg med
+// samme adresse (fx tilbage-knappen) fejler — og det er meningen.
+
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { signIn } from 'next-auth/react'
+
+export const dynamic = 'force-dynamic'
+
+export default function SomKundePage() {
+  const params = useSearchParams()
+  const [fejl, setFejl] = useState<string | null>(null)
+
+  useEffect(() => {
+    const token = params.get('token')
+    if (!token) { setFejl('Der mangler en adgangsbillet i linket.'); return }
+    signIn('impersonate', { token, redirect: false })
+      .then(res => {
+        if (res?.ok) window.location.href = '/portal'
+        else setFejl('Billetten kan ikke bruges. Den varer to minutter og kan kun bruges én gang — åbn kunden forfra fra BC eller admin.')
+      })
+      .catch(() => setFejl('Kunne ikke få forbindelse. Prøv igen.'))
+  }, [params])
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-200">
+        {fejl ? (
+          <>
+            <p className="text-sm font-semibold text-red-700">Kunne ikke åbne som kunde</p>
+            <p className="mt-2 text-sm text-gray-600">{fejl}</p>
+            <a href="/admin/kunder" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:underline">
+              Til kundelisten
+            </a>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">Åbner portalen som kunden…</p>
+        )}
+      </div>
+    </div>
+  )
+}

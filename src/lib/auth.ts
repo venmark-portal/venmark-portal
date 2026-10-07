@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { compare } from 'bcryptjs'
 import { prisma } from './prisma'
 import { getPortalOrderAccesses } from './businesscentral'
+import { indloesAdgang } from './impersonation'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -102,6 +103,40 @@ export const authOptions: NextAuthOptions = {
       },
     }),
 
+    // "Gå ind som kunde" — admin ser portalen med kundens øjne. Ingen adgangskode:
+    // billetten ER beviset, og den kan kun udstedes af en der ALLEREDE er logget ind
+    // som admin (se src/lib/impersonation.ts). Engangs, udløber på 2 minutter.
+    CredentialsProvider({
+      id: 'impersonate',
+      name: 'Som kunde',
+      credentials: { token: { label: 'Billet', type: 'text' } },
+      async authorize(credentials) {
+        const adgang = await indloesAdgang(credentials?.token ?? '')
+        if (!adgang) return null
+
+        const customer = await prisma.customer.findUnique({ where: { id: adgang.customerId } })
+        if (!customer) return null
+        // BEMÆRK: der tjekkes med vilje IKKE isActive/bcBlocked. Det er netop den
+        // spærrede kunde man har mest brug for at kigge med hos, når man skal finde ud
+        // af hvorfor hun ikke kan komme ind.
+
+        return {
+          id:                    customer.id,
+          email:                 customer.email,
+          name:                  customer.name,
+          role:                  'customer' as const,
+          bcCustomerNumber:      customer.bcCustomerNumber,
+          bcPriceGroup:          customer.bcPriceGroup ?? '',
+          bcChainPriceGroup:     (customer as any).bcChainPriceGroup ?? '',
+          requirePoNumber:       customer.requirePoNumber,
+          bcDebitorBookingGroup: customer.bcDebitorBookingGroup ?? '',
+          isContact:             false,
+          // Bæres med ud i sessionen og driver båndet øverst på hver side.
+          impersonatedBy:        adgang.adminName || adgang.adminEmail,
+        }
+      },
+    }),
+
     CredentialsProvider({
       id: 'driver',
       name: 'Chauffør',
@@ -136,6 +171,8 @@ export const authOptions: NextAuthOptions = {
         token.requirePoNumber       = (user as any).requirePoNumber ?? false
         token.bcDebitorBookingGroup = (user as any).bcDebitorBookingGroup ?? ''
         token.isContact             = (user as any).isContact ?? false
+        // Tom for en rigtig kunde — kun sat når en admin kigger med.
+        ;(token as any).impersonatedBy = (user as any).impersonatedBy ?? ''
         // "Bestil på vegne af": aktiv kunde starter som login-kunden selv.
         // active* = valgt butik; token.bcCustomerNumber/bcPriceGroup/... forbliver
         // login-kundens EGET (parent) og bruges kun til adgangs-validering.
@@ -180,6 +217,7 @@ export const authOptions: NextAuthOptions = {
         ;(session.user as any).id                   = token.sub
         ;(session.user as any).role                 = token.role
         ;(session.user as any).isContact            = token.isContact ?? false
+        ;(session.user as any).impersonatedBy       = (token as any).impersonatedBy ?? ''
         ;(session.user as any).requirePoNumber      = token.requirePoNumber ?? false
 
         // Login-kundens EGET nr. (parent) — bevares til adgangs-validering

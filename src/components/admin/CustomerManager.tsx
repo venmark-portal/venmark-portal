@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createCustomer, updateCustomer, toggleCustomerActive } from '@/app/admin/(protected)/kunder/actions'
-import { UserPlus, Pencil, ToggleLeft, ToggleRight, X, Loader2, CheckCircle2 } from 'lucide-react'
+import { UserPlus, Pencil, ToggleLeft, ToggleRight, X, Loader2, CheckCircle2, Eye } from 'lucide-react'
 
 type Customer = {
   id:                  string
@@ -133,6 +133,19 @@ export default function CustomerManager({ initialCustomers }: { initialCustomers
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">
+                  {/* Åbner portalen som kunden. Almindeligt link, ikke fetch: ruten
+                      udsteder en engangsbillet og sender videre, og så skal browseren
+                      følge med derhen. Ny fane, for login-cookien bliver skiftet ud —
+                      så beholder man i det mindste admin-fanen stående bagved. */}
+                  <a
+                    href={`/admin/kunde-som/${encodeURIComponent(c.bcCustomerNumber)}`}
+                    target="_blank"
+                    rel="noopener"
+                    title={`Åbn portalen som ${c.name}`}
+                    className="mr-1 inline-block rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                  >
+                    <Eye size={15} />
+                  </a>
                   <button
                     onClick={() => openEdit(c)}
                     className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"

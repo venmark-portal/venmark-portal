@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import PortalNav from '@/components/portal/PortalNav'
 import VersionVagt from '@/components/portal/VersionVagt'
+import SomKundeBaand from '@/components/portal/SomKundeBaand'
 import SessionProvider from '@/components/portal/SessionProvider'
 import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
 import TicketNotifier from '@/components/portal/TicketNotifier'
@@ -68,6 +69,14 @@ export default async function PortalLayout({
   return (
     <SessionProvider session={session}>
       <div className="flex min-h-screen flex-col" style={{ backgroundColor: settings.bgColor }}>
+
+        {/* Admin kigger med som kunden — skal kunne ses på HVER side. */}
+        {(session.user as any)?.impersonatedBy && (
+          <SomKundeBaand
+            kunde={session.user?.name ?? 'kunden'}
+            admin={(session.user as any).impersonatedBy}
+          />
+        )}
 
         {/* Desktop-topbar */}
         <header className="hidden border-b border-white/60 bg-white/80 backdrop-blur-sm md:block sticky top-0 z-30 shadow-sm">

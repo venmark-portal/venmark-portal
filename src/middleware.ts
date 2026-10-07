@@ -13,11 +13,23 @@ export async function middleware(req: NextRequest) {
     pathname === '/portal/login' ||
     pathname === '/portal/forgot-password' ||
     pathname === '/portal/reset-password' ||
+    // "Gå ind som kunde": siden ER adgangen. Den indløser en engangsbillet udstedt af
+    // en admin, så den kan ikke selv kræve at man allerede er logget ind.
+    pathname === '/portal/som-kunde' ||
     pathname === '/admin/login' ||
     pathname === '/chauffeur/login'
   ) return NextResponse.next()
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+
+  // Admin-sider uden login → til ADMIN-login, ikke kundelogin. Linket fra BC's
+  // debitorkort peger på /admin/..., og dér hjælper det ingen at lande på kundens
+  // loginside med en adgangskode man ikke har.
+  if (!token && pathname.startsWith('/admin')) {
+    const url = new URL('/admin/login', req.url)
+    url.searchParams.set('callbackUrl', pathname + req.nextUrl.search)
+    return NextResponse.redirect(url)
+  }
 
   // Chauffør-sider: kræver driver-rolle
   if (pathname.startsWith('/chauffeur')) {

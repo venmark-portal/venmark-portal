@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function AdminLoginPage() {
   const router = useRouter()
+  const params = useSearchParams()
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState('')
@@ -23,7 +24,11 @@ export default function AdminLoginPage() {
     })
 
     if (res?.ok) {
-      router.push('/admin')
+      // Kom man hertil fra et link (fx "Åbn portal som kunde" på debitorkortet i BC),
+      // skal man videre DERTIL bagefter — ikke til forsiden. Kun interne stier
+      // accepteres, så en ?callbackUrl= i et link ikke kan sende nogen ud af huset.
+      const retur = params.get('callbackUrl')
+      router.push(retur && retur.startsWith('/') && !retur.startsWith('//') ? retur : '/admin')
     } else {
       setError('Forkert email eller adgangskode')
       setLoading(false)
