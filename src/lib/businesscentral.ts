@@ -1518,6 +1518,7 @@ export interface BCCustomerOrder {
   externalDocumentNumber: string
   orderNote:             string
   shipmentMethodName:    string   // leveringsformens tekst (fra $expand shipmentMethod)
+  shipmentMethodCode:    string   // koden — bruges til at regne ordrens frist ud
 }
 
 /**
@@ -1556,6 +1557,7 @@ export async function getCustomerOrders(customerNo: string): Promise<BCCustomerO
       externalDocumentNumber: o.externalDocumentNumber ?? '',
       orderNote:              '',
       shipmentMethodName:     (o.shipmentMethod?.displayName || o.shipmentMethod?.code || '').trim(),
+      shipmentMethodCode:     (o.shipmentMethod?.code || '').trim(),
     })) as BCCustomerOrder[]
   } catch {
     return []

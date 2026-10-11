@@ -7,11 +7,21 @@ import {
   getCustomerOrders,
   getPortalLineStatuses,
   getPortalOrderAccesses,
+  getPortalShipmentMethods,
+  getPortalCalendarDays,
   BCPortalLine,
   BCCustomerOrder,
+  type BCShipmentMethod,
+  type BCCalendarDay,
 } from '@/lib/businesscentral'
+import { getDeadlineForMethodDelivery, getDeadlineForDelivery } from '@/lib/dateUtils'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
+
+/** Lokal YYYY-MM-DD — ikke toISOString, der skifter dato ved midnat. */
+function ymdLokal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 import OrderLineStatus, { LINE_COLS, LINE_GRID_CLS } from '@/components/portal/OrderLineStatus'
 
 export const dynamic = 'force-dynamic'
@@ -95,6 +105,21 @@ export default async function MyOrdersPage() {
   )
   const portalOrigin = new Set(portalRows.map(r => r.bcOrderNumber).filter(Boolean) as string[])
 
+  // Ordrer tastet i BC (tlf/mail) har ingen portalrække og dermed ingen gemt frist.
+  // Den regnes her af leveringsformen — ellers kunne kunden ikke tilføje til en ordre
+  // hun selv har ringet ind, hvilket set fra hendes side er samme ordre.
+  const om90 = new Date(); om90.setDate(om90.getDate() + 90)
+  const [shipMethods, calDays] = await Promise.all([
+    getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[]),
+    getPortalCalendarDays(ymdLokal(new Date()), ymdLokal(om90)).catch(() => [] as BCCalendarDay[]),
+  ])
+  function bcFrist(o: BCCustomerOrder): Date | null {
+    if (!o.requestedDeliveryDate) return null
+    const lev = new Date(`${o.requestedDeliveryDate}T00:00:00`)
+    const m = shipMethods.find(x => x.code === o.shipmentMethodCode)
+    return m ? getDeadlineForMethodDelivery(lev, m, calDays) : getDeadlineForDelivery(lev)
+  }
+
   // Kun grupper med ordrer; login-kunden først, derefter butikker alfabetisk
   const groups = perCustomer
     .filter(pc => pc.orders.length > 0)
@@ -176,8 +201,8 @@ export default async function MyOrdersPage() {
                         lines={lineMap.get(order.number) ?? null}
                         fromBc={!portalOrigin.has(order.number)}
                         deliveryDate={deliveryOf(order)}
-                        portalOrderId={pr?.id}
-                        deadline={pr?.deadline?.toISOString()}
+                        tilfoejId={pr?.id ?? order.id}
+                        deadline={(pr?.deadline ?? bcFrist(order))?.toISOString()}
                       />
                     )
                   })}
@@ -191,17 +216,22 @@ export default async function MyOrdersPage() {
   )
 }
 
-function OrderCard({ order, lines, fromBc, deliveryDate, portalOrderId, deadline }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string; portalOrderId?: string; deadline?: string }) {
+function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string; tilfoejId?: string; deadline?: string }) {
   const st = STATUS[order.status] ?? { label: order.status || 'Åben', cls: 'bg-gray-100 text-gray-600' }
   // "Kladde" forvirrer kunden → skjul status-badgen for kladder (vis kun ved reelle statusser).
   const showStatus = order.status !== 'Draft' && !!st.label
 
-  // "Tilføj vare" må når: det er en portal-ordre (Prisma-id), salgshovedet IKKE er færdigpakket
-  // (headerPackedBy = "Packed By" på salgshovedet er sat), og fristen ikke er overskredet.
-  // Bemærk: enkelte linjer der pakkes (linje-PackedBy) blokerer IKKE — kun hele ordrens Packed By.
+  // "Tilføj vare" må når salgshovedet IKKE er færdigpakket (headerPackedBy = "Packed By"
+  // på salgshovedet er sat) og fristen ikke er overskredet. Bemærk: enkelte linjer der
+  // pakkes (linje-PackedBy) blokerer IKKE — kun hele ordrens Packed By.
+  //
+  // Det var før også et krav at ordren var bestilt GENNEM portalen. Det gav ingen mening
+  // for kunden: har hun ringet en ordre ind om morgenen, er det samme ordre hun vil
+  // supplere. Nu gælder det alle åbne ordrer — fristen på en BC-ordre regnes af
+  // leveringsformen ude i oversigten.
   const lns = lines ?? []
   const headerPacked = lns.some((l) => (l.headerPackedBy ?? '').trim() !== '')
-  const canAddLines = !!portalOrderId && !headerPacked && (!deadline || new Date() < new Date(deadline))
+  const canAddLines = !!tilfoejId && !headerPacked && !!deadline && new Date() < new Date(deadline)
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
@@ -288,7 +318,7 @@ function OrderCard({ order, lines, fromBc, deliveryDate, portalOrderId, deadline
       {canAddLines && (
         <div className="border-t border-gray-100 px-4 py-2.5">
           <Link
-            href={`/portal/ordrer/${portalOrderId}/tilfoej`}
+            href={`/portal/ordrer/${tilfoejId}/tilfoej`}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800"
           >
             <PlusCircle size={15} />

@@ -9,6 +9,7 @@ import {
 } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
+import { findTilfoejMaal } from '@/lib/tilfoejOrdre'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,10 +36,10 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
   const priceGrp   = (session.user as any)?.bcPriceGroup     as string ?? ''
   const chainGrp   = (session.user as any)?.bcChainPriceGroup as string ?? ''
 
-  const order = await prisma.order.findUnique({ where: { id: params.id }, include: { lines: true } })
-  if (!order || order.customerId !== userId) redirect('/portal/ordrer')
-  if (new Date() > new Date(order.deadline))  redirect('/portal/ordrer')
-  if (order.status === 'REJECTED')            redirect('/portal/ordrer')
+  // Både portal-ordrer og ordrer tastet i BC (tlf/mail) — se src/lib/tilfoejOrdre.ts.
+  const order = await findTilfoejMaal(params.id, session)
+  if (!order)                                redirect('/portal/ordrer')
+  if (new Date() > order.deadline)           redirect('/portal/ordrer')
 
   const today     = new Date()
   const today8601 = today.toISOString().split('T')[0]
@@ -139,6 +140,8 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
 
   const zeroPriceNos = allNumbers.filter(n => (itemMap.get(n)?.unitPrice ?? 0) === 0)
 
+  // addToOrderId er id'et fra ADRESSEN (portalens eget eller BC's) — endepunktet slår
+  // begge op, og så skal siden ikke vide hvilken slags ordre det er.
   const deliveryLabel = new Date(order.deliveryDate).toLocaleDateString('da-DK', {
     weekday: 'long', day: 'numeric', month: 'short',
   })
@@ -172,8 +175,8 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
         calendarDays={[]}
         estimatedPrices={{}}
         zeroPriceNos={zeroPriceNos}
-        addToOrderId={order.id}
-        addBcOrderNumber={order.bcOrderNumber ?? undefined}
+        addToOrderId={params.id}
+        addBcOrderNumber={order.bcOrderNumber || undefined}
         addDeadline={order.deadline.toISOString()}
       />
     </div>
