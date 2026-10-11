@@ -1,15 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-// useSearchParams kan ikke forrenderes statisk — uden denne fejler byggeriet med
-// "Export encountered errors on /admin/login". Siden skal alligevel være dynamisk:
-// den læser ?callbackUrl= for at kunne sende én videre til fx "Åbn portal som kunde".
-export const dynamic = 'force-dynamic'
-
+// useSearchParams kræver en Suspense-grænse, ellers kan siden ikke forrenderes og
+// byggeriet fejler med "Export encountered errors on /admin/login".
+// `export const dynamic` hjælper IKKE her — det er en route-indstilling, og kravet
+// gælder selve klient-komponenten. Derfor denne lille indpakning.
 export default function AdminLoginPage() {
+  return (
+    <Suspense>
+      <AdminLoginForm />
+    </Suspense>
+  )
+}
+
+function AdminLoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [email,    setEmail]    = useState('')

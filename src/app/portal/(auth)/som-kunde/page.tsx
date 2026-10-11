@@ -8,13 +8,20 @@
 // sessions-cookien gennem sit eget login-kald. Den er engangs, så et genbesøg med
 // samme adresse (fx tilbage-knappen) fejler — og det er meningen.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 
-export const dynamic = 'force-dynamic'
-
+// Suspense omkring useSearchParams — ellers kan siden ikke forrenderes.
 export default function SomKundePage() {
+  return (
+    <Suspense>
+      <SomKunde />
+    </Suspense>
+  )
+}
+
+function SomKunde() {
   const params = useSearchParams()
   const [fejl, setFejl] = useState<string | null>(null)
 
