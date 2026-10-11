@@ -4,6 +4,11 @@ import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+// useSearchParams kan ikke forrenderes statisk — uden denne fejler byggeriet med
+// "Export encountered errors on /admin/login". Siden skal alligevel være dynamisk:
+// den læser ?callbackUrl= for at kunne sende én videre til fx "Åbn portal som kunde".
+export const dynamic = 'force-dynamic'
+
 export default function AdminLoginPage() {
   const router = useRouter()
   const params = useSearchParams()
