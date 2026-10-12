@@ -229,12 +229,11 @@ export function renderPriceListHtml(data: PriceListData): string {
     font-size: 8pt;
     border-left: 3px solid #e8a100;
   }
-  /* Dagens besked: linjeskift fra BC bevares (pre-wrap) */
+  /* Dagens besked: formatering (fed/farve/størrelse) styres fra BC; linjeskift bevares */
   .daily-message {
     white-space: pre-wrap;
-    font-size: 9pt;
-    font-weight: bold;
-    color: #b00020;
+    font-size: 9.5pt;
+    color: #222;
     margin: 0 0 3mm 0;
   }
   h1.list-title {
@@ -339,18 +338,20 @@ export function renderPriceListHtml(data: PriceListData): string {
 
   <h1 class="list-title">${esc(meta.title)}</h1>
 
-  ${meta.dailyMessage && meta.dailyMessage.trim()
-    ? `<div class="daily-message">${esc(meta.dailyMessage.trim())}</div>`
-    : ''}
+  ${meta.dailyMessageHtml
+    ? `<div class="daily-message">${meta.dailyMessageHtml}</div>`
+    : meta.dailyMessage && meta.dailyMessage.trim()
+      ? `<div class="daily-message">${esc(meta.dailyMessage.trim())}</div>`
+      : ''}
 
   <div class="intro">
-    ${esc(meta.header)}
+    ${meta.headerHtml ?? esc(meta.header)}
   </div>
 
   ${sectionsHtml}
 
   <footer class="footer">
-    ${esc(meta.footer)}
+    ${meta.footerHtml ?? esc(meta.footer)}
   </footer>
 </body>
 </html>`;

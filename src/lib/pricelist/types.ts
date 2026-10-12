@@ -13,6 +13,11 @@ export interface PriceListMeta {
   header: string;           // Øverste header-linje (Venmark Fisk - Hirtshals...)
   footer: string;           // Forbehold, leveringsgebyr osv.
   dailyMessage?: string;    // Dagens besked (eller sprogets standardbesked) — øverst på listen
+  // Formaterede udgaver fra BC (FormatMarkupToHtml: escaped + kun tilladte koder → HTML).
+  // Indsættes rå — BC har allerede escapet alt andet. Mangler de, bruges plain-tekst escapet.
+  headerHtml?: string;
+  footerHtml?: string;
+  dailyMessageHtml?: string;
 }
 
 export interface PriceTier {
