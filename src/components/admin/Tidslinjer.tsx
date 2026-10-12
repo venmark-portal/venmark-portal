@@ -13,6 +13,10 @@
 
 import { useMemo, useState } from 'react'
 
+// Skrevet af frem for importeret fra src/lib/telefoni: dén fil trækker prisma med,
+// og den hører ikke hjemme i browserens bundt. Holdes i sync med IKKE_FORDELT dér.
+const IKKE_FORDELT = 'Ikke fordelt'
+
 // ─── Palet (valideret kategorisk rækkefølge, lys baggrund) ──────────────────
 const SERIE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
 const BLAEK      = '#0b0b0b'
@@ -43,10 +47,20 @@ interface FinansDag extends FinansPunkt {
 }
 type FinansData = FinansDag[] | { fejl: string }
 
+interface TelefonPersonDag { navn: string; opkald: number; ind: number; ud: number; minutter: number }
+interface TelefonDag {
+  dato: string; ugedag: number
+  opkald: number; ind: number; ud: number; minutter: number
+  ubesvarede: number; ventMedian: number | null
+  personer: TelefonPersonDag[]
+}
+interface TelefonData { dage: TelefonDag[]; personer: string[]; mangler?: string; fejl?: string }
+
 export interface TidslinjeSvar {
   fra: string; til: string
   finans: FinansData
   pakkeri: PakkeriData
+  telefon: TelefonData
 }
 
 // ─── Formatering ─────────────────────────────────────────────────────────────
@@ -445,6 +459,43 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
 
   const faste = (n: string) => (n === 'I år' ? SERIE[0] : n === 'Sidste år' ? SERIE[1] : SERIE[2])
 
+  // ── Telefon ──
+  // Egen farveskala: det er en anden gruppe mennesker end pakkerne, og en delt
+  // skala ville give to personer samme farve uden at betyde noget.
+  const telefon = data.telefon ?? { dage: [], personer: [] }
+  // "Ikke fordelt" er ikke en person — den får grå, så den ikke læses som en
+  // medarbejder med flest opkald, og så den ikke bruger en af de otte hues.
+  const tFarveAf = useMemo(() => {
+    const kort = new Map<string, string>()
+    let i = 0
+    telefon.personer?.forEach(n => {
+      if (n === IKKE_FORDELT) kort.set(n, DAEMPET)
+      else kort.set(n, SERIE[i++ % SERIE.length])
+    })
+    return (n: string) => kort.get(n) ?? SERIE[0]
+  }, [telefon.personer])
+
+  const tDatoer = telefon.dage?.map(d => d.dato) ?? []
+  // Antal og taletid er to forskellige enheder og får derfor hver sin figur —
+  // aldrig to y-akser i samme diagram.
+  const tOpkaldSerier = (telefon.personer ?? []).map(navn => ({
+    navn,
+    vaerdier: telefon.dage.map(d => d.personer.find(p => p.navn === navn)?.opkald ?? 0),
+  }))
+  const tMinutSerier = (telefon.personer ?? []).map(navn => ({
+    navn,
+    vaerdier: telefon.dage.map(d => d.personer.find(p => p.navn === navn)?.minutter ?? 0),
+  }))
+  const tSvarSerie = [{
+    navn: 'Svartid',
+    vaerdier: telefon.dage.map(d => d.ventMedian),
+  }]
+
+  const tOpkaldIAlt = telefon.dage?.reduce((s, d) => s + d.opkald, 0) ?? 0
+  const tMinutIAlt  = telefon.dage?.reduce((s, d) => s + d.minutter, 0) ?? 0
+  const tUbesvarede = telefon.dage?.reduce((s, d) => s + d.ubesvarede, 0) ?? 0
+  const tDageMed    = telefon.dage?.filter(d => d.opkald > 0).length ?? 0
+
   // ── Pakkeri-serier ──
   const pDatoer = pakkeri.dage?.map(d => d.dato) ?? []
   const pSerier = (pakkeri.pakkere ?? []).map(navn => ({
@@ -653,6 +704,58 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
       )}
 
       {/* ── Pakkeri ── */}
+      {/* ── Telefon ── */}
+      <h2 className="pt-2 text-base font-bold text-gray-900">Telefon</h2>
+
+      {telefon.fejl || telefon.mangler ? (
+        <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+          {telefon.fejl ?? telefon.mangler}
+        </div>
+      ) : tDatoer.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-gray-500 ring-1 ring-gray-200">
+          Ingen opkald i perioden.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Noegletal titel="Opkald i alt" vaerdi={kr.format(tOpkaldIAlt)} />
+            <Noegletal titel="Taletid" vaerdi={`${kr.format(Math.round(tMinutIAlt / 60))} t`} />
+            <Noegletal titel="Opkald pr. dag" vaerdi={tDageMed ? kr.format(Math.round(tOpkaldIAlt / tDageMed)) : '—'} />
+            <Noegletal
+              titel="Ubesvarede"
+              vaerdi={kr.format(tUbesvarede)}
+              // Status-rød, ikke en farve fra serie-paletten: den er reserveret til
+              // at kende personer fra hinanden og må ikke komme til at betyde "dårligt".
+              farve={tUbesvarede > 0 ? '#d03b3b' : undefined}
+            />
+          </div>
+
+          <Ramme
+            titel="Opkald pr. dag"
+            undertitel="Stablet pr. medarbejder — den der tog telefonen. Grå er opkald gennem omstillingen hvor vi ikke kan se hvem der tog den. Hold musen over en dag for fordelingen."
+          >
+            <StakketSoejler datoer={tDatoer} serier={tOpkaldSerier} farve={tFarveAf} format={v => kr.format(v)} />
+            <Forklaring navne={telefon.personer} farve={tFarveAf} />
+          </Ramme>
+
+          <Ramme
+            titel="Taletid pr. dag"
+            undertitel="Minutter, stablet pr. medarbejder. Egen figur frem for en ekstra akse — minutter og antal kan ikke læses på samme målestok."
+          >
+            <StakketSoejler datoer={tDatoer} serier={tMinutSerier} farve={tFarveAf} format={v => `${kr.format(v)} min`} />
+            <Forklaring navne={telefon.personer} farve={tFarveAf} />
+          </Ramme>
+
+          <Ramme
+            titel="Svartid på indgående opkald"
+            undertitel="Median i sekunder — hvor længe kunden ventede, før nogen tog den. Dage uden målte opkald vises som hul."
+          >
+            <Linjer datoer={tDatoer} serier={tSvarSerie} farve={() => SERIE[3]}
+                    format={v => `${kr.format(v)} s`} nulErTomt />
+          </Ramme>
+        </>
+      )}
+
       <h2 className="pt-2 text-base font-bold text-gray-900">Pakkeri</h2>
 
       {pakkeri.fejl || pakkeri.mangler ? (
@@ -742,6 +845,23 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
                     // frem for et tal der ville se rigtigt ud.
                     p.timer ? kr.format(Math.round(p.linjer / p.timer)) : '—',
                   ]
+                }),
+              ])}
+            />
+          )}
+          {tDatoer.length > 0 && (
+            <Tabel
+              titel="Telefon dag for dag"
+              hoveder={['Dato', 'Ugedag', 'Opkald', 'Ind', 'Ud', 'Ubesvaret', 'Minutter', 'Svartid',
+                        ...telefon.personer.flatMap(n => [n, `${n} min`])]}
+              raekker={telefon.dage.map(d => [
+                kortDato(d.dato), ugedagNavn(d.ugedag),
+                kr.format(d.opkald), kr.format(d.ind), kr.format(d.ud), kr.format(d.ubesvarede),
+                kr.format(d.minutter),
+                d.ventMedian !== null ? `${kr.format(d.ventMedian)} s` : '—',
+                ...telefon.personer.flatMap(n => {
+                  const p = d.personer.find(x => x.navn === n)
+                  return p ? [kr.format(p.opkald), kr.format(p.minutter)] : ['—', '—']
                 }),
               ])}
             />

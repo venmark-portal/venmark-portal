@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { finansTidslinje, pakkeriTidslinje } from '@/lib/tidslinjer'
+import { telefonTidslinje } from '@/lib/telefoni'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,10 +28,11 @@ export async function GET(req: NextRequest) {
 
   // De to sider af tavlen hentes uafhængigt: BC kan svare dårligt på den ene
   // uden at den anden skal gå ned med den.
-  const [finans, pakkeri] = await Promise.all([
+  const [finans, pakkeri, telefon] = await Promise.all([
     finansTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
     pakkeriTidslinje(fra, til, jobNr).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
+    telefonTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
   ])
 
-  return NextResponse.json({ fra, til, finans, pakkeri })
+  return NextResponse.json({ fra, til, finans, pakkeri, telefon })
 }

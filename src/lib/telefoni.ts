@@ -114,6 +114,137 @@ export async function telefoniDage(antalDage = 30): Promise<TelefoniDag[]> {
     .sort((a, b) => a.dag.localeCompare(b.dag))
 }
 
+// ─── Telefoni pr. medarbejder pr. dag (til Tidslinjer) ───────────────────────
+
+export interface TelefonPersonDag {
+  navn:     string
+  opkald:   number
+  ind:      number
+  ud:       number
+  minutter: number
+}
+
+export interface TelefonDag {
+  dato:       string
+  ugedag:     number
+  opkald:     number
+  ind:        number
+  ud:         number
+  minutter:   number
+  ubesvarede: number
+  ventMedian: number | null
+  personer:   TelefonPersonDag[]
+}
+
+export interface TelefonTidslinje {
+  dage:     TelefonDag[]
+  /** Alfabetisk — rækkefølgen holder farven fast på personen hen over perioder. */
+  personer: string[]
+  /** Sat når der aldrig er hentet opkald; så er det tilladelsen, ikke en stille uge. */
+  mangler?: string
+}
+
+/** Navnet på den stak der ikke kan henføres til en person. */
+export const IKKE_FORDELT = 'Ikke fordelt'
+
+/**
+ * Hvem der tog opkaldet.
+ *
+ *  • `besvaretAf` er svaret når den findes.
+ *  • Ellers: kom opkaldet gennem omstillingen (`viaBot`), ved vi det IKKE. `navn`
+ *    er da bare "Hovednummer_AA", og det ville blive til en medarbejder med flere
+ *    opkald end nogen anden — over halvdelen af alle opkald står sådan, fordi
+ *    beriget­ningen først begyndte i august 2026 og ikke når alle. Den stak får
+ *    sit eget navn, så totalerne forbliver sande og ingen får æren for den.
+ *  • Direkte opkald uden omstilling: `navn` ER personens egen linje.
+ */
+function hvemTogDen(r: { besvaretAf: string | null; navn: string; viaBot: boolean }): string {
+  const beriget = (r.besvaretAf ?? '').trim()
+  if (beriget) return beriget
+  if (r.viaBot) return IKKE_FORDELT
+  return r.navn.trim() || 'ukendt'
+}
+
+/**
+ * Opkald og taletid dag for dag, fordelt på hvem der tog telefonen.
+ *
+ * UBESVAREDE opkald tælles i dagens total, men IKKE på nogen person: ingen tog dem.
+ */
+export async function telefonTidslinje(fra: string, til: string): Promise<TelefonTidslinje> {
+  await ensureSignageSchema()
+
+  const raekker = await prisma.$queryRaw<{
+    dag: string; navn: string; besvaretAf: string | null; viaBot: boolean; retning: string
+    sekunder: number; ventSek: number | null; ventKilde: string | null
+  }[]>`
+    SELECT "dagDk" AS dag, navn, "besvaretAf", "viaBot", retning, sekunder, "ventSek", "ventKilde"
+    FROM "TeamsCall"
+    WHERE "dagDk" >= ${fra} AND "dagDk" <= ${til}
+  `
+
+  if (raekker.length === 0) {
+    const [{ antal }] = await prisma.$queryRaw<{ antal: bigint }[]>`
+      SELECT count(*) AS antal FROM "TeamsCall"
+    `
+    return Number(antal) === 0
+      ? { dage: [], personer: [], mangler: 'Ingen opkald hentet endnu — mangler CallRecords.Read.All' }
+      : { dage: [], personer: [] }
+  }
+
+  interface Akk {
+    ind: number; ud: number; sek: number; ubes: number; vent: number[]
+    pr: Map<string, { ind: number; ud: number; sek: number }>
+  }
+  const dage = new Map<string, Akk>()
+  const alleNavne = new Set<string>()
+
+  for (const r of raekker) {
+    const d: Akk = dage.get(r.dag) ?? { ind: 0, ud: 0, sek: 0, ubes: 0, vent: [], pr: new Map() }
+    const indgaaende = r.retning === 'ind'
+    if (indgaaende) d.ind++; else d.ud++
+    d.sek += r.sekunder
+
+    if (r.ventKilde === 'ubesvaret') {
+      d.ubes++
+    } else {
+      if (indgaaende && r.ventSek !== null) d.vent.push(r.ventSek)
+      const navn = hvemTogDen(r)
+      alleNavne.add(navn)
+      const p = d.pr.get(navn) ?? { ind: 0, ud: 0, sek: 0 }
+      if (indgaaende) p.ind++; else p.ud++
+      p.sek += r.sekunder
+      d.pr.set(navn, p)
+    }
+    dage.set(r.dag, d)
+  }
+
+  // Alfabetisk, men "Ikke fordelt" altid sidst: den er ikke en person og skal
+  // hverken stå mellem navnene eller optage en af de kategoriske farver.
+  const personer = Array.from(alleNavne).sort((a, b) =>
+    a === IKKE_FORDELT ? 1 : b === IKKE_FORDELT ? -1 : a.localeCompare(b, 'da'))
+
+  const ud: TelefonDag[] = Array.from(dage.entries())
+    .map(([dato, d]) => ({
+      dato,
+      // Middag UTC, så sommertid aldrig kan skubbe ugedagen en dag.
+      ugedag:     new Date(`${dato}T12:00:00Z`).getUTCDay(),
+      opkald:     d.ind + d.ud,
+      ind:        d.ind,
+      ud:         d.ud,
+      minutter:   Math.round(d.sek / 60),
+      ubesvarede: d.ubes,
+      ventMedian: median(d.vent),
+      personer: Array.from(d.pr.entries())
+        .map(([navn, p]) => ({
+          navn, opkald: p.ind + p.ud, ind: p.ind, ud: p.ud, minutter: Math.round(p.sek / 60),
+        }))
+        .sort((a, b) => a.navn.localeCompare(b.navn, 'da')),
+    }))
+    .sort((a, b) => a.dato.localeCompare(b.dato))
+
+  return { dage: ud, personer }
+}
+
 // ─── Graph ───────────────────────────────────────────────────────────────────
 
 async function graphToken(): Promise<string> {
