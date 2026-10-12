@@ -118,6 +118,18 @@ async function run(): Promise<void> {
   // — det siger intet om hvem der passede telefonen.
   await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "besvaretAf" TEXT`
   await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "correlationId" TEXT`
+
+  // Modpartens telefonnummer — kunden i den anden ende.
+  //  modpartKilde='trunk'         — fra opkaldsloggen, hvor Microsoft MASKERER de sidste
+  //                                 cifre ("+4526830***"). Vores egne numre er hele.
+  //  modpartKilde='record'        — det FULDE nummer, hentet ud af selve opkaldsposten
+  //                                 (callRecords/{id} → participants_v2 → phone.id), hvor
+  //                                 det ikke er maskeret. Se berigNumre().
+  //  modpartKilde='utilgaengelig' — opkaldet er faldet ud af Microsofts 30-dages vindue,
+  //                                 og det fulde nummer kan ikke hentes mere.
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS modpart TEXT`
+  await prisma.$executeRaw`ALTER TABLE "TeamsCall" ADD COLUMN IF NOT EXISTS "modpartKilde" TEXT`
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_modpart_idx" ON "TeamsCall" ("modpartKilde", "startTime")`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_berig_idx" ON "TeamsCall" ("viaBot", "ventKilde", "startTime")`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_dagDk_idx" ON "TeamsCall" ("dagDk")`
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "TeamsCall_startTime_idx" ON "TeamsCall" ("startTime")`

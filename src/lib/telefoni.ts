@@ -114,6 +114,80 @@ export async function telefoniDage(antalDage = 30): Promise<TelefoniDag[]> {
     .sort((a, b) => a.dag.localeCompare(b.dag))
 }
 
+/**
+ * Henter det FULDE modpart-nummer.
+ *
+ * Opkaldsloggen (getDirectRoutingCalls) maskerer de sidste cifre på den eksterne part
+ * — "+4526830***". Selve opkaldsposten (callRecords/{id}) gør ikke: dér står
+ * "+4526830084" på deltageren. Så vi slår op én gang pr. opkald og gemmer resultatet.
+ *
+ * Microsoft gemmer kun opkaldsposter i 30 DAGE. Et opkald der ikke er slået op inden
+ * da, får aldrig sit fulde nummer — derfor køres denne hver time sammen med synken,
+ * og derfor er der intet at hente for juni-september.
+ */
+export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; fundet: number; udloebet: number }> {
+  await ensureSignageSchema()
+
+  const graense = new Date(Date.now() - 29 * 864e5)
+  const emner = await prisma.$queryRaw<{ id: string; correlationId: string; modpart: string | null }[]>`
+    SELECT id, "correlationId", modpart
+    FROM "TeamsCall"
+    WHERE "correlationId" IS NOT NULL
+      AND "startTime" >= ${graense}
+      AND ("modpartKilde" IS NULL OR "modpartKilde" = 'trunk')
+    ORDER BY "startTime" DESC
+    LIMIT ${maksAntal}
+  `
+  if (emner.length === 0) return { forsoegt: 0, fundet: 0, udloebet: 0 }
+
+  const token = await graphToken()
+  let fundet = 0
+  let udloebet = 0
+
+  for (const e of emner) {
+    const res = await fetch(
+      `https://graph.microsoft.com/v1.0/communications/callRecords/${e.correlationId}`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' } as any,
+    )
+    if (res.status === 401 || res.status === 403) {
+      throw new TilladelseMangler('CallRecords.Read.All mangler administrator-samtykke')
+    }
+    if (res.status === 404) {
+      await prisma.$executeRaw`UPDATE "TeamsCall" SET "modpartKilde" = 'utilgaengelig' WHERE id = ${e.id}`
+      udloebet++
+      continue
+    }
+    if (!res.ok) continue
+
+    const rec = await res.json()
+    const rec2 = rec as any
+    const numre = ((rec2.participants_v2 ?? rec2.participants ?? []) as any[])
+      .map(p => String(p?.identity?.phone?.id ?? '').trim())
+      .filter(n => n.startsWith('+') && !n.includes('*'))
+
+    // Hvilket af numrene er modparten? Det maskerede nummer fra trunk-loggen er selv
+    // facit: "+4526830***" matcher kun det fulde "+4526830084". Uden den prøve kunne vi
+    // komme til at gemme VORES eget nummer, som også optræder som deltager på nogle
+    // opkald, og så ville listen vise husets eget hovednummer som flittigste kunde.
+    const praefiks = (e.modpart ?? '').replace(/\*+$/, '')
+    const nummer = praefiks
+      ? numre.find(n => n.startsWith(praefiks)) ?? ''
+      : (numre.length === 1 ? numre[0] : '')
+
+    if (!nummer) {
+      await prisma.$executeRaw`UPDATE "TeamsCall" SET "modpartKilde" = 'utilgaengelig' WHERE id = ${e.id}`
+      continue
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "TeamsCall" SET modpart = ${nummer}, "modpartKilde" = 'record' WHERE id = ${e.id}
+    `
+    fundet++
+  }
+
+  return { forsoegt: emner.length, fundet, udloebet }
+}
+
 // ─── Telefoni pr. medarbejder pr. dag (til Tidslinjer) ───────────────────────
 
 export interface TelefonPersonDag {
@@ -346,6 +420,12 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
         // Det er den rigtige ventetid for DIREKTE opkald. For opkald via
         // hovednummeret måler den kun at omstillingen svarede (~1 sek), så dem
         // lader vi stå tomme — berigVentetid() henter den rigtige bagefter.
+        // Modparten: ved indgående er det den der ringer, ved udgående den vi ringer til.
+        // Microsoft maskerer de sidste cifre HER ("+4526830***") — det fulde nummer hentes
+        // bagefter af berigNumre() fra selve opkaldsposten.
+        const indgaaende = retningAf(type) === 'ind'
+        const modpart = String((indgaaende ? k.callerNumber : k.calleeNumber) ?? '').trim() || null
+
         const invite = new Date(String(k.inviteDateTime ?? ''))
         const vent = !viaBotAf(type) && !isNaN(invite.getTime())
           ? Math.max(0, Math.round((d.getTime() - invite.getTime()) / 1000))
@@ -358,7 +438,7 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
           INSERT INTO "TeamsCall"
             (id, "startTime", "dagDk", "timeDk", retning, "callType", navn, upn,
              sekunder, besvaret, "viaBot", "sipKode", "slutAarsag",
-             "correlationId", "ventSek", "ventKilde")
+             "correlationId", "ventSek", "ventKilde", modpart, "modpartKilde")
           VALUES (
             ${id}, ${d}, ${dkFormat.format(d)}, ${Number(dkTime.format(d))},
             ${retningAf(type)}, ${type},
@@ -367,7 +447,8 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
             ${sek}, ${k.successfulCall === true && sek > 0}, ${viaBotAf(type)},
             ${k.finalSipCode ?? null}, ${k.callEndSubReason ?? null},
             ${k.correlationId ? String(k.correlationId) : null},
-            ${vent}, ${vent === null ? null : 'trunk'}
+            ${vent}, ${vent === null ? null : 'trunk'},
+            ${modpart}, ${modpart === null ? null : 'trunk'}
           )
           ON CONFLICT (id) DO UPDATE SET
             retning         = EXCLUDED.retning,
@@ -382,7 +463,13 @@ export async function synkTelefoni(fra: Date, til: Date, dagePrBid = 7): Promise
             "ventSek"       = CASE WHEN "TeamsCall"."ventKilde" = 'trunk' OR "TeamsCall"."ventKilde" IS NULL
                                    THEN EXCLUDED."ventSek" ELSE "TeamsCall"."ventSek" END,
             "ventKilde"     = CASE WHEN "TeamsCall"."ventKilde" = 'trunk' OR "TeamsCall"."ventKilde" IS NULL
-                                   THEN EXCLUDED."ventKilde" ELSE "TeamsCall"."ventKilde" END
+                                   THEN EXCLUDED."ventKilde" ELSE "TeamsCall"."ventKilde" END,
+            -- Samme forbehold for nummeret: har vi allerede hentet det FULDE nummer ud af
+            -- opkaldsposten, må trunk-loggens maskerede "+4526830***" ikke skrive over det.
+            modpart         = CASE WHEN "TeamsCall"."modpartKilde" = 'record'
+                                   THEN "TeamsCall".modpart ELSE EXCLUDED.modpart END,
+            "modpartKilde"  = CASE WHEN "TeamsCall"."modpartKilde" = 'record'
+                                   THEN "TeamsCall"."modpartKilde" ELSE EXCLUDED."modpartKilde" END
         `
         gemt++
       }

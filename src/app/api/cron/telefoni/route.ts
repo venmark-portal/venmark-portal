@@ -13,7 +13,7 @@
 //   curl -X POST .../api/cron/telefoni?fra=2026-06-01 -H "x-cron-secret: ..."
 
 import { NextRequest, NextResponse } from 'next/server'
-import { synkTelefoni, berigVentetid, TilladelseMangler } from '@/lib/telefoni'
+import { synkTelefoni, berigVentetid, berigNumre, TilladelseMangler } from '@/lib/telefoni'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,9 +44,13 @@ export async function POST(req: NextRequest) {
     // Trunk-loggen ved kun at omstillingen svarede efter ~1 sek. Den rigtige
     // ventetid — og hvem der tog den — hentes her.
     const v = await berigVentetid(berig)
+    // Opkaldsloggen maskerer modpartens sidste cifre; det fulde nummer står i selve
+    // opkaldsposten. Hentes her, mens den stadig findes — Microsoft gemmer 30 dage.
+    const n = await berigNumre(Number(req.nextUrl.searchParams.get('numre') ?? 300))
     console.log(`[telefoni] ${fra.toISOString().slice(0, 10)} → ${til.toISOString().slice(0, 10)}: ` +
-                `${res.hentet} opkald · ${v.beriget} beriget · ${v.ubesvarede} ubesvarede`)
-    return NextResponse.json({ ok: true, fra: fra.toISOString(), til: til.toISOString(), ...res, ventetid: v })
+                `${res.hentet} opkald · ${v.beriget} beriget · ${v.ubesvarede} ubesvarede · ` +
+                `${n.fundet} numre (${n.udloebet} udløbet)`)
+    return NextResponse.json({ ok: true, fra: fra.toISOString(), til: til.toISOString(), ...res, ventetid: v, numre: n })
   } catch (err) {
     const besked = err instanceof Error ? err.message : String(err)
     // Manglende tilladelse er en opsætningsfejl, ikke et nedbrud — og et Graph-udfald
