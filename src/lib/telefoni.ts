@@ -125,7 +125,7 @@ export async function telefoniDage(antalDage = 30): Promise<TelefoniDag[]> {
  * da, får aldrig sit fulde nummer — derfor køres denne hver time sammen med synken,
  * og derfor er der intet at hente for juni-september.
  */
-export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; fundet: number; udloebet: number }> {
+export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; fundet: number; udloebet: number; uden: number }> {
   await ensureSignageSchema()
 
   const graense = new Date(Date.now() - 29 * 864e5)
@@ -138,11 +138,12 @@ export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; f
     ORDER BY "startTime" DESC
     LIMIT ${maksAntal}
   `
-  if (emner.length === 0) return { forsoegt: 0, fundet: 0, udloebet: 0 }
+  if (emner.length === 0) return { forsoegt: 0, fundet: 0, udloebet: 0, uden: 0 }
 
   const token = await graphToken()
   let fundet = 0
   let udloebet = 0
+  let uden = 0
 
   for (const e of emner) {
     const res = await fetch(
@@ -175,7 +176,15 @@ export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; f
       : (numre.length === 1 ? numre[0] : '')
 
     if (!nummer) {
-      await prisma.$executeRaw`UPDATE "TeamsCall" SET "modpartKilde" = 'utilgaengelig' WHERE id = ${e.id}`
+      // Kun opgiv når vi HAVDE et maskeret nummer at matche mod og alligevel ikke fandt
+      // det. Uden præfiks ved vi ikke hvilken deltager der er modparten, og så er det
+      // ikke opkaldet der er umuligt — det er os der mangler trunk-rækken endnu.
+      // Markerede vi dem her, ville de være udelukket for altid, også efter at synken
+      // havde hentet det maskerede nummer.
+      if (praefiks) {
+        await prisma.$executeRaw`UPDATE "TeamsCall" SET "modpartKilde" = 'utilgaengelig' WHERE id = ${e.id}`
+        uden++
+      }
       continue
     }
 
@@ -185,7 +194,7 @@ export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; f
     fundet++
   }
 
-  return { forsoegt: emner.length, fundet, udloebet }
+  return { forsoegt: emner.length, fundet, udloebet, uden }
 }
 
 // ─── Telefoni pr. medarbejder pr. dag (til Tidslinjer) ───────────────────────
