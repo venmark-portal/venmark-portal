@@ -57,6 +57,7 @@ interface TelefonDag {
 interface TelefonNummer {
   nummer: string; opkald: number; ind: number; ud: number
   minutter: number; sidst: string; fuldt: boolean
+  kunde?: string; kundeNr?: string
 }
 interface TelefonData {
   dage: TelefonDag[]; personer: string[]
@@ -757,9 +758,13 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           {(telefon.numre?.length ?? 0) > 0 && (
             <Tabel
               titel={`Numre vi taler mest med${telefon.udenNummer ? ` — ${kr.format(telefon.udenNummer)} opkald i perioden har intet nummer gemt` : ''}`}
-              hoveder={['Nummer', 'Opkald', 'Ind', 'Ud', 'Minutter', 'Seneste']}
+              hoveder={['Kunde', 'Debitornr.', 'Nummer', 'Opkald', 'Ind', 'Ud', 'Minutter', 'Seneste']}
               raekker={(telefon.numre ?? []).map(n => [
-                // Et nummer med stjerner er Microsofts maskering — de sidste cifre
+                // Tom kunde = nummeret står ikke på nogen debitor i BC. Det er ikke
+                // en fejl — det kan være en leverandør, en chauffør eller en privat.
+                n.kunde || '—',
+                n.kundeNr || '—',
+                // Et nummer med stjerner er Microsofts maskering: de sidste cifre
                 // kunne ikke hentes, typisk fordi opkaldet er ældre end 30 dage.
                 n.fuldt ? n.nummer : `${n.nummer} (delvist)`,
                 kr.format(n.opkald), kr.format(n.ind), kr.format(n.ud),

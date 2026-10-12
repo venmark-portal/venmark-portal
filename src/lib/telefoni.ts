@@ -21,6 +21,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { ensureSignageSchema } from '@/lib/signage/schema'
+import { hentKundeNumre, normaliserNummer } from '@/lib/telefonKunder'
 
 export interface TelefoniPerson {
   navn:     string
@@ -233,6 +234,9 @@ export interface TelefonNummer {
   sidst:    string
   /** Falsk = Microsoft maskerer stadig de sidste cifre; det fulde er ikke hentet. */
   fuldt:    boolean
+  /** Debitor nummeret er slået op på — tom når det ikke findes i BC. */
+  kunde:    string
+  kundeNr:  string
 }
 
 export interface TelefonTidslinje {
@@ -340,11 +344,17 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
     if (r.modpartKilde === 'record') n.fuldt = true
     prNummer.set(nr, n)
   }
+  // Kun maskerede numre kan ikke slås op — de sidste cifre mangler jo.
+  const kunder = await hentKundeNumre().catch(() => new Map<string, { kundeNr: string; navn: string }>())
   const numre: TelefonNummer[] = Array.from(prNummer.entries())
-    .map(([nummer, n]) => ({
-      nummer, opkald: n.ind + n.ud, ind: n.ind, ud: n.ud,
-      minutter: Math.round(n.sek / 60), sidst: n.sidst, fuldt: n.fuldt,
-    }))
+    .map(([nummer, n]) => {
+      const k = n.fuldt ? kunder.get(normaliserNummer(nummer)) : undefined
+      return {
+        nummer, opkald: n.ind + n.ud, ind: n.ind, ud: n.ud,
+        minutter: Math.round(n.sek / 60), sidst: n.sidst, fuldt: n.fuldt,
+        kunde: k?.navn ?? '', kundeNr: k?.kundeNr ?? '',
+      }
+    })
     .sort((a, b) => b.opkald - a.opkald || b.minutter - a.minutter)
     .slice(0, 40)
 
