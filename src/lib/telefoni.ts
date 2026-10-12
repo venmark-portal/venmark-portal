@@ -146,15 +146,20 @@ export async function berigNumre(maksAntal = 300): Promise<{ forsoegt: number; f
   let uden = 0
 
   for (const e of emner) {
+    // $expand=participants_v2 er IKKE til pynt: uden den svarer Graph 200 med en TOM
+    // deltagerliste, og så ser det ud som om nummeret ikke findes nogen steder.
+    // Hverken $expand=sessions eller sessions($expand=segments) giver deltagerne.
     const res = await fetch(
-      `https://graph.microsoft.com/v1.0/communications/callRecords/${e.correlationId}`,
+      `https://graph.microsoft.com/v1.0/communications/callRecords/${e.correlationId}?$expand=participants_v2`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' } as any,
     )
     if (res.status === 401 || res.status === 403) {
       throw new TilladelseMangler('CallRecords.Read.All mangler administrator-samtykke')
     }
     if (res.status === 404) {
-      await prisma.$executeRaw`UPDATE "TeamsCall" SET "modpartKilde" = 'utilgaengelig' WHERE id = ${e.id}`
+      // Enten uden for 30-dages vinduet, eller endnu ikke skrevet — opkaldsposter
+      // kommer med timers forsinkelse. Vi markerer den IKKE som opgivet: næste
+      // kørsel prøver igen, og de rigtigt gamle falder selv ud af udvælgelsen.
       udloebet++
       continue
     }
