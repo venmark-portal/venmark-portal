@@ -12,6 +12,7 @@ export interface PriceListMeta {
   title: string;            // Hoved-titel
   header: string;           // Øverste header-linje (Venmark Fisk - Hirtshals...)
   footer: string;           // Forbehold, leveringsgebyr osv.
+  dailyMessage?: string;    // Dagens besked (eller sprogets standardbesked) — øverst på listen
 }
 
 export interface PriceTier {

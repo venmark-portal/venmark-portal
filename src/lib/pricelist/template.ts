@@ -229,6 +229,14 @@ export function renderPriceListHtml(data: PriceListData): string {
     font-size: 8pt;
     border-left: 3px solid #e8a100;
   }
+  /* Dagens besked: linjeskift fra BC bevares (pre-wrap) */
+  .daily-message {
+    white-space: pre-wrap;
+    font-size: 9pt;
+    font-weight: bold;
+    color: #b00020;
+    margin: 0 0 3mm 0;
+  }
   h1.list-title {
     font-size: 16pt;
     color: #003366;
@@ -330,6 +338,10 @@ export function renderPriceListHtml(data: PriceListData): string {
   </header>
 
   <h1 class="list-title">${esc(meta.title)}</h1>
+
+  ${meta.dailyMessage && meta.dailyMessage.trim()
+    ? `<div class="daily-message">${esc(meta.dailyMessage.trim())}</div>`
+    : ''}
 
   <div class="intro">
     ${esc(meta.header)}
