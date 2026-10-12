@@ -224,10 +224,25 @@ export interface TelefonDag {
   personer:   TelefonPersonDag[]
 }
 
+export interface TelefonNummer {
+  nummer:   string
+  opkald:   number
+  ind:      number
+  ud:       number
+  minutter: number
+  sidst:    string
+  /** Falsk = Microsoft maskerer stadig de sidste cifre; det fulde er ikke hentet. */
+  fuldt:    boolean
+}
+
 export interface TelefonTidslinje {
   dage:     TelefonDag[]
   /** Alfabetisk — rækkefølgen holder farven fast på personen hen over perioder. */
   personer: string[]
+  /** De hyppigste numre i perioden. */
+  numre:    TelefonNummer[]
+  /** Opkald i perioden uden noget nummer — fra før opsamlingen begyndte. */
+  udenNummer: number
   /** Sat når der aldrig er hentet opkald; så er det tilladelsen, ikke en stille uge. */
   mangler?: string
 }
@@ -264,8 +279,10 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
   const raekker = await prisma.$queryRaw<{
     dag: string; navn: string; besvaretAf: string | null; viaBot: boolean; retning: string
     sekunder: number; ventSek: number | null; ventKilde: string | null
+    modpart: string | null; modpartKilde: string | null
   }[]>`
-    SELECT "dagDk" AS dag, navn, "besvaretAf", "viaBot", retning, sekunder, "ventSek", "ventKilde"
+    SELECT "dagDk" AS dag, navn, "besvaretAf", "viaBot", retning, sekunder, "ventSek", "ventKilde",
+           modpart, "modpartKilde"
     FROM "TeamsCall"
     WHERE "dagDk" >= ${fra} AND "dagDk" <= ${til}
   `
@@ -275,8 +292,8 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
       SELECT count(*) AS antal FROM "TeamsCall"
     `
     return Number(antal) === 0
-      ? { dage: [], personer: [], mangler: 'Ingen opkald hentet endnu — mangler CallRecords.Read.All' }
-      : { dage: [], personer: [] }
+      ? { dage: [], personer: [], numre: [], udenNummer: 0, mangler: 'Ingen opkald hentet endnu — mangler CallRecords.Read.All' }
+      : { dage: [], personer: [], numre: [], udenNummer: 0 }
   }
 
   interface Akk {
@@ -308,6 +325,29 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
 
   // Alfabetisk, men "Ikke fordelt" altid sidst: den er ikke en person og skal
   // hverken stå mellem navnene eller optage en af de kategoriske farver.
+  // ── Numrene ──
+  // Opkald fra før opsamlingen begyndte har slet intet nummer. De tælles for sig,
+  // så en kort liste ikke læses som "der var kun de her opkald".
+  const prNummer = new Map<string, { ind: number; ud: number; sek: number; sidst: string; fuldt: boolean }>()
+  let udenNummer = 0
+  for (const r of raekker) {
+    const nr = (r.modpart ?? '').trim()
+    if (!nr) { udenNummer++; continue }
+    const n = prNummer.get(nr) ?? { ind: 0, ud: 0, sek: 0, sidst: r.dag, fuldt: r.modpartKilde === 'record' }
+    if (r.retning === 'ind') n.ind++; else n.ud++
+    n.sek += r.sekunder
+    if (r.dag > n.sidst) n.sidst = r.dag
+    if (r.modpartKilde === 'record') n.fuldt = true
+    prNummer.set(nr, n)
+  }
+  const numre: TelefonNummer[] = Array.from(prNummer.entries())
+    .map(([nummer, n]) => ({
+      nummer, opkald: n.ind + n.ud, ind: n.ind, ud: n.ud,
+      minutter: Math.round(n.sek / 60), sidst: n.sidst, fuldt: n.fuldt,
+    }))
+    .sort((a, b) => b.opkald - a.opkald || b.minutter - a.minutter)
+    .slice(0, 40)
+
   const personer = Array.from(alleNavne).sort((a, b) =>
     a === IKKE_FORDELT ? 1 : b === IKKE_FORDELT ? -1 : a.localeCompare(b, 'da'))
 
@@ -330,7 +370,7 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
     }))
     .sort((a, b) => a.dato.localeCompare(b.dato))
 
-  return { dage: ud, personer }
+  return { dage: ud, personer, numre, udenNummer }
 }
 
 // ─── Graph ───────────────────────────────────────────────────────────────────

@@ -54,7 +54,15 @@ interface TelefonDag {
   ubesvarede: number; ventMedian: number | null
   personer: TelefonPersonDag[]
 }
-interface TelefonData { dage: TelefonDag[]; personer: string[]; mangler?: string; fejl?: string }
+interface TelefonNummer {
+  nummer: string; opkald: number; ind: number; ud: number
+  minutter: number; sidst: string; fuldt: boolean
+}
+interface TelefonData {
+  dage: TelefonDag[]; personer: string[]
+  numre?: TelefonNummer[]; udenNummer?: number
+  mangler?: string; fejl?: string
+}
 
 export interface TidslinjeSvar {
   fra: string; til: string
@@ -745,6 +753,20 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
             <StakketSoejler datoer={tDatoer} serier={tMinutSerier} farve={tFarveAf} format={v => `${kr.format(v)} min`} />
             <Forklaring navne={telefon.personer} farve={tFarveAf} />
           </Ramme>
+
+          {(telefon.numre?.length ?? 0) > 0 && (
+            <Tabel
+              titel={`Numre vi taler mest med${telefon.udenNummer ? ` — ${kr.format(telefon.udenNummer)} opkald i perioden har intet nummer gemt` : ''}`}
+              hoveder={['Nummer', 'Opkald', 'Ind', 'Ud', 'Minutter', 'Seneste']}
+              raekker={(telefon.numre ?? []).map(n => [
+                // Et nummer med stjerner er Microsofts maskering — de sidste cifre
+                // kunne ikke hentes, typisk fordi opkaldet er ældre end 30 dage.
+                n.fuldt ? n.nummer : `${n.nummer} (delvist)`,
+                kr.format(n.opkald), kr.format(n.ind), kr.format(n.ud),
+                kr.format(n.minutter), kortDato(n.sidst),
+              ])}
+            />
+          )}
 
           <Ramme
             titel="Svartid på indgående opkald"
