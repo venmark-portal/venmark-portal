@@ -21,6 +21,22 @@ export default function SalgslisteTabel({ rows }: { rows: SalgslisteRow[] }) {
 
   const totalSalg = useMemo(() => filtered.reduce((s, r) => s + r.salg, 0), [filtered])
 
+  // Kun varer med kundesalg kan foldes ud. "Alle" = de viste (filtrerede) varer.
+  const drillKeys = useMemo(
+    () => filtered.filter(r => r.customers.length > 0).map(r => `${r.itemNo}|${r.uom}`),
+    [filtered],
+  )
+  const allOpen = drillKeys.length > 0 && drillKeys.every(k => expanded.has(k))
+
+  function toggleAll() {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (allOpen) drillKeys.forEach(k => next.delete(k))
+      else drillKeys.forEach(k => next.add(k))
+      return next
+    })
+  }
+
   function toggle(key: string) {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -33,13 +49,23 @@ export default function SalgslisteTabel({ rows }: { rows: SalgslisteRow[] }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-4">
-        <input
-          type="search"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Søg varenr. eller beskrivelse…"
-          className="w-72 max-w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Søg varenr. eller beskrivelse…"
+            className="w-72 max-w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={toggleAll}
+            disabled={drillKeys.length === 0}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+          >
+            {allOpen ? '▴ Fold alle sammen' : '▾ Udvid alle'}
+          </button>
+        </div>
         <span className="text-sm text-gray-500">
           {filtered.length} vare(r) · samlet salg {fmt(totalSalg)}
         </span>
