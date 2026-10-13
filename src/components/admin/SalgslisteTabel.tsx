@@ -95,6 +95,7 @@ function FragmentRow({
   canDrill: boolean
   onToggle: () => void
 }) {
+  const noteCount = row.customers.reduce((n, c) => n + c.portalNotes.length + c.comments.length, 0)
   return (
     <>
       <tr
@@ -107,7 +108,17 @@ function FragmentRow({
           )}
           {row.itemNo}
         </td>
-        <td className="px-3 py-2 text-gray-700">{row.description}</td>
+        <td className="px-3 py-2 text-gray-700">
+          {row.description}
+          {noteCount > 0 && (
+            <span
+              className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800"
+              title="Der er bemærkninger på salgslinjerne — klik for at se dem"
+            >
+              💬 {noteCount}
+            </span>
+          )}
+        </td>
         <td className="px-3 py-2 text-right font-semibold text-gray-900">
           {row.salg ? fmt(row.salg) : '—'}
         </td>
@@ -130,8 +141,21 @@ function FragmentRow({
                 </thead>
                 <tbody>
                   {row.customers.map(c => (
-                    <tr key={c.customerNo} className="border-t border-gray-100">
-                      <td className="px-3 py-1.5 text-gray-800">{c.customerName}</td>
+                    <tr key={c.customerNo} className="border-t border-gray-100 align-top">
+                      <td className="px-3 py-1.5 text-gray-800">
+                        {c.customerName}
+                        {/* Bemærkninger — kun når de findes */}
+                        {c.portalNotes.map((n, i) => (
+                          <div key={`p${i}`} className="mt-0.5 text-xs text-blue-700">
+                            <span className="font-semibold">Portalbemærkning:</span> {n}
+                          </div>
+                        ))}
+                        {c.comments.map((n, i) => (
+                          <div key={`c${i}`} className="mt-0.5 text-xs text-amber-800">
+                            <span className="font-semibold">Bemærkning:</span> {n}
+                          </div>
+                        ))}
+                      </td>
                       <td className="px-3 py-1.5 text-gray-500">{c.customerNo}</td>
                       <td className="px-3 py-1.5 text-right text-gray-800">{fmt(c.qty)}</td>
                     </tr>

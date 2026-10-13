@@ -2123,6 +2123,9 @@ export interface SalgslisteCustomer {
   customerNo:   string
   customerName: string
   qty:          number
+  // Bemærkninger fra kundens salgslinjer for varen (unikke, kun ikke-tomme)
+  portalNotes:  string[]   // "Portal Kundebemærkning" (kundens egen tekst fra portalen)
+  comments:     string[]   // salgslinjens "Bemærkning" (felt 50000, intern)
 }
 
 export interface SalgslisteRow {
@@ -2158,14 +2161,24 @@ export async function getSalgsliste(
     const base    = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/api/venmark/portal/v1.0/companies(${company})`
     const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
 
-    // 1) Forsyning pr. vare (lager / i produktion / i køb) — alle varer
+    // 1) Forsyning pr. vare (lager / i produktion / i køb) — alle varer.
+    // Fra BC's dedikerede salgsliste-API (page 50467, samme beregning som BC's salgsliste).
+    // itemAvailabilities (50373) returnerer bevidst 0 i de felter for at holde katalog-load
+    // hurtigt — derfor stod salgslisten med 0 overalt. Fallback til den, hvis BC endnu ikke
+    // har den nye side (404 før Force Sync), så siden stadig virker.
     type Supply = { description: string; baseUoM: string; lager: number; iProduktion: number; iKoeb: number }
     const supply = new Map<string, Supply>()
-    let aurl: string | null = `${base}/itemAvailabilities`   // intet $top — se getItemCategories
+    let aurl: string | null = `${base}/salgslisteSupplies`   // intet $top — se getItemCategories
+    let triedFallback = false
     while (aurl) {
       const res: Response = await fetch(aurl, { headers, cache: 'no-store' } as any)
+      if (res.status === 404 && !triedFallback) {
+        triedFallback = true
+        aurl = `${base}/itemAvailabilities`
+        continue
+      }
       if (!res.ok) {
-        if (throwOnError) throw new Error(`BC itemAvailabilities fejl (${res.status}): ${await res.text()}`)
+        if (throwOnError) throw new Error(`BC salgslisteSupplies fejl (${res.status}): ${await res.text()}`)
         break
       }
       const data = await res.json()
@@ -2217,8 +2230,12 @@ export async function getSalgsliste(
         row.salg += qty
         const cNo = l.sellToCustomerNo ?? ''
         let c = row.customers.find(x => x.customerNo === cNo)
-        if (!c) { c = { customerNo: cNo, customerName: l.sellToCustomerName || cNo, qty: 0 }; row.customers.push(c) }
+        if (!c) { c = { customerNo: cNo, customerName: l.sellToCustomerName || cNo, qty: 0, portalNotes: [], comments: [] }; row.customers.push(c) }
         c.qty += qty
+        const pNote = String(l.portalCustomerNote ?? '').trim()
+        if (pNote && !c.portalNotes.includes(pNote)) c.portalNotes.push(pNote)
+        const cNote = String(l.comment ?? '').trim()
+        if (cNote && !c.comments.includes(cNote)) c.comments.push(cNote)
       }
       surl = data['@odata.nextLink'] ?? null
     }
