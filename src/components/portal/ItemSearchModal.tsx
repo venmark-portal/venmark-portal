@@ -116,6 +116,10 @@ interface Props {
   getDisplayPrice?: (item: EnrichedItem) => number
   /** Antals-loft pr. vare (samme logik som favoritlisten). null = ubegrænset. Uden denne cappes der ikke i søgningen. */
   getMaxQty?:      (itemNo: string) => number | null
+  /** Varekatalogets FÆRDIGE status pr. vare (OrderList.rowAvailStatus: spærretekst, fristtekst og
+   *  loft allerede anvendt). Gives den, bruges den i stedet for modalens egen computeStatus — så
+   *  søgning og katalog ALDRIG kan vise forskelligt (fx "Udsolgt" vs "Tilgængelig til afgang ons"). */
+  getRowStatus?:   (itemNo: string) => RowStatus
   /** Forudfyldt søgetekst — fra det faste søgefelt på bestillingssiden. */
   initialQuery?:   string
 }
@@ -124,7 +128,7 @@ export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
   itemAvailabilities, deliveryDate, getFristLabel, getBlockLabel, onResults, getDisplayPrice, getMaxQty,
-  initialQuery = '',
+  getRowStatus, initialQuery = '',
 }: Props) {
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
@@ -421,9 +425,11 @@ export default function ItemSearchModal({
             const isFav    = favNos?.has(item.number) ?? false
             const isExist  = existingNos.has(item.number)
             const isSel    = selected.has(item.number)
-            const status   = (!favMode && !singleMode)
-              ? computeStatus(itemAvailabilities?.[item.number], deliveryDate)
-              : { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null as null, aabnTilLabel: null }
+            // Katalogets færdige status når den gives (tekster allerede anvendt → må ikke køres igen)
+            const fromCatalog = !favMode && !singleMode && !!getRowStatus
+            const status: RowStatus = (!favMode && !singleMode)
+              ? (getRowStatus ? getRowStatus(item.number) : computeStatus(itemAvailabilities?.[item.number], deliveryDate))
+              : { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
             // Antals-loft (samme cap som favoritlisten) — vises som "Maks X" og håndhæves.
             const cap = (!favMode && !singleMode) ? (getMaxQty?.(item.number) ?? null) : null
 
@@ -449,11 +455,11 @@ export default function ItemSearchModal({
                 {status.blockLabel && (
                   <div className="mb-1 flex items-center gap-1 text-[10px] text-red-600 bg-red-50 rounded px-1.5 py-0.5 w-fit font-semibold">
                     <X size={9} />
-                    {getBlockLabel ? getBlockLabel(item.number, status.blockLabel) : status.blockLabel}
+                    {fromCatalog ? status.blockLabel : getBlockLabel ? getBlockLabel(item.number, status.blockLabel) : status.blockLabel}
                   </div>
                 )}
                 {!status.blockLabel && status.aabnTilLabel && (() => {
-                  const txt = getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel
+                  const txt = fromCatalog ? status.aabnTilLabel : getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel
                   if (!txt) return null
                   const info = txt.startsWith('Vi genskaffer')   // = OrderList.GENSKAF_PREFIX → neutral, ikke rød
                   return (
@@ -514,9 +520,13 @@ export default function ItemSearchModal({
                       })()}
                       {cap != null ? (
                         cap <= 0 ? (
+                          // Har varen en spærretekst (fx "Tilgængelig til afgang ons"), står den allerede
+                          // øverst — vis så IKKE også "Udsolgt" (modsiger den, som varekataloget heller ikke gør)
+                          status.blockLabel ? null : (
                           <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-red-100 text-red-600">
                             Udsolgt
                           </span>
+                          )
                         ) : (
                           <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-orange-100 text-orange-600">
                             Maks {Math.round(cap * 10) / 10} {item.baseUnitOfMeasureCode}

@@ -3097,6 +3097,7 @@ export default function OrderList({
           onResults={onSearchResults}
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}
+          getRowStatus={rowAvailStatus}
         />
       )}
 
