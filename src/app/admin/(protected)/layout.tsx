@@ -32,7 +32,7 @@ export default async function AdminLayout({
       <div className="min-h-screen bg-gray-50">
         <header className="border-b border-gray-200 bg-white">
           <div className="mx-auto max-w-7xl px-4 py-3">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex items-center gap-3 shrink-0">
                 <span className="text-xl font-bold">
                   <span className="text-gray-900">Venmark</span>
@@ -42,7 +42,12 @@ export default async function AdminLayout({
                   ADMIN
                 </span>
               </div>
-              <nav className="flex items-center gap-1 text-sm font-medium text-gray-600 flex-wrap">
+              {/* min-w-0 + flex-1 er det der får flex-wrap til at virke. Uden dem kan nav
+                  ikke krympe under sin egen indholdsbredde (min-width:auto), så rækken
+                  vokser ud over headeren i stedet for at ombryde — og punkterne til
+                  højre forsvandt ud af skærmen efterhånden som menuen voksede.
+                  Leveringer er nr. 14 og var den første der røg. */}
+              <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-1 gap-y-0.5 text-sm font-medium text-gray-600">
                 {begraenset ? (
                   <a href="/admin/skaerme" className="rounded px-2 py-1 bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100">Skærme</a>
                 ) : (
