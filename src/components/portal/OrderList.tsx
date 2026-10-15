@@ -4,7 +4,7 @@ import { useState, useCallback, useTransition, useEffect, useRef, useMemo } from
 import {
   Plus, Minus, ShoppingCart, Flame, Search,
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star, MessageSquare,
-  AlertTriangle,
+  AlertTriangle, Package,
 } from 'lucide-react'
 import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
@@ -72,6 +72,9 @@ interface Props {
   calendarDays?:                BCCalendarDay[]
   estimatedPrices?:             Record<string, number>
   zeroPriceNos?:                string[]   // varer uden aftalt pris → hent "ca. X kr." efter render
+
+  /** Leveringsdato (YYYY-MM-DD) -> aaben ordre paa samme leveringsform. Se src/lib/aabenOrdre.ts. */
+  aabneOrdrer?: Record<string, { bcOrderNumber: string; antalLinjer: number; pakket: boolean; fraPortal: boolean }>
   // "Tilføj til eksisterende ordre"-tilstand: samme UI som bestilling, men indsend lægger linjer
   // på en eksisterende ordre i stedet for at oprette en ny. Sat = add-mode. Leveringsdato/-form
   // og PO låses (ordren har dem allerede).
@@ -991,13 +994,15 @@ export function OrderRow({
 // ─── Leveringsdato-vælger ─────────────────────────────────────────────────────
 
 function DeliveryPicker({
-  deliveryDays, selectedDay, onSelect, method, calendarDays = [],
+  deliveryDays, selectedDay, onSelect, method, calendarDays = [], aabneOrdrer = {},
 }: {
   deliveryDays:  Date[]
   selectedDay:   number
   onSelect:      (idx: number) => void
   method?:       BCShipmentMethod
   calendarDays?: BCCalendarDay[]
+  /** Dage hvor kunden allerede har en åben ordre — markeres, så hun kan se det FØR valget. */
+  aabneOrdrer?:  Record<string, { bcOrderNumber: string; antalLinjer: number; pakket: boolean; fraPortal: boolean }>
 }) {
   const now = new Date()
   const [showMore, setShowMore] = useState(false)
@@ -1068,14 +1073,24 @@ function DeliveryPicker({
           const dl         = deadline(day)
           const notable    = deadlineIsNotable(day, dl)
           const isSelected = dlIdx === selectedDay
+          // Prik på de dage hvor der allerede ligger en upakket ordre — så kan man se
+          // det FØR man vælger dagen, ikke først bagefter.
+          const harOrdre   = !!aabneOrdrer[localYmd(day)] && !aabneOrdrer[localYmd(day)].pakket
           return (
             <button
               key={dlIdx}
               onClick={() => { onSelect(dlIdx); setShowMore(false) }}
-              className={`flex shrink-0 flex-col items-center rounded-xl px-4 py-2 text-sm font-medium transition ${
+              title={harOrdre ? `Du har allerede en bestilling til denne dag (#${aabneOrdrer[localYmd(day)].bcOrderNumber})` : undefined}
+              className={`relative flex shrink-0 flex-col items-center rounded-xl px-4 py-2 text-sm font-medium transition ${
                 isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
+              {harOrdre && (
+                <span
+                  aria-label="Du har allerede en bestilling til denne dag"
+                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-600'}`}
+                />
+              )}
               <span className="font-bold">{formatDay(day)}</span>
               <span className="text-xs opacity-80">
                 {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
@@ -1166,6 +1181,7 @@ export default function OrderList({
   shipmentMethods = [], customerShipmentMethodCode = '', calendarDays = [],
   estimatedPrices: initialEst = {} as Record<string, number>,
   zeroPriceNos = [],
+  aabneOrdrer = {},
   addToOrderId, addBcOrderNumber, addDeadline,
 }: Props) {
   const addMode = !!addToOrderId
@@ -1696,9 +1712,19 @@ export default function OrderList({
   const rowMaxQtyClampRef = useRef(rowMaxQty)
   useEffect(() => { rowMaxQtyClampRef.current = rowMaxQty }, [rowMaxQty])
   const clampDateKeyRef = useRef<string | null>(null)
+  // ── Ligger der allerede en ordre til den valgte dag? ──────────────────────
+  // Én ordre pr. leverance: lægges varerne på en ordre kunden har i forvejen, skal
+  // hun vide det HER — ved datovalget og på knappen — ikke først på kvitteringen.
+  // En PAKKET ordre kan ikke nå at få mere med, så dér bliver det en ny ordre.
+  const dagensOrdre = deliveryDate ? aabneOrdrer[localYmd(deliveryDate)] : undefined
+  const laeggerPaa  = !!dagensOrdre && !dagensOrdre.pakket && !addMode
+  const pakketIDag  = !!dagensOrdre && dagensOrdre.pakket && !addMode
+
   /** Varer lagt i kurven før deres antals-loft var hentet — se addSearchedItems. */
   const ukendtLoftRef = useRef<Set<string>>(new Set())
   const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
+  /** Sat når serveren lagde varerne på en eksisterende ordre i stedet for at oprette en ny. */
+  const [lagtPaa, setLagtPaa] = useState<{ ordreNummer: string; antal: number; ialt: number } | null>(null)
   /** Bestillingen gik IKKE igennem. Vises som dialog — en rød linje over knappen var for nem at overse. */
   const [sendFejl, setSendFejl] = useState<{ besked: string; aendret: { name: string; from: number; to: number }[] } | null>(null)
 
@@ -2064,6 +2090,20 @@ export default function OrderList({
             : (raa.trim() || `Noget gik galt (${res.status}) — prøv igen`),
         )
       }
+      // Serveren afgør om varerne blev lagt på en eksisterende ordre — ikke browseren.
+      // En fane der har stået åben siden i morges, ved ikke at kontoret har taget en
+      // ordre i telefonen siden, så svaret her er det eneste der kan stoles på.
+      try {
+        const svar = await res.clone().json()
+        if (svar?.tilfoejet) {
+          setLagtPaa({
+            ordreNummer: String(svar.ordreNummer ?? ''),
+            antal:       Number(svar.antal ?? orderLines.length),
+            ialt:        Number(svar.ialt ?? 0),
+          })
+        }
+      } catch { /* almindelig ny ordre */ }
+
       // Ordren er sendt — så skal den gemte kurv væk, ellers dukker den samme
       // bestilling op igen næste gang kunden åbner siden.
       gemtSignatur.current = '[]'
@@ -2300,8 +2340,21 @@ export default function OrderList({
       <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-white py-16 text-center ring-1 ring-gray-200">
         <CheckCircle2 size={52} className="text-green-500" />
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Bestilling indsendt!</h2>
-          <p className="mt-1 text-sm text-gray-500">Levering: {formatLongDate(deliveryDate)}</p>
+          {/* Serveren fortæller om varerne blev lagt på en eksisterende ordre. Den
+              besked er vigtigere end "indsendt": kunden skal kunne se at hun har ÉN
+              levering, ikke to — også hvis hun aldrig nåede at læse banneret. */}
+          <h2 className="text-xl font-bold text-gray-900">
+            {lagtPaa ? 'Lagt på din bestilling!' : 'Bestilling indsendt!'}
+          </h2>
+          {lagtPaa ? (
+            <p className="mt-1 text-sm text-gray-600">
+              {lagtPaa.antal} {lagtPaa.antal === 1 ? 'vare er' : 'varer er'} lagt på din bestilling
+              {' '}<strong>#{lagtPaa.ordreNummer}</strong> til {formatLongDate(deliveryDate)}.
+              {lagtPaa.ialt > 0 && <> Ordren har nu {lagtPaa.ialt} {lagtPaa.ialt === 1 ? 'vare' : 'varer'}.</>}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-gray-500">Levering: {formatLongDate(deliveryDate)}</p>
+          )}
           <p className="mt-0.5 text-sm text-gray-400">Vi bekræfter snarest muligt</p>
         </div>
         <div className="flex gap-3 mt-2">
@@ -2413,7 +2466,35 @@ export default function OrderList({
           <div className="font-medium text-gray-900">{deliveryDate ? formatLongDate(deliveryDate) : ''}</div>
         </div>
       ) : (
-        <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} />
+        <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} aabneOrdrer={aabneOrdrer} />
+      )}
+
+      {/* Der ligger allerede en ordre til den valgte dag på samme leveringsform.
+          Beskeden står HER — lige under datoen der udløser den — så kunden ved det
+          før hun fylder kurven, ikke bagefter. */}
+      {laeggerPaa && dagensOrdre && (
+        <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-[13px] leading-snug text-blue-900">
+          <ShoppingCart size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Du har allerede en bestilling til denne dag — <strong>#{dagensOrdre.bcOrderNumber}</strong>
+            {dagensOrdre.antalLinjer > 0 && <> med {dagensOrdre.antalLinjer} {dagensOrdre.antalLinjer === 1 ? 'vare' : 'varer'}</>}
+            {!dagensOrdre.fraPortal && <> (bestilt pr. telefon/mail)</>}.
+            {' '}Det du lægger i kurven her, bliver <strong>lagt til den ordre</strong> — du får ikke to leveringer.
+            {' '}<a href="/portal/ordrer" className="font-semibold underline">Se ordren</a>
+          </span>
+        </div>
+      )}
+
+      {/* En pakket ordre kan ikke nå at få mere med — så bliver det en ny ordre, og
+          det skal siges, ellers står der pludselig to ordrer til samme dag. */}
+      {pakketIDag && dagensOrdre && (
+        <div className="mt-2 flex items-start gap-2 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-[13px] leading-snug text-gray-700">
+          <Package size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Din bestilling til denne dag (<strong>#{dagensOrdre.bcOrderNumber}</strong>) er allerede pakket.
+            {' '}Det du bestiller nu, bliver derfor en <strong>ny ordre</strong>.
+          </span>
+        </div>
       )}
 
       {/* Advarsel ved fremtidig afgang (i morgen eller senere): priser kan ændre sig,
@@ -3072,11 +3153,15 @@ export default function OrderList({
               disabled={submitting || pastDeadline || coverageLoading}
               className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
             >
-              {submitting ? (addMode ? 'Tilføjer…' : 'Sender…')
+              {submitting ? (addMode || laeggerPaa ? 'Tilføjer…' : 'Sender…')
                 : coverageLoading ? 'Tjekker disponibel…'
                 : pastDeadline ? 'Deadline passeret'
                 : addMode ? `Tilføj ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} til ordren`
-                : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+                // Teksten skal stå dér hvor man trykker. Et banner øverst er scrollet
+                // forbi, og så tror man man opretter en ny ordre.
+                : laeggerPaa && dagensOrdre
+                  ? `Læg ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} på ordre #${dagensOrdre.bcOrderNumber}`
+                  : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
             </button>
           </div>
         </div>

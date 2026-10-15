@@ -4,7 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
-import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage } from '@/lib/businesscentral'
+import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage, addLinesToBCOrder } from '@/lib/businesscentral'
+import { findAabenOrdre } from '@/lib/aabenOrdre'
+import { revalidatePath } from 'next/cache'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
 
 // Coverage-kaldet til BC (afgang-dækkede linjer) kan tage >10s ved tunge producerede varer —
@@ -163,6 +165,37 @@ export async function POST(req: NextRequest) {
     const customer = await prisma.customer.findUnique({ where: { id: userId } })
     if (!customer) {
       return NextResponse.json({ error: 'Kunde ikke fundet' }, { status: 404 })
+    }
+
+    // ── ÉN ORDRE PR. LEVERANCE ───────────────────────────────────────────────
+    // Ligger der allerede en åben, upakket ordre til samme dag på samme
+    // leveringsform, lægges varerne PÅ den frem for at blive en ordre mere.
+    // Tjekket ligger her og ikke kun i browseren: en fane der har stået åben
+    // siden i morges ved ikke at kontoret har taget en ordre i telefonen siden.
+    // Er ordren pakket, kan den ikke nå at få mere med, og en ny er det rigtige.
+    const eksisterende = await findAabenOrdre(activeCustomerNo, dStr, shipmentMethodCode || '')
+      .catch(() => null)
+
+    if (eksisterende && !eksisterende.pakket) {
+      const { errors } = await addLinesToBCOrder(
+        eksisterende.bcOrderId,
+        lines.map((l: any) => ({ itemNumber: l.bcItemNumber, quantity: l.quantity, uomCode: l.uom })),
+      )
+      if (errors.length > 0) {
+        console.error('[ordre] kunne ikke lægge paa', eksisterende.bcOrderNumber, errors)
+        return NextResponse.json(
+          { error: `Varerne kunne ikke lægges på din bestilling ${eksisterende.bcOrderNumber}: ${errors.join(' · ')}` },
+          { status: 502 },
+        )
+      }
+      revalidatePath('/portal/ordrer')
+      return NextResponse.json({
+        tilfoejet:   true,
+        ordreNummer: eksisterende.bcOrderNumber,
+        antal:       lines.length,
+        ialt:        eksisterende.antalLinjer + lines.length,
+        fraPortal:   eksisterende.fraPortal,
+      }, { status: 200 })
     }
 
     // Gem ordre i DB — nye felter (driverNote, poNumber, orderedByName, orderedByEmail)

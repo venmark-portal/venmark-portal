@@ -5,6 +5,7 @@ import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttribut
 import { hentKurv } from '@/lib/kurv'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
+import { aabneOrdrerPrDato } from '@/lib/aabenOrdre'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
@@ -77,7 +78,7 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
     getWebshopVisibleItemNos().catch(() => null),
     getPortalShipmentMethods().catch(() => []),
     getCustomerShipmentMethodCode(customerNo).catch(() => ''),
-    getCustomerPortalShipmentMethods(customerNo).catch(() => []),
+    getCustomerPortalShipmentMethods(customerNo).catch(() => [] as string[]),
     getPortalCalendarDays(today8601, toDate90str).catch(() => []),
     // Gemt kurv fra sidste besøg — kun varenr., antal og enhed. Varerne slås op
     // forfra nedenfor, så priser og lofter altid er dagens.
@@ -299,6 +300,14 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   // Vi sender bare varenumrene uden pris; OrderList henter estimaterne efter render.
   const zeroPriceNos = allNumbers.filter(n => (itemMap.get(n)?.unitPrice ?? 0) === 0)
 
+  // Åbne ordrer pr. leveringsdato på kundens leveringsform. Bruges til at sige det
+  // ALLEREDE ved datovalget: det kunden lægger i kurven, havner på en ordre hun har
+  // i forvejen. At opdage det først på kvitteringen ville være en ubehagelig
+  // overraskelse — og hun ville have bestilt i den tro at det blev en ny ordre.
+  const aabneOrdrer = Object.fromEntries(
+    await aabneOrdrerPrDato(customerNo, customerMethod?.code ?? '').catch(() => new Map()),
+  )
+
   return (
     <div className="space-y-4">
       {_debug && (
@@ -336,6 +345,7 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
         calendarDays={calendarDays}
         estimatedPrices={{}}
         zeroPriceNos={zeroPriceNos}
+        aabneOrdrer={aabneOrdrer as any}
       />
     </div>
   )
