@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus, ChevronLeft, ChevronRight, Check, Clock } from 'lucide-react'
 import type { BCItem, BCItemCategory, BCItemAvailability } from '@/lib/businesscentral'
 
@@ -283,6 +283,28 @@ export default function ItemSearchModal({
     onClose()
   }
 
+  // ── Spærrede varer nederst ────────────────────────────────────────────────
+  // Søgeresultatet blandede bestilbare og spærrede mellem hinanden, så man kunne
+  // skrive et antal i en vare der ikke kunne leveres. De sorteres nu bagerst —
+  // rækkefølgen indbyrdes bevares, så BC's egen sortering stadig gælder — og der
+  // sættes en bjælke ind før den første. Kun i bestillings-tilstand: favorit-
+  // vælgeren og enkelt-valg har ingen leveringsdato at være spærret imod.
+  const erSpaerret = (nr: string) =>
+    !favMode && !singleMode &&
+    (getRowStatus ? getRowStatus(nr).blocked
+                  : computeStatus(itemAvailabilities?.[nr], deliveryDate).blocked)
+
+  const sorteredeResultater = (!favMode && !singleMode)
+    ? [...results.filter(r => !erSpaerret(r.number)), ...results.filter(r => erSpaerret(r.number))]
+    : results
+  const foersteSpaerrede = (!favMode && !singleMode)
+    ? sorteredeResultater.findIndex(r => erSpaerret(r.number))
+    : -1
+
+  const dagTekst = deliveryDate
+    ? deliveryDate.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
+    : 'den valgte dag'
+
   const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const selectedCatLabel = selCat ? (categories.find(c => c.code === selCat)?.displayName ?? selCat) : null
   // Tælles på tværs af søgninger — ellers viste bunden "0 varer klar" selv om man havde
@@ -417,7 +439,10 @@ export default function ItemSearchModal({
             </div>
           )}
 
-          {results.map((item) => {
+          {sorteredeResultater.map((item, idx) => {
+            // Bjælken sættes ind FØR den første spærrede vare — så ligger alt det der
+            // ikke kan bestilles samlet nederst, i stedet for spredt mellem de andre.
+            const visBjaelke = !favMode && !singleMode && idx === foersteSpaerrede && foersteSpaerrede >= 0
             const picUrl  = item.picture?.id
               ? `/api/portal/item-image/${item.id}?pictureId=${item.picture.id}`
               : null
@@ -434,8 +459,14 @@ export default function ItemSearchModal({
             const cap = (!favMode && !singleMode) ? (getMaxQty?.(item.number) ?? null) : null
 
             return (
+              <Fragment key={item.id}>
+              {visBjaelke && (
+                <div className="sticky top-0 z-10 flex items-center gap-1.5 border-y-2 border-gray-300 bg-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-700">
+                  <X size={11} className="text-gray-500" />
+                  Kan ikke bestilles til {dagTekst}
+                </div>
+              )}
               <div
-                key={item.id}
                 className={`px-3 py-2 border-b border-gray-50 last:border-0 transition-colors ${
                   status.blocked ? 'opacity-70' : ''
                 } ${
@@ -606,6 +637,7 @@ export default function ItemSearchModal({
                   </div>
                 )}
               </div>
+              </Fragment>
             )
           })}
         </div>

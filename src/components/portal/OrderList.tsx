@@ -2151,8 +2151,15 @@ export default function OrderList({
   // den frem). Uden disponibilitets-data skjules intet (fail-open).
   const todayStr2  = localYmd(new Date())
   const effIsToday = effectiveDate ? localYmd(effectiveDate) === todayStr2 : true
-  const hideTodaySoldOut = (itemNo: string) =>
-    effIsToday && (itemNo in itemAvailabilities) && rowAvailStatus(itemNo).blocked
+  // Kan varen bestilles til den valgte dag?
+  //
+  // Før blev de spærrede varer SKJULT helt — men kun når leveringen var i dag; på
+  // fremtidige dage lå de spredt mellem de bestilbare. Begge dele er forkerte: en
+  // skjult vare ser ud som om vi ikke fører den, og en spærret vare midt i listen
+  // bliver forsøgt bestilt. De samles nu nederst under en bjælke, så de kan ses
+  // uden at stå i vejen.
+  const kanIkkeBestilles = (itemNo: string) =>
+    (itemNo in itemAvailabilities) && rowAvailStatus(itemNo).blocked
 
   // STD-pin med optimistisk flytning: stjernen løfter en favorit op i STD-sektionen (og retur).
   // stdOverrides overstyrer serverens standardFavorite-flag indtil næste load. Alle favorit-
@@ -2176,10 +2183,23 @@ export default function OrderList({
   // Tre adskilte sektioner — hver vare vises kun i sin højest-prioriterede sektion.
   // STD > Kundens favoritter > Venmark anbefaler. Ingen sortering/fletning på tværs.
   // Promo-varer udelades fra alle tre sektioner (de har deres egen Hot-sektion).
-  const stdFavSection      = allFavItems.filter(f => effIsStd(f.number) && !promoNos.has(f.number) && !hideTodaySoldOut(f.number))
-  const customerFavSection = allFavItems.filter(f => !effIsStd(f.number) && !promoNos.has(f.number) && !hideTodaySoldOut(f.number))
+  const stdFavSection      = allFavItems.filter(f => effIsStd(f.number) && !promoNos.has(f.number) && !kanIkkeBestilles(f.number))
+  const customerFavSection = allFavItems.filter(f => !effIsStd(f.number) && !promoNos.has(f.number) && !kanIkkeBestilles(f.number))
   const venmarkSection     = venmarkItems
-    .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number) && !hideTodaySoldOut(v.item.number))
+    .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number) && !kanIkkeBestilles(v.item.number))
+
+  // Alt det der IKKE kan bestilles til dagen, samlet ét sted nederst. Samme varer
+  // som sektionerne ovenfor ville have vist, bare dem der er spærret — og hver vare
+  // kun én gang, selv om den både er favorit og anbefalet.
+  const utilgaengeligeVarer = useMemo(() => {
+    const set = new Map<string, EnrichedItem>()
+    for (const f of allFavItems)
+      if (!promoNos.has(f.number) && kanIkkeBestilles(f.number)) set.set(f.number, f)
+    for (const v of venmarkItems)
+      if (!promoNos.has(v.item.number) && kanIkkeBestilles(v.item.number)) set.set(v.item.number, v.item)
+    return Array.from(set.values()).sort((a, b) => a.displayName.localeCompare(b.displayName, 'da'))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allFavItems, venmarkItems, promoNos, itemAvailabilities, coverageMax, deliveryDate, effectiveDate])
 
   // ── Katalog-navigation ───────────────────────────────────────────────────────
   const catTree        = useMemo(() => buildCatTree(allCategories), [allCategories])
@@ -2980,6 +3000,45 @@ export default function OrderList({
           <div className="px-4 py-10 text-center text-sm text-gray-400">
             Ingen favoritter endnu — brug søgning nedenfor
           </div>
+        )}
+
+        {/* ── Ikke tilgængelige til den valgte dag ──────────────────────────
+            Helt nederst og bag en tydelig bjælke. De skal kunne ses — ellers
+            tror kunden at vi ikke fører varen — men de må ikke ligge mellem de
+            bestilbare, hvor de bliver forsøgt bestilt. Antallet kan ikke tastes;
+            rækkerne viser selv hvorfor (udsolgt, frist passeret, først til afgang). */}
+        {!isCatalogMode && utilgaengeligeVarer.length > 0 && (
+          <>
+            <div className="px-3 py-2 bg-gray-200 border-y-2 border-gray-300 text-xs font-bold uppercase tracking-wide text-gray-700 flex items-center gap-1.5">
+              <X size={13} className="text-gray-500" />
+              Kan ikke bestilles til {deliveryDate ? formatLongDate(deliveryDate) : 'den valgte dag'}
+              <span className="ml-1 font-normal normal-case text-gray-500">
+                ({utilgaengeligeVarer.length} {utilgaengeligeVarer.length === 1 ? 'vare' : 'varer'})
+              </span>
+            </div>
+            <div className="divide-y divide-gray-100 opacity-75">
+              {utilgaengeligeVarer.map((item) => (
+                <OrderRow
+                  key={`utilg-${item.number}`}
+                  item={item} quantity={getQty(item.number)} {...noteProps(item.number)}
+                  onQty={qty => setQty(item, qty)} priceTiers={priceTiers}
+                  isVenmark={false} venmarkNote=""
+                  isStandingOrder={standingNos.has(item.number)}
+                  isFavorite={favSet.has(item.number)} onToggleFav={() => toggleFavorite(item)}
+                  isStd={effIsStd(item.number)} onToggleStd={() => toggleStd(item)}
+                  selectedUom={lineUoms.get(item.number)} onUomChange={code => setLineUom(item, code)}
+                  onOpenDetail={() => setDetailItem(item)}
+                  unavailableLabel={deliveryDate && !isItemAvailable(item.number, deliveryDate) ? cutoffLabel(item.number) : ''}
+                  blockedLabel={rowAvailStatus(item.number).blockLabel}
+                  disponibeltLabel={rowAvailStatus(item.number).disponibeltLabel}
+                  disponibeltColor={rowAvailStatus(item.number).disponibeltColor}
+                  aabnTilLabel={rowAvailStatus(item.number).aabnTilLabel}
+                  infoNote={rowInfoNote(item.number)}
+                  estimatedPrice={estimatedPrices[item.number]}
+                />
+              ))}
+            </div>
+          </>
         )}
 
       </div>
