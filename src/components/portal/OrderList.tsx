@@ -291,6 +291,11 @@ interface ItemAvailStatus {
 // Parser BC OData Time "PT10H30M00S" eller "10:30:00" → { hh, mm } eller null (0T = ingen begrænsning)
 // Frist-tekst der er INFO (genskaffelses-vindue, varen har lager), ikke en rød deadline. Rendereren
 // skelner på dette præfiks (også i ItemSearchModal).
+/** "fredag 16. okt." — kort nok til en bjælke der gentages pr. kategori. */
+function kortDagTekst(d: Date): string {
+  return d.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' })
+}
+
 const GENSKAF_PREFIX = 'Vi genskaffer flere'
 
 function parseAabnTil(s: string): { hh: number; mm: number } | null {
@@ -2336,6 +2341,39 @@ export default function OrderList({
   // Ugedagsnavn til sektion-header
   const weekdayName = ['', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'][selectedWeekday] ?? ''
 
+  /**
+   * Katalog-liste med de spærrede varer samlet nederst bag en bjælke.
+   *
+   * Bjælken sidder PR. KATEGORI og ikke én gang nederst på siden: kategorierne
+   * hentes side for side mens man scroller, så en fælles blok i bunden ville flytte
+   * sig hver gang der kom flere varer ind — og man ville aldrig vide om den var hel.
+   */
+  const renderKatalogListe = (items: EnrichedItem[], noegle: string) => {
+    const bestilbare = items.filter(i => !kanIkkeBestilles(i.number))
+    const spaerrede  = items.filter(i => kanIkkeBestilles(i.number))
+    return (
+      <>
+        {bestilbare.length > 0 && (
+          <div className="divide-y divide-blue-200">
+            {bestilbare.map(item => renderCatalogRow(item, noegle))}
+          </div>
+        )}
+        {spaerrede.length > 0 && (
+          <>
+            <div className="flex items-center gap-1.5 border-y border-gray-300 bg-gray-200 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-600">
+              <X size={10} className="text-gray-500" />
+              Kan ikke bestilles til {deliveryDate ? kortDagTekst(deliveryDate) : 'den valgte dag'}
+              <span className="font-normal normal-case text-gray-500">({spaerrede.length})</span>
+            </div>
+            <div className="divide-y divide-gray-100 opacity-75">
+              {spaerrede.map(item => renderCatalogRow(item, `${noegle}-utilg`))}
+            </div>
+          </>
+        )}
+      </>
+    )
+  }
+
   // ─── SUCCES ──────────────────────────────────────────────────────────────────
   if (submitted && addMode) {
     return (
@@ -2934,9 +2972,7 @@ export default function OrderList({
                     <div className="sticky top-0 z-10 px-3 py-1.5 bg-gray-100/95 backdrop-blur border-y border-gray-200 text-xs font-bold text-gray-700">
                       {g.name} <span className="font-normal text-gray-400">({g.items.length})</span>
                     </div>
-                    <div className="divide-y divide-blue-200">
-                      {g.items.map(item => renderCatalogRow(item, `grp-${g.code}`))}
-                    </div>
+                    {renderKatalogListe(g.items, `grp-${g.code}`)}
                   </div>
                 ))}
                 <div ref={catSentinel} />
@@ -2962,11 +2998,8 @@ export default function OrderList({
             {!groupedMode && !categoryLoading && categoryItems.length === 0 && (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen varer i denne kategori</div>
             )}
-            {!groupedMode && !categoryLoading && categoryItems.length > 0 && (
-              <div className="divide-y divide-blue-200">
-                {categoryItems.map(item => renderCatalogRow(item, 'cat'))}
-              </div>
-            )}
+            {!groupedMode && !categoryLoading && categoryItems.length > 0 &&
+              renderKatalogListe(categoryItems, 'cat')}
           </>
         )}
 
