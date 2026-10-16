@@ -76,7 +76,9 @@ export async function POST(req: NextRequest) {
     const avails     = await getItemAvailabilities(custLoc).catch(() => new Map())
     const ddMidnight = new Date(deliveryDate); ddMidnight.setHours(0, 0, 0, 0)
     const dStr       = deliveryDate.toISOString().split('T')[0]
-    const todayStr   = new Date().toISOString().split('T')[0]
+    // Dansk dato. toISOString gav UTC-datoen, og den er en dag bagud mellem midnat og
+    // kl. 02 dansk tid — netop når en natlig prisrunde skal sammenlignes med "i dag".
+    const todayStr   = new Date().toLocaleDateString('en-CA')
     const tooEarly: string[] = []
     const overCap:  string[] = []
     // Samme afvisning, men i maskinlæsbar form. Uden den kunne portalen kun vise kunden en
@@ -122,7 +124,16 @@ export async function POST(req: NextRequest) {
         const f = aabnTilFrist(a.aabnTil, deliveryDate, deadline, a.leadDage ?? 0, holidaySet)
         if (f && Date.now() < f.getTime()) continue
       }
-      const auctionFree = a.auktionsKategori && (a.priserOpdateret ? a.priserOpdateret.slice(0, 10) !== todayStr : true)
+      // Samme regel som klientens rowMaxQty — ellers afviser serveren det portalen lige
+      // har tilladt. "Priser opdateret i dag" betyder at DAGENS fangst er købt og prissat,
+      // og så gælder lageret. Men det siger intet om en senere dags auktion: afsendes der
+      // i fremtiden, har vi den auktion til gode, og varen er fri.
+      const afsendStr   = (method ? getEffectiveDateForMethodDelivery(deliveryDate, method, holidaySet) : deliveryDate)
+        .toLocaleDateString('en-CA')
+      const prisDato    = a.priserOpdateret
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date(a.priserOpdateret))
+        : ''
+      const auctionFree = a.auktionsKategori && (afsendStr > todayStr || prisDato !== todayStr)
       if (!auctionFree && !isForward && disp > 0 && l.quantity > disp) {
         overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
         lofter.push({ itemNo: l.bcItemNumber, navn: l.itemName || l.bcItemNumber, maks: Math.round(disp * 10) / 10 })

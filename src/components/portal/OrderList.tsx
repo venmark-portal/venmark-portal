@@ -291,6 +291,21 @@ interface ItemAvailStatus {
 // Parser BC OData Time "PT10H30M00S" eller "10:30:00" → { hh, mm } eller null (0T = ingen begrænsning)
 // Frist-tekst der er INFO (genskaffelses-vindue, varen har lager), ikke en rød deadline. Rendereren
 // skelner på dette præfiks (også i ItemSearchModal).
+/**
+ * Dansk dato (YYYY-MM-DD) ud af BC's UTC-tidsstempel.
+ *
+ * `slice(0, 10)` på "2026-10-16T22:30:00Z" giver den 16., men i dansk tid er klokken
+ * 00:30 den 17. Prisrunder kører tidligt om morgenen, så det rammer sjældent — men
+ * samme fejl kostede os allerede "priser opdateret kl. 06:34" der skulle have været
+ * 08.34, og den blev kun rettet ét af de to steder.
+ */
+function dkDato(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(d)
+}
+
 /** "fredag 16. okt." — kort nok til en bjælke der gentages pr. kategori. */
 function kortDagTekst(d: Date): string {
   return d.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' })
@@ -1636,7 +1651,17 @@ export default function OrderList({
     // vare der reelt kan skaffes. Derfor tjekkes "kan skaffes" FØR coverage-værdien bruges. Det
     // spejler præcis BC's CalcPortalMaxQty, der returnerer -1 (ubegrænset) i netop disse tilfælde
     // (leadtid/auktion/afgang der dækker den effektive dato).
-    if (avail.auktionsKategori && avail.priserOpdateret?.slice(0, 10) !== todayStr &&
+    // AUKTIONSVARE: fri bestilling når vi endnu ikke har været på den auktion der skal
+    // dække leveringen.
+    //
+    // "Priser opdateret i dag" betyder at DAGENS fangst er købt og prissat — så er det
+    // lageret der gælder, for der kommer ikke mere i dag. Men det siger intet om MANDAGENS
+    // auktion. Tidligere låste stemplet varen uanset leveringsdato, så en bestilling til
+    // på mandag blev spærret kl. 06:31 i fredags af priser der kun handlede om fredag.
+    // Derfor: er afsendelsen i fremtiden, er varen fri uanset dagens prisstempel.
+    const prisDato = dkDato(avail.priserOpdateret)
+    const foerAuktion = effectiveStr > todayStr || prisDato !== todayStr
+    if (avail.auktionsKategori && foerAuktion &&
         (!avail.daekketFra || effectiveStr >= avail.daekketFra)) return null
     // Kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
     if (effectiveStr > todayStr) {
