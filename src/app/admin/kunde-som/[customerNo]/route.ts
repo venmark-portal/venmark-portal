@@ -21,9 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: { customerNo: 
   // Dobbelt bund under middlewaren: en rute må aldrig alene stole på at noget andet
   // har tjekket rollen.
   if (!bruger || bruger.role !== 'admin') {
-    const url = new URL('/admin/login', req.url)
-    url.searchParams.set('callbackUrl', `/admin/kunde-som/${encodeURIComponent(params.customerNo)}`)
-    return NextResponse.redirect(url)
+    return omdirigér(`/admin/login?callbackUrl=${encodeURIComponent(`/admin/kunde-som/${params.customerNo}`)}`)
   }
 
   const nr = decodeURIComponent(params.customerNo ?? '').trim()
@@ -41,7 +39,20 @@ export async function GET(req: NextRequest, { params }: { params: { customerNo: 
     { id: bruger.id, email: bruger.email ?? '', name: bruger.name },
     kunde.id,
   )
-  return NextResponse.redirect(new URL(`/portal/som-kunde?token=${encodeURIComponent(token)}`, req.url))
+  return omdirigér(`/portal/som-kunde?token=${encodeURIComponent(token)}`)
+}
+
+/**
+ * Videresend til en sti på SAMME sted — med en relativ adresse.
+ *
+ * `NextResponse.redirect(new URL(sti, req.url))` sender browseren til
+ * `https://localhost:3000/...`: inde bag Caddy er `req.url` serverens egen
+ * interne adresse, og en rute-handler normaliserer den ikke som middlewaren gør.
+ * En relativ Location løses af browseren mod den adresse den selv kaldte, og kan
+ * derfor ikke pege det forkerte sted hen.
+ */
+function omdirigér(sti: string): NextResponse {
+  return new NextResponse(null, { status: 307, headers: { Location: sti } })
 }
 
 /** Fejl vises som en side, ikke som JSON — man kommer hertil ved at klikke i BC. */
