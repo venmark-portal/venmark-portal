@@ -128,12 +128,18 @@ export async function POST(req: NextRequest) {
       // har tilladt. "Priser opdateret i dag" betyder at DAGENS fangst er købt og prissat,
       // og så gælder lageret. Men det siger intet om en senere dags auktion: afsendes der
       // i fremtiden, har vi den auktion til gode, og varen er fri.
-      const afsendStr   = (method ? getEffectiveDateForMethodDelivery(deliveryDate, method, holidaySet) : deliveryDate)
-        .toLocaleDateString('en-CA')
+      const afsendDag   = method ? getEffectiveDateForMethodDelivery(deliveryDate, method, holidaySet) : deliveryDate
+      const afsendStr   = afsendDag.toLocaleDateString('en-CA')
       const prisDato    = a.priserOpdateret
         ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date(a.priserOpdateret))
         : ''
-      const auctionFree = a.auktionsKategori && (afsendStr > todayStr || prisDato !== todayStr)
+      // Kan vi nå en auktion inden varen skal være klar? Der er ingen auktion lørdag,
+      // søndag og helligdage — og om lørdagen er priserne stemplet i fredags, så et tjek
+      // på prisstemplet alene gjorde alle auktionsvarer frit bestilbare hele weekenden.
+      const afsendWd    = afsendDag.getDay()
+      const handelsdag  = afsendWd !== 0 && afsendWd !== 6 && !holidaySet.has(afsendStr)
+      const auctionFree = a.auktionsKategori && handelsdag
+        && (afsendStr > todayStr || prisDato !== todayStr)
       if (!auctionFree && !isForward && disp > 0 && l.quantity > disp) {
         overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
         lofter.push({ itemNo: l.bcItemNumber, navn: l.itemName || l.bcItemNumber, maks: Math.round(disp * 10) / 10 })

@@ -1659,9 +1659,18 @@ export default function OrderList({
     // auktion. Tidligere låste stemplet varen uanset leveringsdato, så en bestilling til
     // på mandag blev spærret kl. 06:31 i fredags af priser der kun handlede om fredag.
     // Derfor: er afsendelsen i fremtiden, er varen fri uanset dagens prisstempel.
-    const prisDato = dkDato(avail.priserOpdateret)
-    const foerAuktion = effectiveStr > todayStr || prisDato !== todayStr
-    if (avail.auktionsKategori && foerAuktion &&
+    // Spørgsmålet er ikke "er priserne stemplet i dag" — det er **kan vi nå en auktion
+    // inden varen skal være klar**. De to faldt sammen på en hverdag og skiltes i weekenden:
+    // om lørdagen er priserne stemplet i fredags, så den gamle regel gjorde 473 auktions-
+    // varer ubegrænsede, og man kunne bestille tusindvis af kg til mandag. Der er ingen
+    // auktion lørdag og søndag.
+    const prisDato  = dkDato(avail.priserOpdateret)
+    const effDag    = effectiveDate ?? deliveryDate
+    const handelsdag = isWorkday(effDag)            // auktion kun på arbejdsdage
+    const naarAuktion = effectiveStr > todayStr
+      ? handelsdag                                   // fremtidig arbejdsdag → der kommer en auktion
+      : handelsdag && prisDato !== todayStr          // i dag → kun hvis vi ikke allerede har købt ind
+    if (avail.auktionsKategori && naarAuktion &&
         (!avail.daekketFra || effectiveStr >= avail.daekketFra)) return null
     // Kun FREMTIDIG afsendelse (afsendelse i dag = kun lager).
     if (effectiveStr > todayStr) {
