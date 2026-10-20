@@ -45,6 +45,20 @@ function ymd(d: Date): string {
  *
  * Null = findes ikke, eller hører ikke til denne kunde. Vi skelner ikke udadtil.
  */
+// Fristen står ikke på en BC-ordre — den regnes af leveringsdato + leveringsform, præcis
+// som på bestillingssiden. Uden kendt leveringsform falder vi tilbage til standardreglen.
+async function beregnFrist(levering: Date, shipmentMethodCode: string): Promise<Date> {
+  const om90 = new Date(); om90.setDate(om90.getDate() + 90)
+  const [metoder, kalender] = await Promise.all([
+    getPortalShipmentMethods().catch(() => []),
+    getPortalCalendarDays(ymd(new Date()), ymd(om90)).catch(() => []),
+  ])
+  const metode = metoder.find(m => m.code === shipmentMethodCode)
+  return metode
+    ? getDeadlineForMethodDelivery(levering, metode, kalender)
+    : getDeadlineForDelivery(levering)
+}
+
 export async function findTilfoejMaal(
   id: string,
   session: any,
@@ -60,15 +74,26 @@ export async function findTilfoejMaal(
     if (portalOrdre.status === 'REJECTED') return null
     if (!portalOrdre.bcOrderId) return null   // endnu ikke i BC → intet at hænge linjer på
     const custNo = (session.user as any)?.bcCustomerNumber ?? ''
-    // Portalens Order-tabel kender ikke leveringsformen — den står på BC-ordren.
+    // BC-ordren er facit for leveringsform OG dato: flyttes ordren i BC, skal tilføj-siden
+    // følge med (portalens Order-række husker kun datoen fra bestillingen). Findes BC-ordren
+    // ikke (fx BC nede), bruges portalens egne tal som før.
     const bcOrdre = custNo
       ? (await getCustomerOrders(custNo).catch(() => [])).find(o => o.id === portalOrdre.bcOrderId)
       : undefined
+    let levering = new Date(portalOrdre.deliveryDate)
+    let deadline = new Date(portalOrdre.deadline)
+    if (bcOrdre?.requestedDeliveryDate) {
+      const bcLevering = new Date(`${bcOrdre.requestedDeliveryDate}T00:00:00`)
+      if (ymd(bcLevering) !== ymd(levering)) {
+        levering = bcLevering
+        deadline = await beregnFrist(levering, bcOrdre.shipmentMethodCode ?? '')
+      }
+    }
     return {
       bcOrderId:     portalOrdre.bcOrderId,
       bcOrderNumber: portalOrdre.bcOrderNumber ?? '',
-      deliveryDate:  new Date(portalOrdre.deliveryDate),
-      deadline:      new Date(portalOrdre.deadline),
+      deliveryDate:  levering,
+      deadline,
       portalOrderId: portalOrdre.id,
       customerNo:    custNo,
       shipmentMethodCode: bcOrdre?.shipmentMethodCode ?? '',
@@ -95,18 +120,7 @@ export async function findTilfoejMaal(
   if (!fundet || !fundet.requestedDeliveryDate) return null
 
   const levering = new Date(`${fundet.requestedDeliveryDate}T00:00:00`)
-
-  // Fristen står ikke på en BC-ordre — den regnes af leveringsformen, præcis som på
-  // bestillingssiden. Uden kendt leveringsform falder vi tilbage til standardreglen.
-  const om90 = new Date(); om90.setDate(om90.getDate() + 90)
-  const [metoder, kalender] = await Promise.all([
-    getPortalShipmentMethods().catch(() => []),
-    getPortalCalendarDays(ymd(new Date()), ymd(om90)).catch(() => []),
-  ])
-  const metode = metoder.find(m => m.code === fundet!.shipmentMethodCode)
-  const deadline = metode
-    ? getDeadlineForMethodDelivery(levering, metode, kalender)
-    : getDeadlineForDelivery(levering)
+  const deadline = await beregnFrist(levering, fundet.shipmentMethodCode ?? '')
 
   return {
     bcOrderId:     fundet.id,
