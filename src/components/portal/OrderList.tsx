@@ -2217,14 +2217,19 @@ export default function OrderList({
   }
   const favItemByNo = new Map<string, EnrichedItem>()
   for (const f of [...stdFavorites, ...favorites]) if (!favItemByNo.has(f.number)) favItemByNo.set(f.number, f)
-  const allFavItems = Array.from(favItemByNo.values())
+  // Varenummer-orden inden for hver sektion (Claus 20-10-2026): BC leverer favoritterne i
+  // tilfældig rækkefølge. Numrene er grupperet efter varetype, så det samler fersk/skaldyr/frost.
+  const byItemNo = (a: string, b: string) => a.localeCompare(b, 'da', { numeric: true })
+  const allFavItems = Array.from(favItemByNo.values()).sort((a, b) => byItemNo(a.number, b.number))
 
   // Tre adskilte sektioner — hver vare vises kun i sin højest-prioriterede sektion.
-  // STD > Kundens favoritter > Venmark anbefaler. Ingen sortering/fletning på tværs.
+  // STD > Kundens favoritter > Venmark anbefaler. Ingen fletning på tværs; hver sektion i varenummer-orden.
   // Promo-varer udelades fra alle tre sektioner (de har deres egen Hot-sektion).
   const stdFavSection      = allFavItems.filter(f => effIsStd(f.number) && !promoNos.has(f.number) && !kanIkkeBestilles(f.number))
   const customerFavSection = allFavItems.filter(f => !effIsStd(f.number) && !promoNos.has(f.number) && !kanIkkeBestilles(f.number))
   const venmarkSection     = venmarkItems
+    .slice()
+    .sort((a, b) => byItemNo(a.item.number, b.item.number))
     .filter(v => !promoNos.has(v.item.number) && !stdFavNos.has(v.item.number) && !favNos.has(v.item.number) && !kanIkkeBestilles(v.item.number))
 
   // Alt det der IKKE kan bestilles til dagen, samlet ét sted nederst. Samme varer
