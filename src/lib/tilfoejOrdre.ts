@@ -26,6 +26,12 @@ export interface TilfoejMaal {
   portalOrderId: string | null
   /** Debitornummeret ordren står på (kan være en butik man bestiller for). */
   customerNo:    string
+  /**
+   * Ordrens leveringsform (BC). Antals-loftet afhænger af den: en tidlig "Hentes kl."
+   * pakkes dagen før, en sen samme dag — og et indkøb der lander om morgenen tæller kun
+   * med i det sidste tilfælde. Tom = ukendt.
+   */
+  shipmentMethodCode: string
 }
 
 function ymd(d: Date): string {
@@ -53,13 +59,19 @@ export async function findTilfoejMaal(
     if (portalOrdre.customerId !== userId) return null
     if (portalOrdre.status === 'REJECTED') return null
     if (!portalOrdre.bcOrderId) return null   // endnu ikke i BC → intet at hænge linjer på
+    const custNo = (session.user as any)?.bcCustomerNumber ?? ''
+    // Portalens Order-tabel kender ikke leveringsformen — den står på BC-ordren.
+    const bcOrdre = custNo
+      ? (await getCustomerOrders(custNo).catch(() => [])).find(o => o.id === portalOrdre.bcOrderId)
+      : undefined
     return {
       bcOrderId:     portalOrdre.bcOrderId,
       bcOrderNumber: portalOrdre.bcOrderNumber ?? '',
       deliveryDate:  new Date(portalOrdre.deliveryDate),
       deadline:      new Date(portalOrdre.deadline),
       portalOrderId: portalOrdre.id,
-      customerNo:    (session.user as any)?.bcCustomerNumber ?? '',
+      customerNo:    custNo,
+      shipmentMethodCode: bcOrdre?.shipmentMethodCode ?? '',
     }
   }
 
@@ -103,5 +115,6 @@ export async function findTilfoejMaal(
     deadline,
     portalOrderId: null,
     customerNo:    fundet.customerNumber,
+    shipmentMethodCode: fundet.shipmentMethodCode ?? '',
   }
 }

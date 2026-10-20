@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import {
   getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttributeValues, getItemsUoMs,
   getCustomerFavorites, getItemCutoffs, getItemCategories, getWebshopVisibleItemNos,
-  getItemAvailabilities, getCustomerLocationCode,
+  getItemAvailabilities, getCustomerLocationCode, getPortalShipmentMethods, getPortalCalendarDays,
 } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
@@ -45,6 +45,17 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
   const today8601 = today.toISOString().split('T')[0]
 
   const custLocation = await getCustomerLocationCode(customerNo).catch(() => '')
+
+  // Ordrens EGEN leveringsform + kalender → antals-loftet regnes præcis som på bestil-siden.
+  // Uden den spurgte portalen BC med tom leveringsform (= "pak dagen før"), så et indkøb der
+  // lander samme morgen + andres ordrer til samme dag blev talt forkert: 32745 viste "Maks 30"
+  // selvom alt var solgt (W0000095, 20-10-2026). Vælgeren er stadig skjult i tilføj-tilstand.
+  const om90 = new Date(today); om90.setDate(om90.getDate() + 90)
+  const [portalMethods, calendarDays] = await Promise.all([
+    getPortalShipmentMethods().catch(() => []),
+    getPortalCalendarDays(today8601, om90.toISOString().split('T')[0]).catch(() => []),
+  ])
+  const orderMethod = portalMethods.find(m => m.code === order.shipmentMethodCode)
 
   // Samme katalogdata som bestil-siden (favoritter, Venmark-anbefaler, kategorier, cutoffs, priser)
   const [portalPrices, blockedRows, dbFavRows, bcStandardLines, itemCutoffs, allCategories, webshopVisible] = await Promise.all([
@@ -170,9 +181,9 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
         itemCutoffs={itemCutoffs as any}
         allCategories={allCategories}
         itemAvailabilities={Object.fromEntries(itemAvailabilities)}
-        shipmentMethods={[]}
-        customerShipmentMethodCode=""
-        calendarDays={[]}
+        shipmentMethods={orderMethod ? [orderMethod] : []}
+        customerShipmentMethodCode={order.shipmentMethodCode}
+        calendarDays={calendarDays}
         estimatedPrices={{}}
         zeroPriceNos={zeroPriceNos}
         addToOrderId={params.id}

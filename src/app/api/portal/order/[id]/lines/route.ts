@@ -10,8 +10,13 @@ import { revalidatePath } from 'next/cache'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { addLinesToBCOrder } from '@/lib/businesscentral'
+import { addLinesToBCOrder, getCartCoverage, getCustomerLocationCode } from '@/lib/businesscentral'
 import { findTilfoejMaal } from '@/lib/tilfoejOrdre'
+
+// Leveringsdatoen som dansk kalenderdag (YYYY-MM-DD) — uafhængigt af serverens tidszone.
+function ymd(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(d)
+}
 
 export async function POST(
   req: NextRequest,
@@ -31,6 +36,53 @@ export async function POST(
   const { lines } = await req.json()
   if (!lines?.length) {
     return NextResponse.json({ error: 'Ingen linjer' }, { status: 400 })
+  }
+
+  // ── Antals-loft (samme som ny bestilling) ───────────────────────────────────
+  // Endepunktet tjekkede FØR kun fristen → man kunne lægge 30 kg på, og bagefter 8 mere,
+  // af en vare hvor alt var solgt (32745 på W0000095, 20-10-2026). BC's coverage er facit:
+  // ordrens EGNE eksisterende linjer er allerede salg i BC og trækkes fra; de nye linjer
+  // sendes som kurv (søsken med fælles råvare nettes, varen selv ekskluderes). Samme vare
+  // på flere nye linjer summeres. Fail-open ved BC-fejl (som ordre-ruten) — men aldrig
+  // ubegrænset når BC svarer.
+  const nyePrVare = new Map<string, { qty: number; name: string }>()
+  for (const l of lines as any[]) {
+    if (!l?.bcItemNumber || !(l.quantity > 0)) continue
+    const cur = nyePrVare.get(l.bcItemNumber)
+    nyePrVare.set(l.bcItemNumber, { qty: (cur?.qty ?? 0) + l.quantity, name: l.itemName || l.bcItemNumber })
+  }
+  if (nyePrVare.size) {
+    try {
+      const custLoc = await getCustomerLocationCode(maal.customerNo).catch(() => '')
+      const cart: Record<string, number> = {}
+      nyePrVare.forEach((v, k) => { cart[k] = v.qty })
+      const cov = await getCartCoverage(
+        maal.customerNo, custLoc, ymd(maal.deliveryDate), maal.shipmentMethodCode,
+        Array.from(nyePrVare.keys()), cart,
+      )
+      const ikkeMere: string[] = []
+      const forMeget: string[] = []
+      const lofter: { itemNo: string; navn: string; maks: number }[] = []
+      for (const row of cov?.results ?? []) {
+        const ny = nyePrVare.get(row.itemNo)
+        if (!ny || row.unlimited) continue
+        const maks = Math.max(0, Math.round(row.maxQty * 10) / 10)
+        if (maks <= 0) ikkeMere.push(ny.name)
+        else if (ny.qty > maks) {
+          forMeget.push(`${ny.name}: maks ${maks}`)
+          lofter.push({ itemNo: row.itemNo, navn: ny.name, maks })
+        }
+      }
+      if (ikkeMere.length || forMeget.length) {
+        const dele = [
+          ikkeMere.length ? `Ikke mere til denne leveringsdato: ${ikkeMere.join(', ')}` : '',
+          forMeget.length ? `For stort antal — ${forMeget.join(', ')}` : '',
+        ].filter(Boolean)
+        return NextResponse.json({ error: `${dele.join('. ')}.`, lofter }, { status: 422 })
+      }
+    } catch (e) {
+      console.error('[tilfoej] loft-tjek fejlede (fail-open):', e instanceof Error ? e.message : e)
+    }
   }
 
   // BC er facit. Fejler den, skal der IKKE ligge linjer i portalens database som
