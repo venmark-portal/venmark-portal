@@ -113,7 +113,9 @@ export async function GET(req: NextRequest) {
     customerName: r.customerName,
     address:      r.address,
     vehicle:      r.vehicle,
-    packed:       r.lines.every((l: any) => !!l.packedBy),
+    // Ingen åbne linjer = ordren er allerede bogført (afsendt) i BC — kan ikke pakkes/rettes her.
+    posted:       r.lines.length === 0,
+    packed:       r.lines.length > 0 && r.lines.every((l: any) => !!l.packedBy),
     lines:        r.lines.map((l: any) => ({
       id:          l.id,
       lineNo:      l.lineNo,

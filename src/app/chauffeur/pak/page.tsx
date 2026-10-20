@@ -22,6 +22,7 @@ interface Customer {
   address: string
   vehicle: string
   packed: boolean
+  posted?: boolean
   lines: PakLine[]
 }
 
@@ -92,7 +93,7 @@ export default function ChauffeurPakPage() {
   }
 
   const packed   = customers.filter(c => c.packed).length
-  const total    = customers.length
+  const total    = customers.filter(c => !c.posted).length
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center text-sm text-gray-400">
@@ -158,7 +159,7 @@ export default function ChauffeurPakPage() {
         return (
           <div key={c.orderNo}
             className={`rounded-2xl ring-1 transition-colors ${
-              c.packed ? 'bg-green-50 ring-green-200' : 'bg-red-50 ring-red-300'
+              c.posted ? 'bg-amber-50 ring-amber-200' : c.packed ? 'bg-green-50 ring-green-200' : 'bg-red-50 ring-red-300'
             }`}>
 
             {/* Kort-header */}
@@ -176,7 +177,9 @@ export default function ChauffeurPakPage() {
                 <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
                   <span className="font-mono">{c.orderNo}</span>
                   {allVehicles && <span>· {c.vehicle}</span>}
-                  <span>· {c.lines.length} linjer</span>
+                  {c.posted
+                    ? <span className="font-medium text-amber-700">· allerede bogført i BC — pak efter følgesedlen</span>
+                    : <span>· {c.lines.length} linjer</span>}
                   {c.packed && c.lines[0]?.packedBy && (
                     <span className="text-green-600 font-medium">· {c.lines[0].packedBy}</span>
                   )}
