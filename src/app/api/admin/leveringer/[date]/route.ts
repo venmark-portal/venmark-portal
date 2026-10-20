@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
-import { ensureRouteSchema, loadVehicles } from '@/lib/route-plan-db'
+import { ensureRouteSchema, loadVehicles, loadRouteOrders } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -29,20 +29,14 @@ export async function GET(
   let bcError: string | null = null
   try {
     // Hent dagens ordrer + næste hverdag parallelt (timeout 20s samlet)
-    const [todayOrders, nextOrders] = await Promise.race([
-      Promise.all([
-        getSalesOrdersForDelivery(params.date, { fetchLines: false }),
-        getSalesOrdersForDelivery(nextDay,       { fetchLines: false }),
-      ]),
+    // Samme regel som chaufførappens auto-rute (src/lib/route-plan-db.ts loadRouteOrders):
+    // dagens afsendelser + næste hverdags KØB-ordrer, hver ordre én gang.
+    bcOrders = await Promise.race([
+      loadRouteOrders(params.date),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('BC timeout (20s) — prøv igen')), 20_000)
       ),
     ])
-    // Fra næste hverdag: kun KØB*-koder (pakkes i KBH sammen med LOVENCO)
-    const kobNextDay = nextOrders.filter(o =>
-      o.deliveryCodes.some((c: string) => /^KØB/i.test(c.trim()))
-    )
-    bcOrders = [...todayOrders, ...kobNextDay]
   } catch (err) {
     bcError = err instanceof Error ? err.message : String(err)
     console.error('BC fejl:', bcError)

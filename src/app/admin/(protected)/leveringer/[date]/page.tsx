@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { Save, CheckCircle2, XCircle, ArrowLeft, Plus, GripVertical, Map as MapIcon, Trash2 } from 'lucide-react'
-import { isOwnRouteCode, normalizeCode, mergeKobIntoLovenco } from '@/lib/route-plan'
+import { isOwnRouteCode, normalizeCode, mergeKobIntoLovenco, kobOrderNoOf } from '@/lib/route-plan'
 
 interface BCOrder {
   id: string; number: string; customerNumber: string; customerName: string
@@ -275,7 +275,7 @@ export default function LeveringDagPage() {
         existingStopId:       r.stopId ?? null,
         bcSalesOrderId:       r.isExtraTask ? null : r.id,
         bcSalesOrderNo:       r.isExtraTask ? null : [r.number, ...(r.merged?.map(m => m.number) ?? [])].join(' + '),
-        kobSalesOrderNo:      r.isExtraTask ? null : (r.merged?.[0]?.number ?? null),
+        kobSalesOrderNo:      r.isExtraTask ? null : kobOrderNoOf(r),
         bcCustomerNo:         r.isExtraTask ? null : (r.customerNo ?? null),
         customerName:         r.isExtraTask ? null : r.customerName,
         customerAddress:      r.isExtraTask ? null : [r.address, r.postCode, r.city].filter(Boolean).join(', '),

@@ -42,32 +42,40 @@ export interface MergedInfo { id: string; number: string; originalCode: string; 
  * KØB-ordren opsuges i LOVENCO-stoppet (vægt lægges sammen, KØB-nr. huskes til pakkelisten).
  */
 export function mergeKobIntoLovenco<T extends MergeableRow>(rows: T[]): (T & { merged?: MergedInfo[] })[] {
-  const absorbed = new Set<string>()
+  // To gennemløb: find ALLE par først, skriv så ud. Før blev en KØB-ordre, der stod
+  // før sin LOVENCO-partner i listen, skrevet ud alene OG lagt sammen = dobbelt stop.
+  const partnerOf = new Map<string, T>()   // LOVENCO-id → KØB-række
+  const absorbed  = new Set<string>()
+  for (const row of rows) {
+    if (row.isExtraTask || row.code !== 'LOVENCO' || row.originalCode !== 'LOVENCO' || !row.address) continue
+    const partner = rows.find(r =>
+      !absorbed.has(r.id) && !r.isExtraTask &&
+      r.id !== row.id &&
+      r.code === 'LOVENCO' &&
+      /^KØB/i.test(r.originalCode) &&
+      r.address.toLowerCase() === row.address.toLowerCase() &&
+      r.postCode === row.postCode
+    )
+    if (partner) { partnerOf.set(row.id, partner); absorbed.add(partner.id) }
+  }
   const out: (T & { merged?: MergedInfo[] })[] = []
   for (const row of rows) {
     if (absorbed.has(row.id)) continue
-    if (!row.isExtraTask && row.code === 'LOVENCO' && row.originalCode === 'LOVENCO' && row.address) {
-      const partner = rows.find(r =>
-        !absorbed.has(r.id) && !r.isExtraTask &&
-        r.id !== row.id &&
-        r.code === 'LOVENCO' &&
-        /^KØB/i.test(r.originalCode) &&
-        r.address.toLowerCase() === row.address.toLowerCase() &&
-        r.postCode === row.postCode
-      )
-      if (partner) {
-        absorbed.add(partner.id)
-        out.push({
-          ...row,
-          weightKg: row.weightKg + partner.weightKg,
-          merged: [{ id: partner.id, number: partner.number ?? '', originalCode: partner.originalCode, weightKg: partner.weightKg }],
-        })
-        continue
-      }
-    }
-    out.push(row)
+    const partner = partnerOf.get(row.id)
+    out.push(partner ? {
+      ...row,
+      weightKg: row.weightKg + partner.weightKg,
+      merged: [{ id: partner.id, number: partner.number ?? '', originalCode: partner.originalCode, weightKg: partner.weightKg }],
+    } : row)
   }
   return out
+}
+
+export const isKobCode = (code: string) => /^KØB/i.test((code ?? '').trim())
+
+/** KØB-ordrenummer til pakkelisten: den sammenlagte KØB-ordre, eller stoppet selv hvis det er en KØB-ordre. */
+export function kobOrderNoOf(row: { number?: string; originalCode: string; merged?: MergedInfo[] }): string | null {
+  return row.merged?.[0]?.number ?? (isKobCode(row.originalCode) && row.number ? row.number : null)
 }
 
 export type ProfileMap = Record<string, { routeOrder: number; defaultVehicle: number }>
@@ -157,7 +165,7 @@ export function buildAutoPlan(
     byBil.get(r.bil)!.push({
       bcSalesOrderId:       r.id,
       bcSalesOrderNo:       [r.number, ...(r.merged?.map(m => m.number) ?? [])].join(' + '),
-      kobSalesOrderNo:      r.merged?.[0]?.number ?? null,
+      kobSalesOrderNo:      kobOrderNoOf(r),
       bcCustomerNo:         r.customerNo,
       customerName:         r.customerName,
       customerAddress:      [r.address, r.postCode, r.city].filter(Boolean).join(', '),

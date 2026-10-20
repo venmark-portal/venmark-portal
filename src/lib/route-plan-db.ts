@@ -104,6 +104,31 @@ export function prevBusinessDay(dateStr: string): string {
 /** Leveringskode-gruppen der køres i København (KØB* normaliseres til den). */
 export const KBH_CODE = 'LOVENCO'
 
+/**
+ * Ordrerne på ruten for Hirtshals-dag D, hver ordre højst én gang:
+ *  - ikke-KØB-ordrer med afsendelse (bogføringsdato) = D
+ *  - KØB-ordrer med afsendelse = næste hverdag (de køres i KBH sammen med LOVENCO fra D)
+ * Bogføringsdato = afsendelsesdag i Venmark. Ønsket leveringsdato bruges kun, hvis ordren
+ * mangler bogføringsdato. Før matchede ruten på begge, så en portalordre (levering D+1,
+ * afsendelse D) og dagens KØB-ordrer kom på to dages ruter.
+ */
+export async function loadRouteOrders(date: string) {
+  const next = nextBusinessDay(date)
+  const [a, b] = await Promise.all([
+    getSalesOrdersForDelivery(date, { fetchLines: false }),
+    getSalesOrdersForDelivery(next, { fetchLines: false }),
+  ])
+  const isKob = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(c => /^KØB/i.test(c.trim()))
+  const seen = new Set<string>()
+  const out: typeof a = []
+  for (const o of [...a, ...b]) {
+    if (seen.has(o.id)) continue
+    const dispatch = (o.postingDate || o.requestedDeliveryDate || '').slice(0, 10)
+    if (isKob(o) ? dispatch === next : dispatch === date) { seen.add(o.id); out.push(o) }
+  }
+  return out
+}
+
 /** Næste hverdag (lørdag + søndag springes over). */
 export function nextBusinessDay(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z')
@@ -132,14 +157,9 @@ export async function materializeRouteIfMissing(date: string): Promise<boolean> 
   if (await routeHasStops(date)) return false
 
   // BC hentes UDEN FOR transaktionen (kan tage mange sekunder).
-  // Som admin-siden: dagens ordrer + næste hverdags KØB*-ordrer (pakkes i KBH med LOVENCO).
-  const [todayOrders, nextOrders] = await Promise.all([
-    getSalesOrdersForDelivery(date, { fetchLines: false }),
-    getSalesOrdersForDelivery(nextBusinessDay(date), { fetchLines: false }),
-  ])
-  const kobNext = nextOrders.filter(o => o.deliveryCodes.some(c => /^KØB/i.test(c.trim())))
+  const orders = await loadRouteOrders(date)
   const [profiles, own] = await Promise.all([loadProfiles(), loadOwnCodes()])
-  const plan = buildAutoPlan([...todayOrders, ...kobNext], profiles, own)
+  const plan = buildAutoPlan(orders, profiles, own)
   if (plan.every(v => v.stops.length === 0)) return false
 
   const now = new Date().toISOString()
