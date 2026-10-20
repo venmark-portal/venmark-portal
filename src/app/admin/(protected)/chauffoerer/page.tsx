@@ -13,7 +13,12 @@ interface Driver {
   bcDriverCode:        string | null
 }
 
+interface Vehicle { number: number; label: string; name: string; plate: string | null; active: boolean; display: string }
+
 export default function ChauffoererPage() {
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [vEdit,    setVEdit]    = useState<Record<number, { name: string; plate: string; active: boolean }>>({})
+  const [vSaving,  setVSaving]  = useState<number | null>(null)
   const [drivers,  setDrivers]  = useState<Driver[]>([])
   const [loading,  setLoading]  = useState(true)
   const [syncing,  setSyncing]  = useState(false)
@@ -26,11 +31,42 @@ export default function ChauffoererPage() {
   const [error,    setError]    = useState('')
 
   async function load() {
-    const r = await fetch('/api/admin/chauffoerer')
+    const [r, vr] = await Promise.all([fetch('/api/admin/chauffoerer'), fetch('/api/admin/biler')])
     setDrivers(await r.json())
+    if (vr.ok) setVehicles(await vr.json())
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  function vRow(v: Vehicle) {
+    return vEdit[v.number] ?? { name: v.name, plate: v.plate ?? '', active: v.active }
+  }
+  function setVRow(n: number, patch: Partial<{ name: string; plate: string; active: boolean }>) {
+    const v = vehicles.find(x => x.number === n)
+    const base = v ? vRow(v) : { name: '', plate: '', active: true }
+    setVEdit(prev => ({ ...prev, [n]: { ...base, ...patch } }))
+  }
+  async function saveVehicle(n: number) {
+    const v = vehicles.find(x => x.number === n)
+    const row = v ? vRow(v) : { name: '', plate: '', active: true }
+    setVSaving(n)
+    const res = await fetch('/api/admin/biler', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: n, ...row }),
+    })
+    if (res.ok) {
+      setVehicles(await res.json())
+      setVEdit(prev => { const c = { ...prev }; delete c[n]; return c })
+    }
+    setVSaving(null)
+  }
+  function addVehicle() {
+    const next = (vehicles.at(-1)?.number ?? 0) + 1
+    setVehicles(prev => [...prev, { number: next, label: `Bil ${next}`, name: '', plate: null, active: true, display: `Bil ${next}` }])
+    setVEdit(prev => ({ ...prev, [next]: { name: '', plate: '', active: true } }))
+  }
+  const vehicleDisplay = (label: string) => vehicles.find(v => v.label === label)?.display ?? label
 
   async function syncFromBC() {
     setSyncing(true)
@@ -138,7 +174,7 @@ export default function ChauffoererPage() {
                 <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                   {d.phone && <span>📞 {d.phone}</span>}
                   {d.bcDriverCode && <span className="font-mono text-gray-400">BC: {d.bcDriverCode}</span>}
-                  <span className="flex items-center gap-1"><Truck size={10} /> {d.defaultVehicleLabel ?? 'Bil 1'}</span>
+                  <span className="flex items-center gap-1"><Truck size={10} /> {vehicleDisplay(d.defaultVehicleLabel ?? 'Bil 1')}</span>
                 </div>
               </div>
 
@@ -162,6 +198,53 @@ export default function ChauffoererPage() {
           ))}
         </div>
       )}
+
+      {/* Biler */}
+      <div className="space-y-3">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Biler</h2>
+            <p className="text-sm text-gray-500">Giv bilerne navne. Nummeret bruges i ruter og som kundernes standardbil, så det ændres ikke.</p>
+          </div>
+          <button onClick={addVehicle}
+            className="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+            + Tilføj bil
+          </button>
+        </div>
+        <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-100">
+          {vehicles.map(v => {
+            const row = vRow(v)
+            const dirty = Boolean(vEdit[v.number])
+            return (
+              <div key={v.number} className="flex flex-wrap items-center gap-2 px-4 py-3">
+                <span className="w-14 shrink-0 font-mono text-sm font-semibold text-gray-700">Bil {v.number}</span>
+                <input
+                  id={`vname-${v.number}`}
+                  value={row.name}
+                  onChange={e => setVRow(v.number, { name: e.target.value })}
+                  placeholder="Navn, fx Iveco køl"
+                  className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
+                />
+                <input
+                  id={`vplate-${v.number}`}
+                  value={row.plate}
+                  onChange={e => setVRow(v.number, { plate: e.target.value.toUpperCase() })}
+                  placeholder="Nummerplade"
+                  className="w-28 rounded-lg border border-gray-200 px-2.5 py-1.5 font-mono text-sm uppercase focus:border-blue-400 focus:outline-none"
+                />
+                <label className="flex items-center gap-1 text-xs text-gray-600">
+                  <input type="checkbox" checked={row.active} onChange={e => setVRow(v.number, { active: e.target.checked })} className="rounded" />
+                  I brug
+                </label>
+                <button onClick={() => saveVehicle(v.number)} disabled={!dirty || vSaving === v.number}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-30">
+                  {vSaving === v.number ? 'Gemmer…' : 'Gem'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {/* PIN-modal */}
       {modal && (
@@ -198,12 +281,17 @@ export default function ChauffoererPage() {
                   <Truck size={11} className="inline mr-1" />
                   Standard bil
                 </label>
-                <input
+                <select
                   value={vLabel}
                   onChange={e => setVLabel(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
-                  placeholder="Bil 1"
-                />
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                >
+                  {!vehicles.some(v => v.label === vLabel) && <option value={vLabel}>{vLabel}</option>}
+                  {vehicles.filter(v => v.active || v.label === vLabel).map(v => (
+                    <option key={v.label} value={v.label}>{v.display}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-400">Chaufføren kan selv skifte bil i appen; valget huskes.</p>
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer">

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
-import { ensureRouteSchema } from '@/lib/route-plan-db'
+import { ensureRouteSchema, loadVehicles } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -82,7 +82,11 @@ export async function GET(
     // Returner hvad vi har — siden kan vise BC-ordrer selv uden gemte ruter
   }
 
+  let vehicles: { label: string; display: string }[] = []
+  try { vehicles = (await loadVehicles()).map(v => ({ label: v.label, display: v.display })) } catch {}
+
   return NextResponse.json({
+    vehicles,
     bcOrders,
     bcError,
     routeRows,

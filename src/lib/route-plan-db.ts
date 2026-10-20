@@ -22,6 +22,55 @@ export async function ensureRouteSchema() {
       "updatedAt"       TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `
+  // Biler: nummeret er nøglen (ruter gemmer "Bil N", kundeprofiler gemmer N), navnet er til visning.
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "Vehicle" (
+      "number"    INTEGER PRIMARY KEY,
+      "name"      TEXT    NOT NULL DEFAULT '',
+      "plate"     TEXT,
+      "active"    BOOLEAN NOT NULL DEFAULT true,
+      "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `
+}
+
+export interface VehicleInfo { number: number; label: string; name: string; plate: string | null; active: boolean; display: string }
+
+/** "Bil 3" → 3. Andet end "Bil N" → 0. */
+export function vehicleNumberOf(label: string | null | undefined): number {
+  const m = /^Bil\s+(\d+)$/i.exec(String(label ?? '').trim())
+  return m ? Number(m[1]) : 0
+}
+
+/** Biler fra tabellen + numre der bruges i ruter/profiler uden at være navngivet, 1..max (mindst 1..3). */
+export async function loadVehicles(): Promise<VehicleInfo[]> {
+  const rows = await prisma.$queryRaw<{ number: number; name: string; plate: string | null; active: boolean }[]>`
+    SELECT "number", "name", "plate", "active" FROM "Vehicle" ORDER BY "number"
+  `
+  const used = await prisma.$queryRaw<{ n: number }[]>`
+    SELECT GREATEST(
+      COALESCE((SELECT MAX("defaultVehicle") FROM "CustomerRouteProfile"), 0),
+      COALESCE((SELECT MAX(NULLIF(substring("vehicleLabel" from '^Bil ([0-9]+)$'), '')::int) FROM "RouteVehicle"), 0),
+      COALESCE((SELECT MAX(NULLIF(substring("defaultVehicleLabel" from '^Bil ([0-9]+)$'), '')::int) FROM "DriverUser"), 0),
+      3
+    ) AS n
+  `
+  const max = Math.max(Number(used[0]?.n ?? 3), ...rows.map(r => Number(r.number)))
+  const byNo = new Map(rows.map(r => [Number(r.number), r]))
+  const out: VehicleInfo[] = []
+  for (let n = 1; n <= max; n++) {
+    const r = byNo.get(n)
+    const name = r?.name?.trim() ?? ''
+    out.push({
+      number: n,
+      label: `Bil ${n}`,
+      name,
+      plate: r?.plate ?? null,
+      active: r ? Boolean(r.active) : true,
+      display: name ? `Bil ${n} · ${name}` : `Bil ${n}`,
+    })
+  }
+  return out
 }
 
 export async function loadOwnCodes(): Promise<Map<string, boolean | null>> {

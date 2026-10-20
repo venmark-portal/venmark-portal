@@ -58,8 +58,11 @@ interface Stop {
 interface Vehicle {
   vehicleId:    string
   vehicleLabel: string
+  vehicleName?: string   // "Bil 2 · Iveco køl" — vehicleLabel ("Bil 2") er nøglen
   stops:        Stop[]
 }
+
+interface FleetVehicle { label: string; display: string }
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
   PENDING:   <Clock        size={16} className="text-amber-500" />,
@@ -91,6 +94,11 @@ export default function ChauffeurRutePage() {
   const [ownCodes,    setOwnCodes]    = useState<string[]>([])
   const [driverCode,  setDriverCode]  = useState<string | null>(null)
   const [codeFilter,  setCodeFilter]  = useState<string | null>(null) // null = ikke sat endnu
+  const [fleet,       setFleet]       = useState<FleetVehicle[]>([])
+  const [myVehicle,   setMyVehicle]   = useState<string>('Bil 1')
+  const [vehicleView, setVehicleView] = useState<'mine' | 'all'>('mine')
+  const [moveFixed,   setMoveFixed]   = useState<Record<string, boolean>>({})
+  const [moveError,   setMoveError]   = useState<string | null>(null)
   const [expanded,     setExpanded]     = useState<Set<string>>(new Set())
   const [infoOpen,     setInfoOpen]     = useState<Set<string>>(new Set())
   const [updating,     setUpdating]     = useState<Set<string>>(new Set())
@@ -115,6 +123,8 @@ export default function ChauffeurRutePage() {
     setRouteStatus(data.routeStatus ?? null)
     setOwnCodes(data.ownCodes ?? [])
     setDriverCode(data.driverCode ?? null)
+    setFleet(data.fleet ?? [])
+    if (data.myVehicle) setMyVehicle(data.myVehicle)
     // Sæt standard-filter til chaufførens kode (kun første gang)
     if (data.driverCode) setCodeFilter(prev => prev === null ? data.driverCode : prev)
     setLoading(false)
@@ -122,20 +132,38 @@ export default function ChauffeurRutePage() {
 
   useEffect(() => { load(date) }, [load, date])
 
-  // Klient-side filter på leveringskode
+  // Klient-side filter: leveringskode og min bil / alle biler
   useEffect(() => {
-    if (!codeFilter) {
-      setVehicles(allVehicles)
-    } else {
-      const filtered = allVehicles
-        .map(v => ({
-          ...v,
-          stops: v.stops.filter(s => (s.deliveryCode ?? v.vehicleLabel) === codeFilter),
-        }))
-        .filter(v => v.stops.length > 0)
-      setVehicles(filtered)
+    let vs = allVehicles
+    if (codeFilter) {
+      vs = vs.map(v => ({ ...v, stops: v.stops.filter(s => (s.deliveryCode ?? v.vehicleLabel) === codeFilter) }))
     }
-  }, [codeFilter, allVehicles])
+    if (vehicleView === 'mine') vs = vs.filter(v => v.vehicleLabel === myVehicle)
+    setVehicles(vs.filter(v => v.stops.length > 0))
+  }, [codeFilter, allVehicles, vehicleView, myVehicle])
+
+  async function changeMyVehicle(label: string) {
+    setMyVehicle(label)
+    setVehicleView('mine')
+    await fetch('/api/chauffeur/me', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ myVehicle: label }),
+    }).catch(() => {})
+  }
+
+  async function moveStop(stopId: string, toVehicle: string) {
+    setMoveError(null)
+    const res = await fetch('/api/chauffeur/rute/move', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ stopId, toVehicle, permanent: Boolean(moveFixed[stopId]) }),
+    })
+    if (!res.ok) { setMoveError('Kunne ikke flytte stoppet — prøv igen'); return }
+    await load(date)
+  }
+
+  const displayOf = (label: string) => fleet.find(f => f.label === label)?.display ?? label
 
   function toggleExpand(id: string) {
     setExpanded(prev => {
@@ -345,6 +373,28 @@ export default function ChauffeurRutePage() {
         </button>
       </div>
 
+      {/* Min bil */}
+      <div className="flex items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-gray-200">
+        <Truck size={16} className="text-blue-600 shrink-0" />
+        <label htmlFor="my-vehicle" className="text-xs text-gray-500 shrink-0">Min bil</label>
+        <select
+          id="my-vehicle"
+          value={myVehicle}
+          onChange={e => changeMyVehicle(e.target.value)}
+          className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-800"
+        >
+          {(fleet.some(f => f.label === myVehicle) ? fleet : [{ label: myVehicle, display: myVehicle }, ...fleet]).map(f => (
+            <option key={f.label} value={f.label}>{f.display}</option>
+          ))}
+        </select>
+        <div className="flex shrink-0 rounded-lg border border-gray-200 p-0.5 text-xs">
+          <button onClick={() => setVehicleView('mine')}
+            className={`rounded-md px-2.5 py-1 font-medium ${vehicleView === 'mine' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>Min</button>
+          <button onClick={() => setVehicleView('all')}
+            className={`rounded-md px-2.5 py-1 font-medium ${vehicleView === 'all' ? 'bg-blue-600 text-white' : 'text-gray-500'}`}>Alle</button>
+        </div>
+      </div>
+
       {/* Leveringskode-filter */}
       {chipCodes.length > 0 && (
         <div className="flex gap-1.5 flex-wrap">
@@ -394,6 +444,9 @@ export default function ChauffeurRutePage() {
       {reorderError && (
         <div className="rounded-xl bg-red-50 p-3 ring-1 ring-red-200 text-sm text-red-700">{reorderError}</div>
       )}
+      {moveError && (
+        <div className="rounded-xl bg-red-50 p-3 ring-1 ring-red-200 text-sm text-red-700">{moveError}</div>
+      )}
 
       {/* Generelle noter */}
       {notes && (
@@ -412,10 +465,20 @@ export default function ChauffeurRutePage() {
 
       {/* Ingen rute */}
       {vehicles.length === 0 && (
-        <div className="rounded-xl bg-white p-8 text-center ring-1 ring-gray-200 text-sm text-gray-400">
-          {allVehicles.length === 0
-            ? `Ingen ordrer til egne ruter ${dkDate || date}`
-            : `Ingen stops med koden ${codeFilter} ${dkDate || date}`}
+        <div className="rounded-xl bg-white p-8 text-center ring-1 ring-gray-200 text-sm text-gray-400 space-y-3">
+          <div>
+            {allVehicles.length === 0
+              ? `Ingen ordrer til egne ruter ${dkDate || date}`
+              : vehicleView === 'mine'
+                ? `Ingen stops i ${displayOf(myVehicle)}${codeFilter ? ' med koden ' + codeFilter : ''} ${dkDate || date}`
+                : `Ingen stops med koden ${codeFilter} ${dkDate || date}`}
+          </div>
+          {allVehicles.length > 0 && vehicleView === 'mine' && (
+            <button onClick={() => setVehicleView('all')}
+              className="rounded-lg border border-blue-300 px-3 py-1.5 text-xs font-semibold text-blue-600">
+              Vis alle biler
+            </button>
+          )}
         </div>
       )}
 
@@ -424,7 +487,10 @@ export default function ChauffeurRutePage() {
         <div key={v.vehicleId} className="space-y-2" data-vehicle={v.vehicleId}>
           <div className="flex items-center gap-2 px-1">
             <Truck size={14} className="text-blue-600" />
-            <span className="text-sm font-semibold text-gray-700">{v.vehicleLabel}</span>
+            <span className="text-sm font-semibold text-gray-700">{v.vehicleName ?? displayOf(v.vehicleLabel)}</span>
+            {v.vehicleLabel === myVehicle && vehicleView === 'all' && (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">min bil</span>
+            )}
           </div>
 
           {v.stops.map((s, idx) => {
@@ -589,6 +655,32 @@ export default function ChauffeurRutePage() {
                         </a>
                       )}
                     </div>
+
+                    {/* Flyt til anden bil */}
+                    {!isDone && (
+                      <div className="rounded-lg bg-gray-50 p-2.5 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label htmlFor={`move-${s.id}`} className="text-xs text-gray-500 shrink-0">Flyt til</label>
+                          <select
+                            id={`move-${s.id}`}
+                            value=""
+                            onChange={e => e.target.value && moveStop(s.id, e.target.value)}
+                            className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm"
+                          >
+                            <option value="">Vælg bil …</option>
+                            {Array.from(new Set([...fleet.map(f => f.label), ...allVehicles.map(x => x.vehicleLabel)]))
+                              .filter(l => l !== v.vehicleLabel)
+                              .map(l => <option key={l} value={l}>{displayOf(l)}</option>)}
+                          </select>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-gray-600">
+                          <input type="checkbox" checked={Boolean(moveFixed[s.id])}
+                            onChange={e => setMoveFixed(prev => ({ ...prev, [s.id]: e.target.checked }))}
+                            className="h-4 w-4 rounded border-gray-300" />
+                          Fast for kunden (kører med den bil fremover)
+                        </label>
+                      </div>
+                    )}
 
                     {/* Fejlnote (til FAILED) */}
                     {showFailBox && (

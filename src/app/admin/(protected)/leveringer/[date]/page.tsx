@@ -61,6 +61,7 @@ export default function LeveringDagPage() {
   const { date } = useParams<{ date: string }>()
   const [rows,    setRows]    = useState<PlanRow[]>([])
   const [bils,    setBils]    = useState<string[]>(['Bil 1'])
+  const [bilNames, setBilNames] = useState<Record<string, string>>({})
   const [dcodes,  setDcodes]  = useState<DeliveryCode[]>([])
   const [bcError, setBcError] = useState<string | null>(null)
   const [notes,   setNotes]   = useState('')
@@ -83,6 +84,7 @@ export default function LeveringDagPage() {
     try {
       setBcError(d.bcError ?? null)
       setDcodes(d.deliveryCodes ?? [])
+      setBilNames(Object.fromEntries((d.vehicles ?? []).map((v: any) => [v.label, v.display])))
       setNotes((d.routeRows ?? [])[0]?.routeNotes ?? '')
       const ownMap = ownMapOf(d.deliveryCodes ?? [])
       const isVisibleCode = (c: string) => isOwnRouteCode(c, ownMap)
@@ -130,7 +132,7 @@ export default function LeveringDagPage() {
           // Kundens standard-rutenummer først. Dagens gemte stop har kun sin
           // position (0,1,2…) som sortOrder — vistes den, blev rutenumrene
           // overskrevet med løbenumre ved næste "Gem rute".
-          routeOrder:     profile?.routeOrder ?? existing?.sort ?? (o.portalRouteOrder > 0 ? o.portalRouteOrder : 5000),
+          routeOrder:     profile?.routeOrder ?? existing?.sort ?? ((o.portalRouteOrder ?? 0) > 0 ? o.portalRouteOrder! : 5000),
           defaultVehicle,
           stopId:         existing?.stopId,
           stopStatus:     existing?.stopStatus ?? 'PENDING',
@@ -532,7 +534,7 @@ export default function LeveringDagPage() {
                             onChange={e => updateRow(r.id, { bil: e.target.value })}
                             className="rounded border border-gray-200 px-2 py-1 text-xs bg-white focus:border-blue-400 focus:outline-none w-full">
                             {allBils.map(b => (
-                              <option key={b} value={b}>{b}</option>
+                              <option key={b} value={b}>{bilNames[b] ?? b}</option>
                             ))}
                           </select>
                         </td>

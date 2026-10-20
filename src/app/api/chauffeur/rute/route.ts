@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes } from '@/lib/route-plan-db'
+import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes, loadVehicles } from '@/lib/route-plan-db'
 import { isOwnRouteCode } from '@/lib/route-plan'
 
 export const runtime = 'nodejs'
@@ -70,6 +70,8 @@ export async function GET(req: NextRequest) {
   // Koder der vises som faner for chauffører (egen rute)
   const own = await loadOwnCodes()
   const ownCodes = Array.from(own.keys()).filter(c => isOwnRouteCode(c, own)).sort()
+  const fleet = await loadVehicles()
+  const nameOf = new Map(fleet.map(v => [v.label, v.display]))
 
   const base = {
     date,
@@ -77,6 +79,8 @@ export async function GET(req: NextRequest) {
     autoCreated,
     bcError,
     driverCode: bcDriverCode,
+    myVehicle: driverRows[0]?.defaultVehicleLabel ?? 'Bil 1',
+    fleet: fleet.filter(v => v.active).map(v => ({ label: v.label, display: v.display })),
     ownCodes,
     routeStatus: routeRows[0]?.routeStatus ?? null,
     notes: routeRows[0]?.routeNotes ?? '',
@@ -130,7 +134,7 @@ export async function GET(req: NextRequest) {
   for (const r of filtered) {
     if (!r.vehicleId) continue
     if (!vMap.has(r.vehicleId)) {
-      vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, stops: [] })
+      vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, vehicleName: nameOf.get(r.vehicleLabel) ?? r.vehicleLabel, stops: [] })
     }
     if (r.stopId) {
       const profile = r.bcCustomerNo ? profileMap.get(r.bcCustomerNo) : null
