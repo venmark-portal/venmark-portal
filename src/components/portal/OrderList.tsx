@@ -1283,10 +1283,13 @@ export default function OrderList({
   const selectedMethod = shipmentMethods.find(m => m.code === selectedMethodCode)
 
   const deliveryDays = useMemo(() => {
-    if (!selectedMethod) return initialDeliveryDays
+    // Tilføj-tilstand: datoen er ORDRENS og låst. Leveringsformen gives kun med for at regne
+    // loftet rigtigt — den må ikke generere sine egne datoer (så blev "i dag" valgt i stedet
+    // for ordrens torsdag, W0000095 20-10-2026).
+    if (!selectedMethod || addToOrderId) return initialDeliveryDays
     const raw = getDeliveryDatesForMethod(selectedMethod, calendarDays, new Date(), 20)
     return raw.length > 0 ? raw : initialDeliveryDays
-  }, [selectedMethod, calendarDays, initialDeliveryDays])
+  }, [selectedMethod, calendarDays, initialDeliveryDays, addToOrderId])
 
   // Generelle Lukket-dage (helligdage) — bruges til arbejdsdags-spring i vare-frister
   const portalHolidays = useMemo(() => {
