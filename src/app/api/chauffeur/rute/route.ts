@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes, loadVehicles } from '@/lib/route-plan-db'
+import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes, loadVehicles, prevBusinessDay, KBH_CODE } from '@/lib/route-plan-db'
 import { isOwnRouteCode } from '@/lib/route-plan'
 
 export const runtime = 'nodejs'
@@ -41,10 +41,15 @@ export async function GET(req: NextRequest) {
 
   // Ingen gemt rute for dagen → dan den automatisk ud fra faste rutenumre/standardbiler.
   // Ruten tæller fra første øjeblik; admin kan stadig rette den bagefter.
+  // København (LOVENCO + KØB*): ruten er gemt på Hirtshals-afsendelsesdagen = forrige hverdag.
+  // Dag X i appen = Hirtshals-stops fra rute X + København-stops fra rute forrige hverdag.
+  const kbhRouteDate = prevBusinessDay(date)
+
   let bcError: string | null = null
   let autoCreated = false
   try {
     autoCreated = await materializeRouteIfMissing(date)
+    await materializeRouteIfMissing(kbhRouteDate)
   } catch (err) {
     bcError = err instanceof Error ? err.message : String(err)
     console.error('Auto-rute fejlede:', bcError)
@@ -52,6 +57,7 @@ export async function GET(req: NextRequest) {
 
   const routeRows = await prisma.$queryRaw<any[]>`
     SELECT r.id AS "routeId", r.notes AS "routeNotes", r.status AS "routeStatus",
+      (r."bookingDate"::date <> ${date}::date) AS "isKbh",
       v.id AS "vehicleId", v."vehicleLabel", v."driverId" AS "vehicleDriverId",
       s.id AS "stopId", s."sortOrder", s."driverId" AS "stopDriverId",
       s."bcSalesOrderNo", s."bcSalesOrderId",
@@ -63,8 +69,11 @@ export async function GET(req: NextRequest) {
     FROM "DeliveryRoute" r
     JOIN "RouteVehicle" v ON v."routeId" = r.id
     LEFT JOIN "RouteStop" s ON s."vehicleId" = v.id
-    WHERE r."bookingDate"::date = ${date}::date
-    ORDER BY v."sortOrder", s."sortOrder"
+    WHERE (r."bookingDate"::date = ${date}::date
+           AND (s.id IS NULL OR s."deliveryCodeOverride" IS DISTINCT FROM ${KBH_CODE}))
+       OR (r."bookingDate"::date = ${kbhRouteDate}::date
+           AND s."deliveryCodeOverride" = ${KBH_CODE})
+    ORDER BY (r."bookingDate"::date <> ${date}::date), v."sortOrder", s."sortOrder"
   `
 
   // Koder der vises som faner for chauffører (egen rute)
@@ -82,8 +91,9 @@ export async function GET(req: NextRequest) {
     myVehicle: driverRows[0]?.defaultVehicleLabel ?? 'Bil 1',
     fleet: fleet.filter(v => v.active).map(v => ({ label: v.label, display: v.display })),
     ownCodes,
-    routeStatus: routeRows[0]?.routeStatus ?? null,
-    notes: routeRows[0]?.routeNotes ?? '',
+    routeStatus: routeRows.find(r => !r.isKbh)?.routeStatus ?? routeRows[0]?.routeStatus ?? null,
+    notes: routeRows.find(r => !r.isKbh)?.routeNotes ?? '',
+    kbhRouteDate,
   }
 
   if (!routeRows.some(r => r.stopId)) {
@@ -134,7 +144,12 @@ export async function GET(req: NextRequest) {
   for (const r of filtered) {
     if (!r.vehicleId) continue
     if (!vMap.has(r.vehicleId)) {
-      vMap.set(r.vehicleId, { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, vehicleName: nameOf.get(r.vehicleLabel) ?? r.vehicleLabel, stops: [] })
+      const nm = nameOf.get(r.vehicleLabel) ?? r.vehicleLabel
+      vMap.set(r.vehicleId, {
+        vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel,
+        vehicleName: r.isKbh ? `${nm} · København (kørt fra Hirtshals ${kbhRouteDate.slice(8, 10)}/${kbhRouteDate.slice(5, 7)})` : nm,
+        stops: [],
+      })
     }
     if (r.stopId) {
       const profile = r.bcCustomerNo ? profileMap.get(r.bcCustomerNo) : null

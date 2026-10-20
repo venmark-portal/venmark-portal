@@ -90,6 +90,20 @@ export async function loadProfiles(): Promise<ProfileMap> {
   }]))
 }
 
+/**
+ * Forrige hverdag (lørdag + søndag springes over).
+ * København-turen på dag X = LOVENCO-ordrer afsendt fra Hirtshals forrige hverdag (bogført der)
+ * + KØB-ordrer bogført X. Ruten gemmes på Hirtshals-dagen, så chauffører i KBH skal se den.
+ */
+export function prevBusinessDay(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  do { d.setUTCDate(d.getUTCDate() - 1) } while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Leveringskode-gruppen der køres i København (KØB* normaliseres til den). */
+export const KBH_CODE = 'LOVENCO'
+
 /** Næste hverdag (lørdag + søndag springes over). */
 export function nextBusinessDay(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z')

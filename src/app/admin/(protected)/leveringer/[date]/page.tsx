@@ -43,6 +43,13 @@ interface PlanRow {
 // Hvilke koder der er "egen rute" + KØB→LOVENCO-sammenlægning ligger i src/lib/route-plan.ts
 // (deles med chauffør-API'ets automatiske rute).
 
+// LOVENCO bogføres på Hirtshals-afsendelsesdagen og køres ud i København næste hverdag.
+function kbhDayLabel(date: string): string {
+  const d = new Date(date + 'T12:00:00')
+  do { d.setDate(d.getDate() + 1) } while (d.getDay() === 0 || d.getDay() === 6)
+  return d.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' })
+}
+
 function mkKey() { return Math.random().toString(36).slice(2) }
 
 function mapsLinks(stops: PlanRow[]): string[] {
@@ -384,6 +391,11 @@ export default function LeveringDagPage() {
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="font-mono font-bold text-blue-800">{code}</span>
                         {dcName && <span className="text-xs text-blue-600">{dcName}</span>}
+                        {code === 'LOVENCO' && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                            Afsendes fra Hirtshals i dag · køres ud i København {kbhDayLabel(date)} sammen med KØB-ordrerne
+                          </span>
+                        )}
                         <span className="ml-auto text-xs text-gray-400">
                           {codeRows.length} stops
                           {totalKg > 0 && <> · {totalKg.toFixed(0)} kg</>}

@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { getAccessToken, bcBaseUrl } from '@/lib/businesscentral'
-import { ensureRouteSchema, materializeRouteIfMissing } from '@/lib/route-plan-db'
+import { ensureRouteSchema, materializeRouteIfMissing, prevBusinessDay } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
 function today() {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Copenhagen' })
 }
 
 // Varenumre der ikke er fysiske varer og derfor ikke skal pakkes:
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
 
   const driverId = token.sub as string
   const date = req.nextUrl.searchParams.get('date') ?? today()
+  // KØB-ordrer pakkes i København på leveringsdagen. Ruten er gemt på Hirtshals-dagen før.
+  const routeDate = prevBusinessDay(date)
   const allVehicles = req.nextUrl.searchParams.get('alle') === '1'
 
   // Hent chaufførens bcDriverCode til packedBy + standardbil/kode til "Min bil"
@@ -46,7 +48,7 @@ export async function GET(req: NextRequest) {
   const myCode       = driverRows[0]?.bcShipmentMethodCode ?? null
 
   // Ingen gemt rute endnu → dan den automatisk ud fra faste rutenumre (samme som Rute-fanen)
-  try { await materializeRouteIfMissing(date) } catch (err) {
+  try { await materializeRouteIfMissing(routeDate) } catch (err) {
     console.error('Auto-rute (pak) fejlede:', err instanceof Error ? err.message : err)
   }
 
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
       FROM "DeliveryRoute" r
       JOIN "RouteVehicle" v ON v."routeId" = r.id
       JOIN "RouteStop" s ON s."vehicleId" = v.id
-      WHERE r."bookingDate"::date = ${date}::date
+      WHERE r."bookingDate"::date = ${routeDate}::date
         AND s."kobSalesOrderNo" IS NOT NULL
       ORDER BY v."vehicleLabel", s."customerName"
     `
@@ -72,7 +74,7 @@ export async function GET(req: NextRequest) {
       FROM "DeliveryRoute" r
       JOIN "RouteVehicle" v ON v."routeId" = r.id
       JOIN "RouteStop" s ON s."vehicleId" = v.id
-      WHERE r."bookingDate"::date = ${date}::date
+      WHERE r."bookingDate"::date = ${routeDate}::date
         AND s."kobSalesOrderNo" IS NOT NULL
         AND (v."driverId" = ${driverId}
           OR v."vehicleLabel" = ${myVehicle}
@@ -83,7 +85,7 @@ export async function GET(req: NextRequest) {
 
   if (kobQuery.length === 0) {
     const anyRoute = await prisma.$queryRaw<{ n: bigint }[]>`
-      SELECT count(*) AS n FROM "DeliveryRoute" WHERE "bookingDate"::date = ${date}::date
+      SELECT count(*) AS n FROM "DeliveryRoute" WHERE "bookingDate"::date = ${routeDate}::date
     `
     return NextResponse.json({ date, bcDriverCode, customers: [], noRoute: Number(anyRoute[0]?.n ?? 0) === 0 })
   }
