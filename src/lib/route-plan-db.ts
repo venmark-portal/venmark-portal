@@ -1,7 +1,7 @@
 // Server-side del af ruteplanlægningen: skema-sikring, opslag og automatisk rute.
 import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { getSalesOrdersForDelivery, getAccessToken, bcBaseUrl } from '@/lib/businesscentral'
+import { getSalesOrdersForDelivery, getAccessToken, bcBaseUrl, getPortalShipmentMethods } from '@/lib/businesscentral'
 import { buildAutoPlan, DEFAULT_ROUTE_ORDER, type ProfileMap } from '@/lib/route-plan'
 
 /** Kolonner/tabeller der styres med rå SQL (bevidst uden for schema.prisma — se CLAUDE.md). */
@@ -107,68 +107,89 @@ export function nextBusinessDay(dateStr: string): string {
 /** Leveringskode-gruppen der køres i København (KØB* normaliseres til den). */
 export const KBH_CODE = 'LOVENCO'
 
-const isKobOrder = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(c => /^KØB/i.test(c.trim()))
-const isLovencoOrder = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(c => c.trim().toUpperCase() === KBH_CODE)
+const isKobCode = (c: string) => /^KØB/i.test((c ?? "").trim())
+
+/** Lægger n hverdage til (lørdag + søndag springes over). */
+function addBusinessDays(dateStr: string, n: number): string {
+  let d = dateStr
+  for (let i = 0; i < n; i++) d = nextBusinessDay(d)
+  return d
+}
 
 /**
- * Ordrerne på ruten for UDKØRSELSDAG D, hver ordre højst én gang (Claus 21-10-2026):
- *  - LOVENCO-ordrer afsendt fra Hirtshals forrige hverdag (bogført der), køres ud i KBH på D
- *  - KØB-ordrer med afsendelse D (køres ud fra KBH-lageret samme dag)
- *  - alle andre ordrer med afsendelse D (Hirtshals-ruter)
- * Bogføringsdato = afsendelsesdag. Ønsket leveringsdato bruges kun, hvis den mangler.
+ * Alle leverancer BOGFØRT på `postingDate` (Portal Delivery Shipment API, page 50807).
+ * Bogføring = afsendt fra Hirtshals; salgsordren findes ikke længere som åben ordre, men
+ * leverancen skal stadig køres ud. KØB-leverancer udelades: en bogført KØB-ordre er leveret.
  */
-/**
- * LOVENCO-leverancer, der allerede er BOGFØRT i Hirtshals på `postingDate`. De er afsendt,
- * men skal stadig køres ud i København næste hverdag. Bogføringen sletter salgsordren,
- * så de findes kun som bogførte leverancer (Portal Delivery Shipment API, page 50807).
- */
-async function postedLovencoShipments(postingDate: string) {
+async function postedShipments(postingDate: string) {
   const token = await getAccessToken()
-  const base = `https://api.businesscentral.dynamics.com/v2.0/${process.env.BC_TENANT_ID}/${process.env.BC_ENVIRONMENT_NAME ?? 'production'}/api/venmark/portal/v1.0/companies(${process.env.BC_COMPANY_ID})`
+  const base = `https://api.businesscentral.dynamics.com/v2.0/${process.env.BC_TENANT_ID}/${process.env.BC_ENVIRONMENT_NAME ?? "production"}/api/venmark/portal/v1.0/companies(${process.env.BC_COMPANY_ID})`
   const res = await fetch(`${base}/deliveryShipments?$filter=${encodeURIComponent(`postingDate eq ${postingDate}`)}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store",
   })
   if (!res.ok) throw new Error(`BC deliveryShipments fejl (${res.status}): ${await res.text()}`)
   const rows: any[] = (await res.json()).value ?? []
   return rows
-    .filter(s => (s.shipmentMethodCode ?? '').trim().toUpperCase() === KBH_CODE)
+    .filter(s => !isKobCode(s.shipmentMethodCode ?? ""))
     .map(s => ({
       id:                    `shp-${s.id}`,           // eget id: salgsordren findes ikke længere
       number:                s.orderNumber || s.number,
-      customerNumber:        s.customerNumber ?? '',
-      customerName:          s.customerName ?? '',
-      shipToName:            s.shipToName ?? s.customerName ?? '',
-      shipToAddress:         s.shipToAddress ?? '',
-      shipToCity:            s.shipToCity ?? '',
-      shipToPostCode:        s.shipToPostCode ?? '',
-      shipToPhone:           '',
-      requestedDeliveryDate: '',
+      customerNumber:        s.customerNumber ?? "",
+      customerName:          s.customerName ?? "",
+      shipToName:            s.shipToName ?? s.customerName ?? "",
+      shipToAddress:         s.shipToAddress ?? "",
+      shipToCity:            s.shipToCity ?? "",
+      shipToPostCode:        s.shipToPostCode ?? "",
+      shipToPhone:           "",
+      requestedDeliveryDate: "",
       postingDate:           (s.postingDate ?? postingDate).slice(0, 10),
-      status:                'Posted',
+      status:                "Posted",
       totalWeightKg:         s.totalNetWeightKg ?? 0,
       portalRouteOrder:      0,
-      deliveryCodes:         [KBH_CODE],
+      deliveryCodes:         [(s.shipmentMethodCode ?? "").trim() || "VENMARK"],
       lines:                 [],
     }))
 }
 
+/**
+ * Ordrerne på ruten for UDKØRSELSDAG D, hver ordre højst én gang (Claus 21-10-2026).
+ * Udkørselsdag = ønsket leveringsdato, hvis ordren har en; ellers bogføringsdato +
+ * leveringskodens transitdage (Portal Transit Days; "samme dag" = 0). KØB-ordrer bogføres
+ * den dag, de køres ud fra KBH, så for dem er udkørselsdag = bogføringsdato.
+ * Både åbne ordrer og bogførte leverancer tæller (bogført = afsendt, ikke leveret), undtagen
+ * bogførte KØB-ordrer (= leveret). Eksempler: SELVNAT/SELVMORGEN/LOVENCO (transit 1)
+ * bogført i går → i dag; ANDEN TUR/SELV-SKAGE/VENMARK (transit 0) bogført i dag → i dag.
+ */
 export async function loadRouteOrders(date: string) {
   const prev = prevBusinessDay(date)
-  const [a, b, posted] = await Promise.all([
+  const [openToday, openPrev, postedToday, postedPrev, methods] = await Promise.all([
     getSalesOrdersForDelivery(date, { fetchLines: false }),
     getSalesOrdersForDelivery(prev, { fetchLines: false }),
-    postedLovencoShipments(prev),
+    postedShipments(date),
+    postedShipments(prev),
+    getPortalShipmentMethods(),
   ])
+  if (methods.length === 0) throw new Error("Kunne ikke hente leveringskodernes transitdage fra BC")
+  const transit = new Map(methods.map(m => [m.code.trim().toUpperCase(), m.sameDay ? 0 : (m.transitDays ?? 1)]))
+  const deliveryDay = (o: { deliveryCodes: string[]; requestedDeliveryDate: string; postingDate: string }) => {
+    const req = (o.requestedDeliveryDate || "").slice(0, 10)
+    if (req) return req
+    const post = (o.postingDate || "").slice(0, 10)
+    if (!post) return ""
+    const code = (o.deliveryCodes[0] ?? "").trim().toUpperCase()
+    if (isKobCode(code)) return post
+    return addBusinessDays(post, transit.get(code) ?? 0)
+  }
+
+  const open = [...openToday, ...openPrev]
   // En ordre, der er delvist leveret, kan findes både åben og bogført — den åbne vinder.
-  const openNos = new Set([...a, ...b].map(o => o.number))
-  b.push(...(posted.filter(p => !openNos.has(p.number)) as unknown as typeof b))
+  const openNos = new Set(open.map(o => o.number))
+  const posted = [...postedToday, ...postedPrev].filter(p => !openNos.has(p.number)) as unknown as typeof open
   const seen = new Set<string>()
-  const out: typeof a = []
-  for (const o of [...a, ...b]) {
+  const out: typeof open = []
+  for (const o of [...open, ...posted]) {
     if (seen.has(o.id)) continue
-    const dispatch = (o.postingDate || o.requestedDeliveryDate || '').slice(0, 10)
-    const ok = isLovencoOrder(o) && !isKobOrder(o) ? dispatch === prev : dispatch === date
-    if (ok) { seen.add(o.id); out.push(o) }
+    if (deliveryDay(o) === date) { seen.add(o.id); out.push(o) }
   }
   return out
 }
