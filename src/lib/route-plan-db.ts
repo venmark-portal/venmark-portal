@@ -117,12 +117,51 @@ const isLovencoOrder = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(
  *  - alle andre ordrer med afsendelse D (Hirtshals-ruter)
  * Bogføringsdato = afsendelsesdag. Ønsket leveringsdato bruges kun, hvis den mangler.
  */
+/**
+ * LOVENCO-leverancer, der allerede er BOGFØRT i Hirtshals på `postingDate`. De er afsendt,
+ * men skal stadig køres ud i København næste hverdag. Bogføringen sletter salgsordren,
+ * så de findes kun som bogførte leverancer (Portal Delivery Shipment API, page 50807).
+ */
+async function postedLovencoShipments(postingDate: string) {
+  const token = await getAccessToken()
+  const base = `https://api.businesscentral.dynamics.com/v2.0/${process.env.BC_TENANT_ID}/${process.env.BC_ENVIRONMENT_NAME ?? 'production'}/api/venmark/portal/v1.0/companies(${process.env.BC_COMPANY_ID})`
+  const res = await fetch(`${base}/deliveryShipments?$filter=${encodeURIComponent(`postingDate eq ${postingDate}`)}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`BC deliveryShipments fejl (${res.status}): ${await res.text()}`)
+  const rows: any[] = (await res.json()).value ?? []
+  return rows
+    .filter(s => (s.shipmentMethodCode ?? '').trim().toUpperCase() === KBH_CODE)
+    .map(s => ({
+      id:                    `shp-${s.id}`,           // eget id: salgsordren findes ikke længere
+      number:                s.orderNumber || s.number,
+      customerNumber:        s.customerNumber ?? '',
+      customerName:          s.customerName ?? '',
+      shipToName:            s.shipToName ?? s.customerName ?? '',
+      shipToAddress:         s.shipToAddress ?? '',
+      shipToCity:            s.shipToCity ?? '',
+      shipToPostCode:        s.shipToPostCode ?? '',
+      shipToPhone:           '',
+      requestedDeliveryDate: '',
+      postingDate:           (s.postingDate ?? postingDate).slice(0, 10),
+      status:                'Posted',
+      totalWeightKg:         s.totalNetWeightKg ?? 0,
+      portalRouteOrder:      0,
+      deliveryCodes:         [KBH_CODE],
+      lines:                 [],
+    }))
+}
+
 export async function loadRouteOrders(date: string) {
   const prev = prevBusinessDay(date)
-  const [a, b] = await Promise.all([
+  const [a, b, posted] = await Promise.all([
     getSalesOrdersForDelivery(date, { fetchLines: false }),
     getSalesOrdersForDelivery(prev, { fetchLines: false }),
+    postedLovencoShipments(prev),
   ])
+  // En ordre, der er delvist leveret, kan findes både åben og bogført — den åbne vinder.
+  const openNos = new Set([...a, ...b].map(o => o.number))
+  b.push(...(posted.filter(p => !openNos.has(p.number)) as unknown as typeof b))
   const seen = new Set<string>()
   const out: typeof a = []
   for (const o of [...a, ...b]) {
