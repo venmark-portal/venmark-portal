@@ -1,7 +1,7 @@
 // Server-side del af ruteplanlægningen: skema-sikring, opslag og automatisk rute.
 import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { getSalesOrdersForDelivery } from '@/lib/businesscentral'
+import { getSalesOrdersForDelivery, getAccessToken, bcBaseUrl } from '@/lib/businesscentral'
 import { buildAutoPlan, type ProfileMap } from '@/lib/route-plan'
 
 /** Kolonner/tabeller der styres med rå SQL (bevidst uden for schema.prisma — se CLAUDE.md). */
@@ -132,6 +132,32 @@ export async function loadRouteOrders(date: string) {
     if (ok) { seen.add(o.id); out.push(o) }
   }
   return out
+}
+
+/**
+ * Hvilke af de givne ordrenumre er stadig ÅBNE salgsordrer i BC? En KØB-ordre, der er
+ * bogført, er leveret (den bogføres ved udkørsel i KBH) og skal ikke vises på ruten.
+ * Fejler BC-kaldet, regnes alle som åbne — hellere vise for meget end skjule en levering.
+ */
+export async function openOrderNumbers(numbers: string[]): Promise<Set<string>> {
+  const uniq = Array.from(new Set(numbers.filter(Boolean)))
+  if (uniq.length === 0) return new Set()
+  try {
+    const token = await getAccessToken()
+    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    const open = new Set<string>()
+    for (let i = 0; i < uniq.length; i += 15) {
+      const chunk = uniq.slice(i, i + 15)
+      const filter = encodeURIComponent(chunk.map(n => `number eq '${n.replace(/'/g, "''")}'`).join(' or '))
+      const res = await fetch(`${bcBaseUrl()}/salesOrders?$filter=${filter}&$select=number`, { headers, cache: 'no-store' })
+      if (!res.ok) { console.error('openOrderNumbers', res.status, await res.text()); return new Set(uniq) }
+      for (const o of (await res.json()).value ?? []) open.add(o.number)
+    }
+    return open
+  } catch (err) {
+    console.error('openOrderNumbers fejlede:', err instanceof Error ? err.message : err)
+    return new Set(uniq)
+  }
 }
 
 /** "kbh" = København-gruppen (LOVENCO + KØB), "hirtshals" = resten. */

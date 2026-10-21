@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes, loadVehicles } from '@/lib/route-plan-db'
+import { ensureRouteSchema, materializeRouteIfMissing, loadOwnCodes, loadVehicles, openOrderNumbers } from '@/lib/route-plan-db'
 import { isOwnRouteCode } from '@/lib/route-plan'
 
 export const runtime = 'nodejs'
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       s."customerName", s."customerAddress", s."customerPhone",
       s."totalWeightKg", s.status AS "stopStatus",
       s."deliveredAt", s."failureNote", s."packedStatus",
-      s."deliveryCodeOverride", s."bcCustomerNo"
+      s."deliveryCodeOverride", s."bcCustomerNo", s."kobSalesOrderNo"
     FROM "DeliveryRoute" r
     JOIN "RouteVehicle" v ON v."routeId" = r.id
     LEFT JOIN "RouteStop" s ON s."vehicleId" = v.id
@@ -92,10 +92,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ...base, vehicles: [] })
   }
 
+  // Bogførte KØB-ordrer er leveret og vises ikke (Claus 21-10). Bogførte LOVENCO-ordrer
+  // bliver stående: de er kun afsendt fra Hirtshals og skal stadig køres ud i KBH.
+  const kobNos = routeRows.map(r => r.kobSalesOrderNo).filter(Boolean) as string[]
+  const openKob = await openOrderNumbers(kobNos)
+  const visibleRows = routeRows.flatMap(r => {
+    if (!r.stopId || !r.kobSalesOrderNo || openKob.has(r.kobSalesOrderNo)) return [r]
+    // KØB-ordre alene → skjul stoppet. Sammenlagt med LOVENCO → behold LOVENCO-delen.
+    if (r.bcSalesOrderNo === r.kobSalesOrderNo) return []
+    const rest = String(r.bcSalesOrderNo ?? '').split(' + ').filter(n => n !== r.kobSalesOrderNo).join(' + ')
+    return [{ ...r, bcSalesOrderNo: rest, kobSalesOrderNo: null }]
+  })
+
   // Filtrer stops på chaufførens leveringskode (deliveryCodeOverride)
   const filtered = driverCode
-    ? routeRows.filter(r => !r.stopId || r.deliveryCodeOverride === driverCode || r.deliveryCodeOverride === null)
-    : routeRows
+    ? visibleRows.filter(r => !r.stopId || r.deliveryCodeOverride === driverCode || r.deliveryCodeOverride === null)
+    : visibleRows
 
   // Hent leveringsprofiler + åbne tickets for unikke kunder
   const customerNos = Array.from(new Set(filtered.map(r => r.bcCustomerNo).filter(Boolean)))

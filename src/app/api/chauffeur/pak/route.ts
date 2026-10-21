@@ -108,14 +108,13 @@ export async function GET(req: NextRequest) {
     }))
   )
 
-  const customers = lineResults.map(r => ({
+  // Ingen åbne linjer = KØB-ordren er bogført = leveret. Den skal ikke pakkes og vises ikke.
+  const customers = lineResults.filter(r => r.lines.length > 0).map(r => ({
     orderNo:      r.orderNo,
     customerName: r.customerName,
     address:      r.address,
     vehicle:      r.vehicle,
-    // Ingen åbne linjer = ordren er allerede bogført (afsendt) i BC — kan ikke pakkes/rettes her.
-    posted:       r.lines.length === 0,
-    packed:       r.lines.length > 0 && r.lines.every((l: any) => !!l.packedBy),
+    packed:       r.lines.every((l: any) => !!l.packedBy),
     lines:        r.lines.map((l: any) => ({
       id:          l.id,
       lineNo:      l.lineNo,
