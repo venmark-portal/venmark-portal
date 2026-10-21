@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { getAccessToken, bcBaseUrl } from '@/lib/businesscentral'
-import { ensureRouteSchema, materializeRouteIfMissing, prevBusinessDay } from '@/lib/route-plan-db'
+import { ensureRouteSchema, materializeRouteIfMissing } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -33,8 +33,8 @@ export async function GET(req: NextRequest) {
 
   const driverId = token.sub as string
   const date = req.nextUrl.searchParams.get('date') ?? today()
-  // KØB-ordrer pakkes i København på leveringsdagen. Ruten er gemt på Hirtshals-dagen før.
-  const routeDate = prevBusinessDay(date)
+  // KØB-ordrer pakkes i København på udkørselsdagen = dagens rute.
+  const routeDate = date
   const allVehicles = req.nextUrl.searchParams.get('alle') === '1'
 
   // Hent chaufførens bcDriverCode til packedBy + standardbil/kode til "Min bil"

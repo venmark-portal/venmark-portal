@@ -90,43 +90,11 @@ export async function loadProfiles(): Promise<ProfileMap> {
   }]))
 }
 
-/**
- * Forrige hverdag (lørdag + søndag springes over).
- * København-turen på dag X = LOVENCO-ordrer afsendt fra Hirtshals forrige hverdag (bogført der)
- * + KØB-ordrer bogført X. Ruten gemmes på Hirtshals-dagen, så chauffører i KBH skal se den.
- */
+/** Forrige hverdag (lørdag + søndag springes over). */
 export function prevBusinessDay(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00Z')
   do { d.setUTCDate(d.getUTCDate() - 1) } while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
   return d.toISOString().slice(0, 10)
-}
-
-/** Leveringskode-gruppen der køres i København (KØB* normaliseres til den). */
-export const KBH_CODE = 'LOVENCO'
-
-/**
- * Ordrerne på ruten for Hirtshals-dag D, hver ordre højst én gang:
- *  - ikke-KØB-ordrer med afsendelse (bogføringsdato) = D
- *  - KØB-ordrer med afsendelse = næste hverdag (de køres i KBH sammen med LOVENCO fra D)
- * Bogføringsdato = afsendelsesdag i Venmark. Ønsket leveringsdato bruges kun, hvis ordren
- * mangler bogføringsdato. Før matchede ruten på begge, så en portalordre (levering D+1,
- * afsendelse D) og dagens KØB-ordrer kom på to dages ruter.
- */
-export async function loadRouteOrders(date: string) {
-  const next = nextBusinessDay(date)
-  const [a, b] = await Promise.all([
-    getSalesOrdersForDelivery(date, { fetchLines: false }),
-    getSalesOrdersForDelivery(next, { fetchLines: false }),
-  ])
-  const isKob = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(c => /^KØB/i.test(c.trim()))
-  const seen = new Set<string>()
-  const out: typeof a = []
-  for (const o of [...a, ...b]) {
-    if (seen.has(o.id)) continue
-    const dispatch = (o.postingDate || o.requestedDeliveryDate || '').slice(0, 10)
-    if (isKob(o) ? dispatch === next : dispatch === date) { seen.add(o.id); out.push(o) }
-  }
-  return out
 }
 
 /** Næste hverdag (lørdag + søndag springes over). */
@@ -136,44 +104,75 @@ export function nextBusinessDay(dateStr: string): string {
   return d.toISOString().slice(0, 10)
 }
 
-async function routeHasStops(date: string): Promise<boolean> {
-  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
-    SELECT count(s.id) AS n
+/** Leveringskode-gruppen der køres i København (KØB* normaliseres til den). */
+export const KBH_CODE = 'LOVENCO'
+
+const isKobOrder = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(c => /^KØB/i.test(c.trim()))
+const isLovencoOrder = (o: { deliveryCodes: string[] }) => o.deliveryCodes.some(c => c.trim().toUpperCase() === KBH_CODE)
+
+/**
+ * Ordrerne på ruten for UDKØRSELSDAG D, hver ordre højst én gang (Claus 21-10-2026):
+ *  - LOVENCO-ordrer afsendt fra Hirtshals forrige hverdag (bogført der), køres ud i KBH på D
+ *  - KØB-ordrer med afsendelse D (køres ud fra KBH-lageret samme dag)
+ *  - alle andre ordrer med afsendelse D (Hirtshals-ruter)
+ * Bogføringsdato = afsendelsesdag. Ønsket leveringsdato bruges kun, hvis den mangler.
+ */
+export async function loadRouteOrders(date: string) {
+  const prev = prevBusinessDay(date)
+  const [a, b] = await Promise.all([
+    getSalesOrdersForDelivery(date, { fetchLines: false }),
+    getSalesOrdersForDelivery(prev, { fetchLines: false }),
+  ])
+  const seen = new Set<string>()
+  const out: typeof a = []
+  for (const o of [...a, ...b]) {
+    if (seen.has(o.id)) continue
+    const dispatch = (o.postingDate || o.requestedDeliveryDate || '').slice(0, 10)
+    const ok = isLovencoOrder(o) && !isKobOrder(o) ? dispatch === prev : dispatch === date
+    if (ok) { seen.add(o.id); out.push(o) }
+  }
+  return out
+}
+
+/** "kbh" = København-gruppen (LOVENCO + KØB), "hirtshals" = resten. */
+const groupOf = (code: string | null | undefined) => ((code ?? '').trim().toUpperCase() === KBH_CODE ? 'kbh' : 'hirtshals')
+
+async function groupsWithStops(tx: any, date: string): Promise<Set<string>> {
+  const rows = await tx.$queryRaw<{ code: string | null }[]>`
+    SELECT DISTINCT s."deliveryCodeOverride" AS code
     FROM "DeliveryRoute" r
     JOIN "RouteVehicle" v ON v."routeId" = r.id
     JOIN "RouteStop"    s ON s."vehicleId" = v.id
     WHERE r."bookingDate"::date = ${date}::date
   `
-  return Number(rows[0]?.n ?? 0) > 0
+  return new Set(rows.map((r: { code: string | null }) => groupOf(r.code)))
 }
 
 /**
- * Findes der ingen gemt rute for dagen, dannes den automatisk ud fra BC-ordrerne og
- * kundernes faste rutenumre/standardbiler — præcis som admin-siden ville gemme den.
- * Ruten får status AUTO, så den kan kendes fra en admin-planlagt rute.
- * Returnerer true hvis en rute blev oprettet.
+ * Dan dagens rute automatisk ud fra BC-ordrerne og kundernes faste rutenumre/standardbiler.
+ * København- og Hirtshals-gruppen udfyldes HVER FOR SIG: mangler én gruppe stops, tilføjes
+ * den, uden at røre den anden (fx når København-turen er planlagt, men Hirtshals ikke er).
+ * Ruten får status AUTO, når den oprettes her. Returnerer true hvis noget blev tilføjet.
  */
 export async function materializeRouteIfMissing(date: string): Promise<boolean> {
-  if (await routeHasStops(date)) return false
+  const present = await groupsWithStops(prisma, date)
+  if (present.has('kbh') && present.has('hirtshals')) return false
 
   // BC hentes UDEN FOR transaktionen (kan tage mange sekunder).
   const orders = await loadRouteOrders(date)
   const [profiles, own] = await Promise.all([loadProfiles(), loadOwnCodes()])
-  const plan = buildAutoPlan(orders, profiles, own)
-  if (plan.every(v => v.stops.length === 0)) return false
+  const fullPlan = buildAutoPlan(orders, profiles, own)
+  if (fullPlan.every(v => v.stops.length === 0)) return false
 
   const now = new Date().toISOString()
   return prisma.$transaction(async tx => {
     // Lås pr. dato så to chauffører ikke opretter hver sin rute samtidig
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'route:' + date}))`
-    const again = await tx.$queryRaw<{ n: bigint }[]>`
-      SELECT count(s.id) AS n
-      FROM "DeliveryRoute" r
-      JOIN "RouteVehicle" v ON v."routeId" = r.id
-      JOIN "RouteStop"    s ON s."vehicleId" = v.id
-      WHERE r."bookingDate"::date = ${date}::date
-    `
-    if (Number(again[0]?.n ?? 0) > 0) return false
+    const have = await groupsWithStops(tx, date)
+    const plan = fullPlan
+      .map(v => ({ ...v, stops: v.stops.filter(s => !have.has(groupOf(s.deliveryCodeOverride))) }))
+      .filter(v => v.stops.length > 0)
+    if (plan.length === 0) return false
 
     const existing = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "DeliveryRoute" WHERE "bookingDate"::date = ${date}::date LIMIT 1
@@ -181,8 +180,6 @@ export async function materializeRouteIfMissing(date: string): Promise<boolean> 
     let routeId: string
     if (existing.length > 0) {
       routeId = existing[0].id
-      await tx.$executeRaw`DELETE FROM "RouteVehicle" WHERE "routeId" = ${routeId}`
-      await tx.$executeRaw`UPDATE "DeliveryRoute" SET status = 'AUTO', "updatedAt" = ${now}::timestamp WHERE id = ${routeId}`
     } else {
       routeId = randomUUID()
       await tx.$executeRaw`
@@ -191,15 +188,23 @@ export async function materializeRouteIfMissing(date: string): Promise<boolean> 
       `
     }
 
-    for (let vi = 0; vi < plan.length; vi++) {
-      const v = plan[vi]
-      const vehicleId = randomUUID()
-      await tx.$executeRaw`
-        INSERT INTO "RouteVehicle" (id, "routeId", "vehicleLabel", "driverId", "sortOrder")
-        VALUES (${vehicleId}, ${routeId}, ${v.vehicleLabel}, NULL, ${vi})
+    for (const v of plan) {
+      // Genbrug bilen, hvis ruten allerede har den; ellers opret den sidst.
+      const found = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "RouteVehicle" WHERE "routeId" = ${routeId} AND "vehicleLabel" = ${v.vehicleLabel} LIMIT 1
       `
-      for (let si = 0; si < v.stops.length; si++) {
-        const s = v.stops[si]
+      let vehicleId = found[0]?.id
+      if (!vehicleId) {
+        vehicleId = randomUUID()
+        const mx = await tx.$queryRaw<{ n: number | null }[]>`SELECT MAX("sortOrder") AS n FROM "RouteVehicle" WHERE "routeId" = ${routeId}`
+        await tx.$executeRaw`
+          INSERT INTO "RouteVehicle" (id, "routeId", "vehicleLabel", "driverId", "sortOrder")
+          VALUES (${vehicleId}, ${routeId}, ${v.vehicleLabel}, NULL, ${Number(mx[0]?.n ?? -1) + 1})
+        `
+      }
+      const last = await tx.$queryRaw<{ n: number | null }[]>`SELECT MAX("sortOrder") AS n FROM "RouteStop" WHERE "vehicleId" = ${vehicleId}`
+      let sort = Number(last[0]?.n ?? -1) + 1
+      for (const s of v.stops) {
         await tx.$executeRaw`
           INSERT INTO "RouteStop" (
             id, "vehicleId", "driverId", "sortOrder", "deliveryCodeId", "deliveryCodeOverride",
@@ -208,7 +213,7 @@ export async function materializeRouteIfMissing(date: string): Promise<boolean> 
             "customerName", "customerAddress", "customerPhone", "totalWeightKg",
             "kobSalesOrderNo", "bcCustomerNo", status, "deliveredAt", "failureNote", "createdAt"
           ) VALUES (
-            ${randomUUID()}, ${vehicleId}, NULL, ${si}, NULL, ${s.deliveryCodeOverride},
+            ${randomUUID()}, ${vehicleId}, NULL, ${sort++}, NULL, ${s.deliveryCodeOverride},
             ${s.bcSalesOrderNo}, ${s.bcSalesOrderId}, NULL, NULL,
             false, NULL, NULL,
             ${s.customerName}, ${s.customerAddress}, ${s.customerPhone}, ${s.totalWeightKg},
