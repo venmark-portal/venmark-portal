@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { applyOrder } from '@/lib/route-plan'
+import { resortFutureAutoRoutes } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -57,6 +58,11 @@ export async function POST(req: NextRequest) {
       `
     }
   })
+  // Kommende ruter, der allerede er dannet, skal også følge de nye faste rutenumre.
+  const d = await prisma.$queryRaw<{ d: string }[]>`
+    SELECT r."bookingDate"::date::text AS d FROM "RouteVehicle" v JOIN "DeliveryRoute" r ON r.id = v."routeId" WHERE v.id = ${vehicleId}
+  `
+  if (d[0]?.d) await resortFutureAutoRoutes(d[0].d).catch(err => console.error('resortFutureAutoRoutes', err))
 
   return NextResponse.json({ ok: true })
 }

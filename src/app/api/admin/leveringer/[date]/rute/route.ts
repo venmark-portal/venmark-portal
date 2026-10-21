@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
+import { resortFutureAutoRoutes } from '@/lib/route-plan-db'
 
 export const runtime = 'nodejs'
 
@@ -129,6 +130,9 @@ export async function POST(
       `
     }
   }
+
+  // Nye faste rutenumre skal også gælde kommende ruter, der allerede er dannet automatisk.
+  await resortFutureAutoRoutes(params.date).catch(err => console.error('resortFutureAutoRoutes', err))
 
   return NextResponse.json({ routeId })
 }

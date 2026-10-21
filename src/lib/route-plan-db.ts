@@ -2,7 +2,7 @@
 import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { getSalesOrdersForDelivery, getAccessToken, bcBaseUrl } from '@/lib/businesscentral'
-import { buildAutoPlan, type ProfileMap } from '@/lib/route-plan'
+import { buildAutoPlan, DEFAULT_ROUTE_ORDER, type ProfileMap } from '@/lib/route-plan'
 
 /** Kolonner/tabeller der styres med rå SQL (bevidst uden for schema.prisma — se CLAUDE.md). */
 export async function ensureRouteSchema() {
@@ -197,6 +197,45 @@ export async function openOrderNumbers(numbers: string[]): Promise<Set<string>> 
     console.error('openOrderNumbers fejlede:', err instanceof Error ? err.message : err)
     return new Set(uniq)
   }
+}
+
+/**
+ * Kommende AUTO-ruter (dannet automatisk, ikke planlagt i hånden) sorteres igen efter
+ * kundernes faste rutenumre, så en rækkefølge der rettes i dag også gælder ruter, der
+ * allerede er dannet for de næste dage. Kun stops der ikke er afleveret flyttes; rækkefølgen
+ * pr. bil og leveringskode følger rutenummeret, uafgjort beholder den nuværende orden.
+ * Planlagte ruter (status DRAFT, gemt fra planlægningssiden) røres ikke.
+ */
+export async function resortFutureAutoRoutes(afterDate: string): Promise<number> {
+  const rows = await prisma.$queryRaw<{ id: string; vehicleId: string; sortOrder: number; code: string | null; status: string; ro: number | null }[]>`
+    SELECT s.id, s."vehicleId", s."sortOrder", s."deliveryCodeOverride" AS code, s.status, p."routeOrder" AS ro
+    FROM "DeliveryRoute" r
+    JOIN "RouteVehicle" v ON v."routeId" = r.id
+    JOIN "RouteStop"    s ON s."vehicleId" = v.id
+    LEFT JOIN "CustomerRouteProfile" p ON p."customerNo" = s."bcCustomerNo"
+    WHERE r."bookingDate"::date > ${afterDate}::date AND r.status = 'AUTO'
+    ORDER BY s."vehicleId", s."sortOrder"
+  `
+  const byVehicle = new Map<string, typeof rows>()
+  for (const r of rows) { if (!byVehicle.has(r.vehicleId)) byVehicle.set(r.vehicleId, []); byVehicle.get(r.vehicleId)!.push(r) }
+  let changed = 0
+  for (const list of Array.from(byVehicle.values())) {
+    // Sortér hver leveringskode for sig inden for de pladser, koden allerede har i bilen.
+    const codes = Array.from(new Set(list.map(s => s.code ?? '')))
+    const result = [...list]
+    for (const c of codes) {
+      const slots = list.map((s, i) => ({ s, i })).filter(x => (x.s.code ?? '') === c && x.s.status === 'PENDING')
+      const sorted = [...slots].sort((a, b) => (a.s.ro ?? DEFAULT_ROUTE_ORDER) - (b.s.ro ?? DEFAULT_ROUTE_ORDER) || a.i - b.i)
+      slots.forEach((slot, k) => { result[slot.i] = sorted[k].s })
+    }
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].sortOrder !== i) {
+        await prisma.$executeRaw`UPDATE "RouteStop" SET "sortOrder" = ${i} WHERE id = ${result[i].id}`
+        changed++
+      }
+    }
+  }
+  return changed
 }
 
 /** "kbh" = København-gruppen (LOVENCO + KØB), "hirtshals" = resten. */
