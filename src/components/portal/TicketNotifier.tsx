@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 function playBeep() {
   try {
@@ -21,6 +23,10 @@ function playBeep() {
 export default function TicketNotifier() {
   const lastCount = useRef<number | null>(null)
   const [badge, setBadge] = useState(0)
+  // Intervallet holder den første check — ref'en giver den aktuelle oversætter efter sprogskift.
+  const t = useT(faellesDict)
+  const tRef = useRef(t)
+  tRef.current = t
 
   async function check() {
     try {
@@ -31,7 +37,7 @@ export default function TicketNotifier() {
         playBeep()
         // Vis et lille toast
         const toast = document.createElement('div')
-        toast.textContent = '💬 Ny besked på din reklamation'
+        toast.textContent = tRef.current('nyBesked')
         toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.2)'
         document.body.appendChild(toast)
         setTimeout(() => toast.remove(), 4000)

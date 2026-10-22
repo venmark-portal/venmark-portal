@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getPortalOrderAccesses } from '@/lib/businesscentral'
 import { getParentCustomerNo, getActiveCustomerNo } from '@/lib/activeCustomer'
+import { getT } from '@/lib/i18n/portal/server'
+import { ordrerApiDict } from '@/lib/i18n/portal/dict/ordrer-api'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +16,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) {
-    return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+    return NextResponse.json({ error: (await getT(ordrerApiDict))('ikkeLoggetInd') }, { status: 401 })
   }
 
   const parentNo = getParentCustomerNo(session)

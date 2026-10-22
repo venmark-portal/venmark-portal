@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getPostedCreditMemos, getAccessToken } from '@/lib/businesscentral'
+import { getT } from '@/lib/i18n/portal/server'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
 
 export const runtime = 'nodejs'
 
@@ -9,9 +11,10 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const t = await getT(fakturaDict)
   const session = await getServerSession(authOptions)
   if (!session?.user) {
-    return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+    return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
   }
 
   const customerNo   = (session.user as any)?.bcCustomerNumber as string ?? ''
@@ -23,7 +26,7 @@ export async function GET(
   const creditMemo  = creditMemos.find(cm => cm.id === creditMemoId)
 
   if (!creditMemo) {
-    return NextResponse.json({ error: 'Kreditnota ikke fundet' }, { status: 404 })
+    return NextResponse.json({ error: t('kreditnotaIkkeFundet') }, { status: 404 })
   }
 
   const baseUrl = process.env.NEXTAUTH_URL || 'https://portal.venmark.dk'
@@ -53,7 +56,7 @@ export async function GET(
           status: 200,
           headers: {
             'Content-Type':        'application/pdf',
-            'Content-Disposition': `inline; filename="Kreditnota-${creditMemo.number}.pdf"`,
+            'Content-Disposition': `inline; filename="${t('filKreditnota')}-${creditMemo.number}.pdf"`,
             'Content-Length':      String(pdfBuffer.byteLength),
           },
         })
@@ -76,7 +79,7 @@ export async function GET(
         status: 200,
         headers: {
           'Content-Type':        'application/pdf',
-          'Content-Disposition': `inline; filename="Kreditnota-${creditMemo.number}.pdf"`,
+          'Content-Disposition': `inline; filename="${t('filKreditnota')}-${creditMemo.number}.pdf"`,
           'Content-Length':      String(pdfBuffer.byteLength),
         },
       })
@@ -90,6 +93,6 @@ export async function GET(
 
   } catch (e: any) {
     console.error('[PDF-KN] fejl:', e)
-    return NextResponse.json({ error: 'Kunne ikke hente PDF' }, { status: 500 })
+    return NextResponse.json({ error: t('kunneIkkePdf') }, { status: 500 })
   }
 }

@@ -11,6 +11,8 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { loginDict } from '@/lib/i18n/portal/dict/login'
 
 // Suspense omkring useSearchParams — ellers kan siden ikke forrenderes.
 export default function SomKundePage() {
@@ -22,18 +24,19 @@ export default function SomKundePage() {
 }
 
 function SomKunde() {
+  const t = useT(loginDict)
   const params = useSearchParams()
   const [fejl, setFejl] = useState<string | null>(null)
 
   useEffect(() => {
     const token = params.get('token')
-    if (!token) { setFejl('Der mangler en adgangsbillet i linket.'); return }
+    if (!token) { setFejl(t('billetMangler')); return }
     signIn('impersonate', { token, redirect: false })
       .then(res => {
         if (res?.ok) window.location.href = '/portal'
-        else setFejl('Billetten kan ikke bruges. Den varer to minutter og kan kun bruges én gang — åbn kunden forfra fra BC eller admin.')
+        else setFejl(t('billetBrugt'))
       })
-      .catch(() => setFejl('Kunne ikke få forbindelse. Prøv igen.'))
+      .catch(() => setFejl(t('ingenForbindelse')))
   }, [params])
 
   return (
@@ -41,14 +44,14 @@ function SomKunde() {
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-gray-200">
         {fejl ? (
           <>
-            <p className="text-sm font-semibold text-red-700">Kunne ikke åbne som kunde</p>
+            <p className="text-sm font-semibold text-red-700">{t('somKundeFejl')}</p>
             <p className="mt-2 text-sm text-gray-600">{fejl}</p>
             <a href="/admin/kunder" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:underline">
-              Til kundelisten
+              {t('tilKundelisten')}
             </a>
           </>
         ) : (
-          <p className="text-sm text-gray-500">Åbner portalen som kunden…</p>
+          <p className="text-sm text-gray-500">{t('aabnerSomKunde')}</p>
         )}
       </div>
     </div>

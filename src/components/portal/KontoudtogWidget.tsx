@@ -2,8 +2,11 @@
 
 import { useState } from 'react'
 import { Download, FileSpreadsheet } from 'lucide-react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
 
 export default function KontoudtogWidget() {
+  const t = useT(fakturaDict)
   const today    = new Date().toISOString().split('T')[0]
   const yearAgo  = new Date(Date.now() - 365 * 86400_000).toISOString().split('T')[0]
 
@@ -16,13 +19,13 @@ export default function KontoudtogWidget() {
     try {
       const url = `/api/portal/kontoudtog?from=${from}&to=${to}`
       const res = await fetch(url)
-      if (!res.ok) { alert('Fejl ved hentning af kontoudtog'); return }
+      if (!res.ok) { alert(t('kontoudtogFejl')); return }
 
       const blob     = await res.blob()
       const dlUrl    = URL.createObjectURL(blob)
       const a        = document.createElement('a')
       a.href         = dlUrl
-      a.download     = `Kontoudtog-${from}-${to}.csv`
+      a.download     = `${t('kontoudtogFil')}-${from}-${to}.csv`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -36,11 +39,11 @@ export default function KontoudtogWidget() {
     <div className="rounded-xl bg-white ring-1 ring-gray-200 p-4">
       <div className="flex items-center gap-2 mb-3">
         <FileSpreadsheet size={16} className="text-green-600" />
-        <span className="text-sm font-semibold text-gray-800">Kontoudtog som Excel</span>
+        <span className="text-sm font-semibold text-gray-800">{t('kontoudtogExcel')}</span>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <label className="text-xs text-gray-500 shrink-0">Fra</label>
+          <label className="text-xs text-gray-500 shrink-0">{t('fraDato')}</label>
           <input
             type="date"
             value={from}
@@ -50,7 +53,7 @@ export default function KontoudtogWidget() {
           />
         </div>
         <div className="flex items-center gap-1.5">
-          <label className="text-xs text-gray-500 shrink-0">Til</label>
+          <label className="text-xs text-gray-500 shrink-0">{t('tilDato')}</label>
           <input
             type="date"
             value={to}
@@ -66,11 +69,11 @@ export default function KontoudtogWidget() {
           className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
         >
           <Download size={14} />
-          {loading ? 'Henter…' : 'Download'}
+          {loading ? t('henter') : t('download')}
         </button>
       </div>
       <p className="mt-2 text-xs text-gray-400">
-        Åbn CSV-filen i Excel — den understøtter æøå og danske beløb
+        {t('csvTip')}
       </p>
     </div>
   )

@@ -12,6 +12,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { addLinesToBCOrder, getCartCoverage, getCustomerLocationCode } from '@/lib/businesscentral'
 import { findTilfoejMaal } from '@/lib/tilfoejOrdre'
+import { getT } from '@/lib/i18n/portal/server'
+import { ordrerApiDict } from '@/lib/i18n/portal/dict/ordrer-api'
 
 // Leveringsdatoen som dansk kalenderdag (YYYY-MM-DD) — uafhængigt af serverens tidszone.
 function ymd(d: Date): string {
@@ -22,8 +24,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  // Kundesynlige fejltekster på kundens sprog; kode/lofter er maskinlæsbare og uændrede.
+  const t = await getT(ordrerApiDict)
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
 
   const maal = await findTilfoejMaal(params.id, session)
   if (!maal) {
@@ -31,17 +35,16 @@ export async function POST(
     // leveringskode → læg på anden åben ordre, ellers ny). error-teksten er til ældre klienter.
     return NextResponse.json({
       kode:  'ORDRE_VAEK',
-      error: 'Ordren findes ikke længere hos Venmark — den kan være samlet med en anden ordre. ' +
-             'Bestil varerne som en ny bestilling under "Bestil", eller kontakt os.',
+      error: t('ordreVaek'),
     }, { status: 404 })
   }
   if (new Date() > maal.deadline) {
-    return NextResponse.json({ error: 'Fristen for denne leveringsdato er passeret' }, { status: 422 })
+    return NextResponse.json({ error: t('fristPasseret') }, { status: 422 })
   }
 
   const { lines } = await req.json()
   if (!lines?.length) {
-    return NextResponse.json({ error: 'Ingen linjer' }, { status: 400 })
+    return NextResponse.json({ error: t('ingenLinjer') }, { status: 400 })
   }
 
   // ── Antals-loft (samme som ny bestilling) ───────────────────────────────────
@@ -75,14 +78,14 @@ export async function POST(
         const maks = Math.max(0, Math.round(row.maxQty * 10) / 10)
         if (maks <= 0) ikkeMere.push(ny.name)
         else if (ny.qty > maks) {
-          forMeget.push(`${ny.name}: maks ${maks}`)
+          forMeget.push(t('maks', { navn: ny.name, n: maks }))
           lofter.push({ itemNo: row.itemNo, navn: ny.name, maks })
         }
       }
       if (ikkeMere.length || forMeget.length) {
         const dele = [
-          ikkeMere.length ? `Ikke mere til denne leveringsdato: ${ikkeMere.join(', ')}` : '',
-          forMeget.length ? `For stort antal — ${forMeget.join(', ')}` : '',
+          ikkeMere.length ? t('ikkeMere', { liste: ikkeMere.join(', ') }) : '',
+          forMeget.length ? t('forStortAntal', { liste: forMeget.join(', ') }) : '',
         ].filter(Boolean)
         return NextResponse.json({ error: `${dele.join('. ')}.`, lofter }, { status: 422 })
       }
@@ -104,7 +107,7 @@ export async function POST(
   if (errors.length > 0) {
     console.error('[tilfoej] BC afviste linjer paa', maal.bcOrderNumber, errors)
     return NextResponse.json(
-      { error: `Varerne kunne ikke lægges på ordren: ${errors.join(' · ')}` },
+      { error: t('kunneIkkeLaeggePaaOrdre', { fejl: errors.join(' · ') }) },
       { status: 502 },
     )
   }

@@ -3,16 +3,19 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendTicketNotification } from '@/lib/email'
+import { getT } from '@/lib/i18n/portal/server'
+import { reklamationDict } from '@/lib/i18n/portal/dict/reklamation'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: (await getT(faellesDict))('ikkeLoggetInd') }, { status: 401 })
 
   const customerId = (session.user as any)?.id as string
 
   const { subject, body, orderRef, images } = await req.json()
   if (!subject?.trim() || !body?.trim()) {
-    return NextResponse.json({ error: 'Emne og beskrivelse er påkrævet' }, { status: 400 })
+    return NextResponse.json({ error: (await getT(reklamationDict))('emneKraevet') }, { status: 400 })
   }
 
   const ticket = await prisma.ticket.create({

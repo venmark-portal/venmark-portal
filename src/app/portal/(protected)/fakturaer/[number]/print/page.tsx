@@ -3,6 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { getPostedInvoices, getPostedInvoiceLines } from '@/lib/businesscentral'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,17 +26,21 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
   const invoice  = invoices.find(inv => inv.number === params.number)
   if (!invoice) redirect('/portal/fakturaer')
 
-  const lines = await getPostedInvoiceLines(invoice.number)
-  const fmt   = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const lang   = await getPortalLang()
+  const t      = makeT(fakturaDict, lang)
+  const locale = localeOf(lang)
+  const lines = await oversaetVarenavne(
+    await getPostedInvoiceLines(invoice.number), lang, { nr: 'itemNumber', navn: 'description' })
+  const fmt   = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null
 
   const itemLines = lines.filter(l => l.type !== '' && l.description)
 
   return (
-    <html lang="da">
+    <html lang={lang}>
       <head>
         <meta charSet="utf-8" />
-        <title>Faktura {invoice.number} — Venmark Fisk</title>
+        <title>{`${t('faktura')} ${invoice.number} — Venmark Fisk`}</title>
         <style dangerouslySetInnerHTML={{ __html: `
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #111; background: #fff; }
@@ -109,11 +117,11 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
           <div className="header">
             <div>
               <div className="logo">Venmark Fisk</div>
-              <div className="logo-sub">Søndergade · 9850 Hirtshals · CVR: xxxxxxxxxx</div>
+              <div className="logo-sub">Søndergade · 9850 Hirtshals · {t('cvr')}: xxxxxxxxxx</div>
               <div className="logo-sub">fisk@venmark.dk · venmark.dk</div>
             </div>
             <div className="invoice-title">
-              <h1>FAKTURA</h1>
+              <h1>{t('printFaktura')}</h1>
               <div className="num">{invoice.number}</div>
             </div>
           </div>
@@ -121,12 +129,12 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
           {/* Adresser */}
           <div className="addresses">
             <div className="addr-block">
-              <div className="addr-label">Faktureret til</div>
+              <div className="addr-label">{t('faktureretTil')}</div>
               <div className="addr-name">{invoice.customerName}</div>
-              <div className="addr-line">Debitor nr. {invoice.customerNumber}</div>
+              <div className="addr-line">{t('debitorNr', { nr: invoice.customerNumber })}</div>
             </div>
             <div className="addr-block">
-              <div className="addr-label">Fra</div>
+              <div className="addr-label">{t('fra')}</div>
               <div className="addr-name">Venmark Fisk AS</div>
               <div className="addr-line">Søndergade, 9850 Hirtshals</div>
             </div>
@@ -135,22 +143,22 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
           {/* Meta */}
           <div className="meta">
             <div className="meta-item">
-              <div className="meta-label">Fakturadato</div>
+              <div className="meta-label">{t('fakturadato')}</div>
               <div className="meta-value">
-                {new Date(invoice.postingDate).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}
+                {new Date(invoice.postingDate).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
               </div>
             </div>
             {dueDate && (
               <div className="meta-item">
-                <div className="meta-label">Forfaldsdato</div>
+                <div className="meta-label">{t('forfaldsdato')}</div>
                 <div className="meta-value">
-                  {dueDate.toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {dueDate.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
               </div>
             )}
             {invoice.paymentTermsCode && (
               <div className="meta-item">
-                <div className="meta-label">Betalingsbetingelse</div>
+                <div className="meta-label">{t('betalingsbetingelse')}</div>
                 <div className="meta-value">{invoice.paymentTermsCode}</div>
               </div>
             )}
@@ -161,11 +169,11 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
             const isOverdue = dueDate && !invoice.closed && dueDate < new Date()
             const hasBalance = invoice.remainingAmount > 0
             if (invoice.closed || !hasBalance) {
-              return <div className="status-box status-paid">✓ Betalt</div>
+              return <div className="status-box status-paid">{t('statusBetalt')}</div>
             } else if (isOverdue) {
-              return <div className="status-box status-late">⚠ Forfaldent — udestående: {fmt.format(invoice.remainingAmount)}</div>
+              return <div className="status-box status-late">{t('statusForfaldent', { beloeb: fmt.format(invoice.remainingAmount) })}</div>
             } else {
-              return <div className="status-box status-due">Udestående: {fmt.format(invoice.remainingAmount)}</div>
+              return <div className="status-box status-due">{t('statusUdestaaende', { beloeb: fmt.format(invoice.remainingAmount) })}</div>
             }
           })()}
 
@@ -173,12 +181,12 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
           <table>
             <thead>
               <tr>
-                <th>Varenr.</th>
-                <th>Beskrivelse</th>
-                <th className="right">Antal</th>
-                <th>Enhed</th>
-                <th className="right">Enhedspris</th>
-                <th className="right">Beløb</th>
+                <th>{t('varenr')}</th>
+                <th>{t('beskrivelse')}</th>
+                <th className="right">{t('antal')}</th>
+                <th>{t('enhed')}</th>
+                <th className="right">{t('enhedspris')}</th>
+                <th className="right">{t('beloeb')}</th>
               </tr>
             </thead>
             <tbody>
@@ -198,15 +206,15 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
           {/* Totaler */}
           <div className="totals">
             <div className="totals-row">
-              <span className="label">Beløb ekskl. moms</span>
+              <span className="label">{t('beloebEkskl')}</span>
               <span>{fmt.format(invoice.totalAmountExcludingTax)}</span>
             </div>
             <div className="totals-row">
-              <span className="label">Moms (25%)</span>
+              <span className="label">{t('moms')}</span>
               <span>{fmt.format(invoice.totalAmountIncludingTax - invoice.totalAmountExcludingTax)}</span>
             </div>
             <div className="totals-row bold">
-              <span>Total inkl. moms</span>
+              <span>{t('totalInkl')}</span>
               <span>{fmt.format(invoice.totalAmountIncludingTax)}</span>
             </div>
           </div>
@@ -214,7 +222,7 @@ export default async function FakturaPrintPage({ params }: { params: { number: s
           {/* Footer */}
           <div className="footer">
             <span>Venmark Fisk AS · Søndergade · 9850 Hirtshals</span>
-            <span>Faktura {invoice.number} · {new Date(invoice.postingDate).toLocaleDateString('da-DK')}</span>
+            <span>{t('faktura')} {invoice.number} · {new Date(invoice.postingDate).toLocaleDateString(locale)}</span>
           </div>
         </div>
       </body>

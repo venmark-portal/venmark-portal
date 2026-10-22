@@ -3,16 +3,19 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { addBCCustomerFavorite, removeBCCustomerFavorite, setBCStandardFavorite } from '@/lib/businesscentral'
+import { getT } from '@/lib/i18n/portal/server'
+import { ordrerApiDict } from '@/lib/i18n/portal/dict/ordrer-api'
 
 export async function POST(req: NextRequest) {
+  const t = await getT(ordrerApiDict)
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
 
   const customerId = (session.user as any)?.id               as string
   const customerNo = (session.user as any)?.bcCustomerNumber as string ?? ''
 
   const { itemNo, itemName, isFavorite } = await req.json()
-  if (!itemNo) return NextResponse.json({ error: 'itemNo mangler' }, { status: 400 })
+  if (!itemNo) return NextResponse.json({ error: t('itemNoMangler') }, { status: 400 })
 
   // Opdater portal DB (primær kilde)
   if (isFavorite) {
@@ -46,15 +49,16 @@ export async function POST(req: NextRequest) {
 // STD-pin: løft (eller fjern) en favorit til "VARER DU ALTID SKAL HAVE" (Standard Favorite på
 // tabel 50157). At pinne indebærer at varen ER en favorit — sikres i portal-DB'en først.
 export async function PATCH(req: NextRequest) {
+  const t = await getT(ordrerApiDict)
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
 
   const customerId = (session.user as any)?.id               as string
   const customerNo = (session.user as any)?.bcCustomerNumber as string ?? ''
 
   const { itemNo, itemName, isStandard } = await req.json()
   if (!itemNo || typeof isStandard !== 'boolean')
-    return NextResponse.json({ error: 'itemNo/isStandard mangler' }, { status: 400 })
+    return NextResponse.json({ error: t('itemNoStdMangler') }, { status: 400 })
 
   // Pin → sørg for at varen findes som favorit i portal-DB'en.
   if (isStandard) {

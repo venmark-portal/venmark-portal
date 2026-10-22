@@ -5,6 +5,8 @@ import { Plus, Trash2, Save, Send, Loader2, CheckCircle2, AlertCircle, RefreshCw
 import ItemSearchModal from './ItemSearchModal'
 import { saveStandingOrderTemplate, orderFromTemplate } from '@/app/portal/(protected)/fast/actions'
 import type { BCItem } from '@/lib/businesscentral'
+import { useT, useLang } from '@/lib/i18n/portal/LangProvider'
+import { ordrerFastDict } from '@/lib/i18n/portal/dict/ordrer-fast'
 
 type Line = { bcItemNumber: string; itemName: string; quantity: number; uom: string }
 
@@ -15,7 +17,7 @@ type WeekdayInfo = {
   lines:          Line[]
 }
 
-const DAY_NAMES = ['', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag']
+const DAY_KEYS = ['', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag'] as const
 
 type CardState = {
   lines:        Line[]
@@ -29,6 +31,9 @@ type CardState = {
 }
 
 export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayInfo[] }) {
+  const t    = useT(ordrerFastDict)
+  const lang = useLang()
+  const dayName = (wd: number) => { const k = DAY_KEYS[wd]; return k ? t(k) : '' }
   const [cards, setCards] = useState<Record<number, CardState>>(() => {
     const init: Record<number, CardState> = {}
     for (const wd of weekdays) {
@@ -81,10 +86,10 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
     update(weekday, { saving: true, saveMsg: null })
     try {
       await saveStandingOrderTemplate(weekday, cards[weekday].lines)
-      update(weekday, { saving: false, dirty: false, saveMsg: 'Gemt ✓' })
+      update(weekday, { saving: false, dirty: false, saveMsg: t('gemt') })
       setTimeout(() => update(weekday, { saveMsg: null }), 3000)
     } catch (err) {
-      update(weekday, { saving: false, saveMsg: `Fejl: ${err instanceof Error ? err.message : 'Prøv igen'}` })
+      update(weekday, { saving: false, saveMsg: t('fejlMsg', { msg: err instanceof Error ? err.message : t('proevIgen') }) })
     }
   }
 
@@ -93,10 +98,10 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
     update(weekday, { ordering: true, orderMsg: null, orderOk: false })
     try {
       await orderFromTemplate(weekday)
-      update(weekday, { ordering: false, orderOk: true, orderMsg: 'Ordre oprettet! ✓' })
+      update(weekday, { ordering: false, orderOk: true, orderMsg: t('ordreOprettet') })
       setTimeout(() => update(weekday, { orderMsg: null, orderOk: false }), 5000)
     } catch (err) {
-      update(weekday, { ordering: false, orderOk: false, orderMsg: err instanceof Error ? err.message : 'Fejl' })
+      update(weekday, { ordering: false, orderOk: false, orderMsg: err instanceof Error ? err.message : t('fejlOrd') })
     }
   }
 
@@ -114,24 +119,24 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
             {/* ── Korthovede ── */}
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <div>
-                <h2 className="font-semibold text-gray-900">{DAY_NAMES[wd.weekday]}</h2>
-                <p className="text-xs text-gray-400">Næste: {wd.deliveryLabel}</p>
+                <h2 className="font-semibold text-gray-900">{dayName(wd.weekday)}</h2>
+                <p className="text-xs text-gray-400">{t('naeste', { x: wd.deliveryLabel })}</p>
               </div>
 
               <button
                 onClick={() => handleOrder(wd.weekday)}
                 disabled={!hasLines || c.dirty || c.ordering || wd.deadlinePassed}
                 title={
-                  c.dirty         ? 'Gem skabelon først'          :
-                  wd.deadlinePassed ? 'Deadline passeret denne uge' :
-                  !hasLines       ? 'Ingen varer i skabelonen'     : undefined
+                  c.dirty         ? t('gemFoerst')           :
+                  wd.deadlinePassed ? t('deadlinePasseretUge') :
+                  !hasLines       ? t('ingenVarerSkabelon')  : undefined
                 }
                 className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
               >
                 {c.ordering
                   ? <Loader2 size={13} className="animate-spin" />
                   : <Send size={13} />}
-                Bestil næste {DAY_NAMES[wd.weekday].toLowerCase()}
+                {t('bestilNaeste', { dag: lang === 'da' ? dayName(wd.weekday).toLowerCase() : dayName(wd.weekday) })}
               </button>
             </div>
 
@@ -143,7 +148,7 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
                 {c.orderOk ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
                 {c.orderMsg}
                 {c.orderOk && (
-                  <a href="/portal/ordrer" className="ml-1 underline">Se mine ordrer</a>
+                  <a href="/portal/ordrer" className="ml-1 underline">{t('seMineOrdrer')}</a>
                 )}
               </div>
             )}
@@ -188,7 +193,7 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
               </div>
             ) : (
               <div className="px-4 py-6 text-center text-sm text-gray-400">
-                Ingen varer endnu — tilføj varer til skabelonen
+                {t('ingenVarerEndnu')}
               </div>
             )}
 
@@ -199,12 +204,12 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
                 className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
               >
                 <Plus size={15} />
-                Tilføj vare
+                {t('tilfoejVare')}
               </button>
 
               <div className="flex items-center gap-2">
                 {c.saveMsg && (
-                  <span className={`text-xs ${c.saveMsg.startsWith('Fejl') ? 'text-red-600' : 'text-green-600'}`}>
+                  <span className={`text-xs ${c.saveMsg.startsWith(t('fejlOrd')) ? 'text-red-600' : 'text-green-600'}`}>
                     {c.saveMsg}
                   </span>
                 )}
@@ -214,7 +219,7 @@ export default function StandingOrdersClient({ weekdays }: { weekdays: WeekdayIn
                   className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                 >
                   {c.saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                  Gem skabelon
+                  {t('gemSkabelon')}
                 </button>
               </div>
             </div>

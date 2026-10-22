@@ -23,32 +23,37 @@ function ymdLokal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 import OrderLineStatus, { LINE_COLS, LINE_GRID_CLS } from '@/components/portal/OrderLineStatus'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf, type Lang, type TFunc } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { ordrerDict } from '@/lib/i18n/portal/dict/ordrer'
 
 export const dynamic = 'force-dynamic'
 
-// BC standard salesOrder.status → badge (fallback viser rå værdi)
-const STATUS: Record<string, { label: string; cls: string }> = {
-  Draft:              { label: 'Kladde',          cls: 'bg-gray-100  text-gray-600'  },
-  InReview:           { label: 'Til gennemsyn',   cls: 'bg-blue-100  text-blue-700'  },
-  Open:               { label: 'Åben',            cls: 'bg-amber-100 text-amber-700' },
-  Released:           { label: 'Frigivet',        cls: 'bg-green-100 text-green-700' },
-  PendingApproval:    { label: 'Afventer godk.',  cls: 'bg-blue-100  text-blue-700'  },
-  PendingPrepayment:  { label: 'Afventer betaling', cls: 'bg-blue-100 text-blue-700' },
-}
+type OrdrerT = TFunc<keyof typeof ordrerDict.da>
 
-const fmt = new Intl.NumberFormat('da-DK', {
-  style: 'currency', currency: 'DKK', minimumFractionDigits: 2,
-})
+// BC standard salesOrder.status → badge (fallback viser rå værdi). label = ordbogsnøgle.
+const STATUS: Record<string, { label: keyof typeof ordrerDict.da; cls: string }> = {
+  Draft:              { label: 'stKladde',           cls: 'bg-gray-100  text-gray-600'  },
+  InReview:           { label: 'stTilGennemsyn',     cls: 'bg-blue-100  text-blue-700'  },
+  Open:               { label: 'stAaben',            cls: 'bg-amber-100 text-amber-700' },
+  Released:           { label: 'stFrigivet',         cls: 'bg-green-100 text-green-700' },
+  PendingApproval:    { label: 'stAfventerGodk',     cls: 'bg-blue-100  text-blue-700'  },
+  PendingPrepayment:  { label: 'stAfventerBetaling', cls: 'bg-blue-100 text-blue-700' },
+}
 
 // Danske dato-formater med punktummer: "4. sep." / "tirsdag 4. sep."
 const MND = ['jan.', 'feb.', 'mar.', 'apr.', 'maj', 'jun.', 'jul.', 'aug.', 'sep.', 'okt.', 'nov.', 'dec.']
 const UGE = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
-function daDato(iso: string): string {
+// EN/DE: Intl med portalens locale ("4 Sept" / "4. Sept.").
+function daDato(iso: string, lang: Lang): string {
   const d = new Date(iso)
+  if (lang !== 'da') return d.toLocaleDateString(localeOf(lang), { day: 'numeric', month: 'short' })
   return `${d.getDate()}. ${MND[d.getMonth()]}`
 }
-function daDatoUge(iso: string): string {
+function daDatoUge(iso: string, lang: Lang): string {
   const d = new Date(iso)
+  if (lang !== 'da') return d.toLocaleDateString(localeOf(lang), { weekday: 'long', day: 'numeric', month: 'short' })
   return `${UGE[d.getDay()]} ${d.getDate()}. ${MND[d.getMonth()]}`
 }
 
@@ -57,6 +62,12 @@ interface CustomerRef { customerNo: string; customerName: string }
 export default async function MyOrdersPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/portal/login')
+
+  const lang = await getPortalLang()
+  const t    = makeT(ordrerDict, lang)
+  const fmt  = new Intl.NumberFormat(localeOf(lang), {
+    style: 'currency', currency: 'DKK', minimumFractionDigits: 2,
+  })
 
   const parentNo   = getParentCustomerNo(session)
   const parentName = ((session.user as any).name as string) ?? parentNo
@@ -88,7 +99,8 @@ export default async function MyOrdersPage() {
       allOrders.map(async (o) => {
         if (!o.number) return
         const lines = await getPortalLineStatuses(o.number)
-        if (lines) lineMap.set(o.number, lines)
+        // Varenavne på kundens sprog (BC-varetranslationer); dansk = uændret.
+        if (lines) lineMap.set(o.number, await oversaetVarenavne(lines, lang, { nr: 'lineObjectNumber', navn: 'description' }))
       }),
     ),
     bcNumbers.length
@@ -134,21 +146,21 @@ export default async function MyOrdersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mine Åbne bestillinger</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('titel')}</h1>
         <p className="mt-1 text-sm text-gray-500">
           {totalOrders === 0
-            ? 'Ingen åbne ordrer'
-            : `${totalOrders} ${totalOrders === 1 ? 'ordre' : 'ordrer'}` +
-              (hasMultipleStores ? ` fordelt på ${groups.length} ${groups.length === 1 ? 'butik' : 'butikker'}` : '')}
+            ? t('ingenAabne')
+            : t(totalOrders === 1 ? 'antalOrdre1' : 'antalOrdreN', { n: totalOrders }) +
+              (hasMultipleStores ? t(groups.length === 1 ? 'fordeltPaa1' : 'fordeltPaaN', { n: groups.length }) : '')}
         </p>
       </div>
 
       {totalOrders === 0 ? (
         <div className="rounded-xl bg-white px-6 py-16 text-center text-gray-500 ring-1 ring-gray-200">
           <Package size={40} className="mx-auto mb-3 text-gray-300" />
-          <p className="font-medium">Ingen åbne ordrer</p>
+          <p className="font-medium">{t('ingenAabne')}</p>
           <p className="mt-2 text-sm">
-            <a href="/portal/bestil" className="text-blue-600 hover:underline">Opret din første bestilling →</a>
+            <a href="/portal/bestil" className="text-blue-600 hover:underline">{t('opretFoerste')}</a>
           </p>
         </div>
       ) : (
@@ -182,11 +194,11 @@ export default async function MyOrdersPage() {
                     </span>
                     {customer.customerNo === parentNo && (
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                        mig selv
+                        {t('migSelv')}
                       </span>
                     )}
                     <span className="ml-auto text-xs text-gray-400">
-                      {orders.length} {orders.length === 1 ? 'ordre' : 'ordrer'} · {fmt.format(storeTotal)}
+                      {t(orders.length === 1 ? 'antalOrdre1' : 'antalOrdreN', { n: orders.length })} · {fmt.format(storeTotal)}
                     </span>
                   </div>
                 )}
@@ -203,6 +215,9 @@ export default async function MyOrdersPage() {
                         deliveryDate={deliveryOf(order)}
                         tilfoejId={pr?.id ?? order.id}
                         deadline={(pr?.deadline ?? bcFrist(order))?.toISOString()}
+                        t={t}
+                        lang={lang}
+                        fmt={fmt}
                       />
                     )
                   })}
@@ -216,8 +231,11 @@ export default async function MyOrdersPage() {
   )
 }
 
-function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string; tilfoejId?: string; deadline?: string }) {
-  const st = STATUS[order.status] ?? { label: order.status || 'Åben', cls: 'bg-gray-100 text-gray-600' }
+function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline, t, lang, fmt }: { order: BCCustomerOrder; lines: BCPortalLine[] | null; fromBc: boolean; deliveryDate: string; tilfoejId?: string; deadline?: string; t: OrdrerT; lang: Lang; fmt: Intl.NumberFormat }) {
+  const kendt = STATUS[order.status]
+  const st = kendt
+    ? { label: t(kendt.label), cls: kendt.cls }
+    : { label: order.status || t('stAaben'), cls: 'bg-gray-100 text-gray-600' }
   // "Kladde" forvirrer kunden → skjul status-badgen for kladder (vis kun ved reelle statusser).
   const showStatus = order.status !== 'Draft' && !!st.label
 
@@ -240,8 +258,8 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: 
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-gray-900">
               {deliveryDate
-                ? 'Levering ' + daDatoUge(deliveryDate)
-                : 'Ingen leveringsdato'}
+                ? t('levering', { dato: daDatoUge(deliveryDate, lang) })
+                : t('ingenLevDato')}
             </span>
             {showStatus && (
               <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${st.cls}`}>
@@ -252,12 +270,12 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: 
             {fromBc ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                 <Building2 size={10} />
-                TLF/mail ordre
+                {t('tlfMail')}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                 <Globe size={10} />
-                Bestilt online
+                {t('bestiltOnline')}
               </span>
             )}
             {order.shipmentMethodName && (
@@ -272,9 +290,9 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: 
             )}
           </div>
           <div className="mt-0.5 text-xs text-gray-400">
-            {order.orderDate && <>Bestilt {daDato(order.orderDate)}</>}
-            {order.amountIncludingTax > 0 && ` · ${fmt.format(order.amountIncludingTax)} inkl. moms`}
-            {order.externalDocumentNumber && ` · Ref. ${order.externalDocumentNumber}`}
+            {order.orderDate && <>{t('bestiltDato', { dato: daDato(order.orderDate, lang) })}</>}
+            {order.amountIncludingTax > 0 && ` · ${t('inklMoms', { beloeb: fmt.format(order.amountIncludingTax) })}`}
+            {order.externalDocumentNumber && ` · ${t('ref', { ref: order.externalDocumentNumber })}`}
             {order.orderNote && ` · „${order.orderNote}"`}
           </div>
         </div>
@@ -287,12 +305,12 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: 
             {/* Overskrifter */}
             <div className={`${LINE_GRID_CLS} px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100 bg-gray-50/50`} style={{ display: 'grid', gridTemplateColumns: LINE_COLS }}>
               <span></span>
-              <span>Varenr</span>
-              <span>Beskrivelse</span>
-              <span className="text-right">Antal</span>
-              <span className="text-right">Pris/enhed</span>
-              <span className="text-right">Beløb</span>
-              <span>Pakket af</span>
+              <span>{t('kolVarenr')}</span>
+              <span>{t('kolBeskrivelse')}</span>
+              <span className="text-right">{t('kolAntal')}</span>
+              <span className="text-right">{t('kolPrisEnhed')}</span>
+              <span className="text-right">{t('kolBeloeb')}</span>
+              <span>{t('kolPakketAf')}</span>
             </div>
             {lines.map((line) => (
               <OrderLineStatus
@@ -322,7 +340,7 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline }: 
             className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800"
           >
             <PlusCircle size={15} />
-            Tilføj vare til denne ordre
+            {t('tilfoejVareDenne')}
           </Link>
         </div>
       )}

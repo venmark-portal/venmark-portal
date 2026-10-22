@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { nextOccurrenceOfWeekday, getDeadlineForDelivery } from '@/lib/dateUtils'
+import { getT } from '@/lib/i18n/portal/server'
+import { ordrerFastDict } from '@/lib/i18n/portal/dict/ordrer-fast'
 
 export type LineInput = {
   bcItemNumber: string
@@ -16,7 +18,7 @@ export type LineInput = {
 async function getCustomerId() {
   const session = await getServerSession(authOptions)
   const id = (session?.user as any)?.id as string | undefined
-  if (!id) throw new Error('Ikke logget ind')
+  if (!id) throw new Error((await getT(ordrerFastDict))('ikkeLoggetInd'))
   return id
 }
 
@@ -66,15 +68,17 @@ export async function orderFromTemplate(weekday: number): Promise<void> {
     include: { lines: true },
   })
 
+  const t = await getT(ordrerFastDict)
+
   if (!standing || standing.lines.length === 0) {
-    throw new Error('Ingen varer i skabelonen for denne dag')
+    throw new Error(t('ingenVarerDag'))
   }
 
   const deliveryDate = nextOccurrenceOfWeekday(weekday)
   const deadline     = getDeadlineForDelivery(deliveryDate)
 
   if (new Date() > deadline) {
-    throw new Error('Deadline er passeret — prøv igen næste uge')
+    throw new Error(t('deadlinePasseret'))
   }
 
   // Undgå dubletter: tjek om der allerede er en ordre for denne leveringsdato
@@ -85,7 +89,7 @@ export async function orderFromTemplate(weekday: number): Promise<void> {
       status:       { in: ['SUBMITTED', 'APPROVED', 'SENT_TO_BC', 'CONFIRMED'] },
     },
   })
-  if (dup) throw new Error('Der er allerede sendt en ordre til denne leveringsdato')
+  if (dup) throw new Error(t('dublet'))
 
   await prisma.order.create({
     data: {

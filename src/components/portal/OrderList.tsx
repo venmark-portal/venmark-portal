@@ -6,9 +6,30 @@ import {
   CheckCircle2, ChevronDown, ChevronUp, TrendingDown, Heart, Calendar, RefreshCw, Fish, X, Clock, Star, MessageSquare,
   AlertTriangle, Package,
 } from 'lucide-react'
-import { formatLongDate, getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
+import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesForMethod, getEffectiveDateForMethodDelivery, earliestDeliveryForItem, aabnTilFrist } from '@/lib/dateUtils'
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
+import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
+import type { TFunc } from '@/lib/i18n/portal/lang'
+import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
+
+type BKey = keyof typeof bestilDict.da
+type BT = TFunc<BKey>
+
+/** Kommasepareret ugedags-liste fra ordbogen (indeks 0 = søndag for ugedageHele/ugedageKort). */
+function liste(t: BT, k: 'ugedageHele' | 'ugedageKort' | 'ugedageKortFrist'): string[] {
+  return t(k).split(',')
+}
+
+/** "fredag 16. oktober" på kundens sprog (erstatter dateUtils.formatLongDate, som er dansk). */
+function langDato(locale: string, date: Date): string {
+  return date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+/** Det danske varenavn (navnDa sættes server-side før oversættelse) — sendes til ordre/favorit. */
+function daNavn(it: EnrichedItem): string {
+  return ((it as { navnDa?: string }).navnDa) || it.displayName
+}
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +140,8 @@ interface SpecialReservation {
 function PriserOpdateretBanner({
   avail, idag,
 }: { avail: Record<string, BCItemAvailability>; idag: string }) {
+  const t = useT(bestilDict)
+  const locale = useLocale()
   const stempel = Object.values(avail).find(a => a?.priserOpdateret)?.priserOpdateret ?? null
   // Ingen rækker hentet endnu (siden er ved at loade) — sig hellere ingenting
   // end at påstå at priserne ikke er opdateret.
@@ -135,7 +158,7 @@ function PriserOpdateretBanner({
     ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(d as Date)
     : null
   const kl = gyldig
-    ? new Intl.DateTimeFormat('da-DK', {
+    ? new Intl.DateTimeFormat(locale, {
         timeZone: 'Europe/Copenhagen', hour: '2-digit', minute: '2-digit',
       }).format(d as Date)
     : null
@@ -149,11 +172,11 @@ function PriserOpdateretBanner({
     }`}>
       <span className="text-base leading-none">{opdateret ? '✓' : '⏳'}</span>
       {opdateret ? (
-        <span>Dagens priser <strong>er opdateret</strong>{kl && ` kl. ${kl}`}.</span>
+        <span>{t('priserOpd1')}<strong>{t('priserOpd2')}</strong>{kl && t('priserOpdKl', { kl })}.</span>
       ) : (
         <span>
-          Dagens priser er <strong>ikke opdateret endnu</strong> — især auktionsfisk kan ændre sig.
-          Skriv evt. din maks. pris i bemærkning.
+          {t('priserIkke1')}<strong>{t('priserIkke2')}</strong>{t('priserIkke3')}
+          {' '}{t('maksPrisBemaerkning')}
         </span>
       )}
     </div>
@@ -257,27 +280,25 @@ function getStandingQty(s: StandingOrderData, weekday: number): number {
 
 // ─── Varetilgængelighed ───────────────────────────────────────────────────────
 
-const DA_WEEKDAYS = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
-
-function formatTilgaengeligFra(dateStr: string): string {
+function formatTilgaengeligFra(dateStr: string, t: BT): string {
   const target = new Date(dateStr + 'T00:00:00')
   const nowDay = new Date(new Date().toDateString())
   const diffDays = Math.round((new Date(target.toDateString()).getTime() - nowDay.getTime()) / 86400000)
-  if (diffDays <= 6) return `Tilgængelig ${DA_WEEKDAYS[target.getDay()]}`
+  if (diffDays <= 6) return t('tilgaengelig', { dag: liste(t, 'ugedageHele')[target.getDay()] })
   const d = String(target.getDate()).padStart(2, '0')
   const m = String(target.getMonth() + 1).padStart(2, '0')
-  return `Tilgængelig ${d}/${m}`
+  return t('tilgaengelig', { dag: t('dagMaaned', { d, m }) })
 }
 
 // Kun dag/dato — uden "Tilgængelig"-præfiks (til "Tilgængelig til afgang <dag>")
-function formatAfgangDag(dateStr: string): string {
+function formatAfgangDag(dateStr: string, t: BT): string {
   const target = new Date(dateStr + 'T00:00:00')
   const nowDay = new Date(new Date().toDateString())
   const diffDays = Math.round((new Date(target.toDateString()).getTime() - nowDay.getTime()) / 86400000)
-  if (diffDays <= 6) return DA_WEEKDAYS[target.getDay()]
+  if (diffDays <= 6) return liste(t, 'ugedageHele')[target.getDay()]
   const d = String(target.getDate()).padStart(2, '0')
   const m = String(target.getMonth() + 1).padStart(2, '0')
-  return `${d}/${m}`
+  return t('dagMaaned', { d, m })
 }
 
 interface ItemAvailStatus {
@@ -307,11 +328,9 @@ function dkDato(iso: string | null | undefined): string {
 }
 
 /** "fredag 16. okt." — kort nok til en bjælke der gentages pr. kategori. */
-function kortDagTekst(d: Date): string {
-  return d.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'short' })
+function kortDagTekst(d: Date, locale: string): string {
+  return d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'short' })
 }
-
-const GENSKAF_PREFIX = 'Vi genskaffer flere'
 
 function parseAabnTil(s: string): { hh: number; mm: number } | null {
   const iso = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?/)
@@ -334,6 +353,7 @@ function localYmd(d: Date): string {
 function getItemAvailStatus(
   avail: BCItemAvailability | undefined,
   deliveryDate: Date | undefined,
+  t: BT,
 ): ItemAvailStatus {
   const none: ItemAvailStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
   if (!avail || !deliveryDate) return none
@@ -349,11 +369,11 @@ function getItemAvailStatus(
   const fristTid = avail.aabnTil ?? avail.auktionsFrist
   if (fristTid) {
     const p = parseAabnTil(fristTid)
-    if (p) aabnTilLabel = `Bestil inden ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
+    if (p) aabnTilLabel = t('bestilInden', { tid: `${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}` })
   }
 
   if (avail.tilgaengeligFra && deliveryStr < avail.tilgaengeligFra) {
-    return { blocked: true, blockLabel: formatTilgaengeligFra(avail.tilgaengeligFra), disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+    return { blocked: true, blockLabel: formatTilgaengeligFra(avail.tilgaengeligFra, t), disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
   }
 
   // Strengt lager — total pipeline (alle datoer)
@@ -366,9 +386,9 @@ function getItemAvailStatus(
     const coveredByAfgang = !!avail.naesteLevering && deliveryStr >= avail.naesteLevering
     if (disp <= 0 && !coveredByAfgang) {
       const dateLabel = avail.naesteLevering
-        ? `Tilgængelig til afgang ${formatAfgangDag(avail.naesteLevering)}`
-        : 'Ikke på lager eller i indkøb lige nu'
-      return { blocked: true, blockLabel: dateLabel, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
+        ? t('tilAfgang', { dag: formatAfgangDag(avail.naesteLevering, t) })
+        : t('ikkePaaLager')
+      return { blocked: true, blockLabel: dateLabel, disponibeltLabel: t('ingen'), disponibeltColor: 'red', aabnTilLabel: null }
     }
     if (disp <= 0) {
       // Lager 0, men kommende afgang dækker den valgte leveringsdato → tilgængelig (ingen KG-tal kendt)
@@ -380,7 +400,7 @@ function getItemAvailStatus(
 
   if (isToday) {
     if (avail.lukAfgang)
-      return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+      return { blocked: true, blockLabel: t('ikkeMereIDag'), disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
 
     // Åbn til passeret i dag blokerer IKKE længere: Åbn til er et genskaffelses-vindue — efter
     // fristen afgør lageret (disponibel nedenfor + rowMaxQty-loftet), jf. Claus 2026-09-28.
@@ -390,7 +410,7 @@ function getItemAvailStatus(
       const priserDato = avail.priserOpdateret?.slice(0, 10)
       if (priserDato === todayStr) {
         const disp = avail.disponibelt
-        if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
+        if (disp <= 0) return { blocked: true, blockLabel: t('ingenDisponibel'), disponibeltLabel: t('ingen'), disponibeltColor: 'red', aabnTilLabel }
         if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange', aabnTilLabel }
       }
       return { ...none, aabnTilLabel }
@@ -398,7 +418,7 @@ function getItemAvailStatus(
 
     // Handelsvare (default)
     const disp = avail.disponibelt
-    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
+    if (disp <= 0) return { blocked: true, blockLabel: t('ingenDisponibelIDag'), disponibeltLabel: t('ingen'), disponibeltColor: 'red', aabnTilLabel }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp * 10) / 10}`, disponibeltColor: 'orange', aabnTilLabel }
     return { ...none, aabnTilLabel }
   }
@@ -543,19 +563,20 @@ function buildDisplayTiers(
 
 // ─── Attribut-ikoner ──────────────────────────────────────────────────────────
 
-type AttrDef = { label: string; symbol: string }
+type AttrDef = { label: string; symbol: string; key?: BKey }
 const ATTR_DEFS: { pattern: RegExp; def: AttrDef }[] = [
-  { pattern: /frost/i,          def: { label: 'Frost',        symbol: '❄'  } },
-  { pattern: /vild/i,           def: { label: 'Vildfanget',   symbol: '🎣' } },
-  { pattern: /opdr/i,           def: { label: 'Opdrættet',    symbol: '🐟' } },
-  { pattern: /øko|eko|organ/i,  def: { label: 'Økologisk',    symbol: '🌿' } },
+  { pattern: /frost/i,          def: { label: 'Frost',        symbol: '❄', key: 'attrFrost' } },
+  { pattern: /vild/i,           def: { label: 'Vildfanget',   symbol: '🎣', key: 'attrVild' } },
+  { pattern: /opdr/i,           def: { label: 'Opdrættet',    symbol: '🐟', key: 'attrOpdr' } },
+  { pattern: /øko|eko|organ/i,  def: { label: 'Økologisk',    symbol: '🌿', key: 'attrOeko' } },
   { pattern: /msc/i,            def: { label: 'MSC',          symbol: 'Ⓜ'  } },
   { pattern: /asc/i,            def: { label: 'ASC',          symbol: '🅰'  } },
-  { pattern: /røg/i,            def: { label: 'Røget',        symbol: '🔥' } },
-  { pattern: /fersk/i,          def: { label: 'Fersk',        symbol: '💧' } },
+  { pattern: /røg/i,            def: { label: 'Røget',        symbol: '🔥', key: 'attrRoeget' } },
+  { pattern: /fersk/i,          def: { label: 'Fersk',        symbol: '💧', key: 'attrFersk' } },
 ]
 
 function AttrIcon({ attr }: { attr: BCItemAttributeValue }) {
+  const t = useT(bestilDict)
   const v = attr.value?.toLowerCase()
   if (!v || v === 'nej' || v === 'no' || v === '0' || v === 'false') return null
   if (/^\d+$/.test(attr.value.trim())) return null
@@ -564,7 +585,7 @@ function AttrIcon({ attr }: { attr: BCItemAttributeValue }) {
     if (pattern.test(attr.attributeName)) {
       return (
         <span
-          title={`${def.label}: ${attr.value}`}
+          title={`${def.key ? t(def.key) : def.label}: ${attr.value}`}
           className="shrink-0 text-[13px] leading-none cursor-default select-none"
         >
           {def.symbol}
@@ -585,15 +606,16 @@ function AttrIcon({ attr }: { attr: BCItemAttributeValue }) {
 // ─── Lagerstatus ──────────────────────────────────────────────────────────────
 
 function StockDot({ inventory }: { inventory: number }) {
+  const t = useT(bestilDict)
   const cfg =
-    inventory === 0  ? { color: 'bg-red-400',    label: 'Ingen lager'  } :
-    inventory < 10   ? { color: 'bg-orange-400', label: 'Knaphed'      } :
-    inventory < 50   ? { color: 'bg-yellow-400', label: 'OK lager'     } :
-                       { color: 'bg-green-400',  label: 'Rigeligt'     }
+    inventory === 0  ? { color: 'bg-red-400',    label: t('lagerIngen')  } :
+    inventory < 10   ? { color: 'bg-orange-400', label: t('lagerKnaphed') } :
+    inventory < 50   ? { color: 'bg-yellow-400', label: t('lagerOk')     } :
+                       { color: 'bg-green-400',  label: t('lagerRigeligt') }
   return (
     <span
       className={`shrink-0 h-2 w-2 rounded-full ${cfg.color}`}
-      title={`Lager: ${cfg.label} (${inventory})`}
+      title={t('lagerTitel', { label: cfg.label, n: inventory })}
     />
   )
 }
@@ -626,7 +648,9 @@ function ItemThumbnail({ item, onClick }: { item: EnrichedItem; onClick?: () => 
 // ─── Vare-detalje modal ───────────────────────────────────────────────────────
 
 function ItemDetailModal({ item, onClose }: { item: EnrichedItem; onClose: () => void }) {
-  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const t = useT(bestilDict)
+  const locale = useLocale()
+  const fmt = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const url = item.pictureId
     ? `/api/portal/item-image/${item.id}?pictureId=${item.pictureId}`
     : null
@@ -674,7 +698,7 @@ function ItemDetailModal({ item, onClose }: { item: EnrichedItem; onClose: () =>
             return v && v !== 'nej' && v !== 'no' && v !== '0' && v !== 'false'
           }).length > 0 && (
             <div className="mb-4">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Egenskaber</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{t('egenskaber')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {attrs.filter(a => {
                   const v = a.value?.toLowerCase()
@@ -692,7 +716,7 @@ function ItemDetailModal({ item, onClose }: { item: EnrichedItem; onClose: () =>
             onClick={onClose}
             className="mt-2 w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
           >
-            Luk
+            {t('luk')}
           </button>
         </div>
       </div>
@@ -746,7 +770,9 @@ export function OrderRow({
   infoNote?:         string
   estimatedPrice?:   number
 }) {
-  const fmt    = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const t = useT(bestilDict)
+  const locale = useLocale()
+  const fmt    = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const attrs  = item.attributes ?? []
   const uoms   = item.uoms ?? []
 
@@ -798,7 +824,7 @@ export function OrderRow({
       )}
       {!blockedLabel && aabnTilLabel && (
         <div className={`mb-1 flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 w-fit ${
-          aabnTilLabel.startsWith(GENSKAF_PREFIX) ? 'font-medium text-sky-700 bg-sky-50' : 'font-bold text-red-600 bg-red-50'
+          aabnTilLabel.startsWith(t('genskafPrefix')) ? 'font-medium text-sky-700 bg-sky-50' : 'font-bold text-red-600 bg-red-50'
         }`}>
           <Clock size={9} />
           {aabnTilLabel}
@@ -821,9 +847,9 @@ export function OrderRow({
           <div className="flex items-start gap-1 min-w-0 flex-wrap">
             <span className="shrink-0 mt-[3px]"><StockDot inventory={item.inventory ?? 0} /></span>
             {isPromo && <Flame size={11} className="shrink-0 mt-[2px] text-orange-500" />}
-            {isVenmark && !isPromo && <span className="shrink-0 text-[12px]" title={venmarkNote || 'Venmark anbefaler'}>⭐</span>}
+            {isVenmark && !isPromo && <span className="shrink-0 text-[12px]" title={venmarkNote || t('venmarkAnbefaler')}>⭐</span>}
             <span className="text-sm font-medium text-gray-900 leading-snug">{item.displayName}</span>
-            {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5"><RefreshCw size={9} />Fast ordre</span>}
+            {isStandingOrder && <span className="shrink-0 text-[10px] font-semibold text-blue-500 flex items-center gap-0.5"><RefreshCw size={9} />{t('fastOrdre')}</span>}
             {visibleAttrs.map((attr, i) => <AttrIcon key={i} attr={attr} />)}
             {/* "Indsæt bemærkning" på navnelinjen — folder bemærknings-linjen ud (ikke fast synlig). */}
             {onNote && (
@@ -834,10 +860,10 @@ export function OrderRow({
                 className={`shrink-0 mt-[1px] inline-flex items-center gap-0.5 text-[10px] font-medium transition-colors ${
                   note ? 'text-blue-500 hover:text-blue-400' : 'text-gray-300 hover:text-blue-400'
                 }`}
-                title={note ? `Bemærkning: ${note}` : 'Indsæt bemærkning'}
+                title={note ? t('bemaerkningTitel', { note }) : t('indsaetBemaerkning')}
               >
                 <MessageSquare size={11} fill={note ? 'currentColor' : 'none'} />
-                <span>{note ? 'Bemærkning' : 'Indsæt bemærkning'}</span>
+                <span>{note ? t('bemaerkning') : t('indsaetBemaerkning')}</span>
               </button>
             )}
           </div>
@@ -859,15 +885,15 @@ export function OrderRow({
             )}
             {displayPrice === 0 && estimatedPrice && estimatedPrice > 0 && (
               <span className="text-xs text-gray-400 italic">
-                ca. {fmt.format(estimatedPrice)}/{baseUomCode}
+                {t('caPris', { pris: fmt.format(estimatedPrice) })}/{baseUomCode}
               </span>
             )}
 
             {hasRealTiers && (
               <span className="flex items-center gap-0.5 flex-wrap">
                 <TrendingDown size={9} className="text-emerald-500 shrink-0" />
-                {displayTiers.map((t, i) => {
-                  const isActive = quantity > 0 && t.minimumQuantity <= effectiveKgQty &&
+                {displayTiers.map((tier, i) => {
+                  const isActive = quantity > 0 && tier.minimumQuantity <= effectiveKgQty &&
                     (i === displayTiers.length - 1 || displayTiers[i + 1].minimumQuantity > effectiveKgQty)
                   return (
                     <span
@@ -877,9 +903,9 @@ export function OrderRow({
                           ? 'bg-blue-100 text-blue-700 font-semibold'
                           : 'bg-gray-100 text-gray-500'
                       }`}
-                      title={`Fra ${t.minimumQuantity} ${baseUomCode}: ${fmt.format(t.unitPrice)}`}
+                      title={t('fraTitel', { n: tier.minimumQuantity, enhed: baseUomCode, pris: fmt.format(tier.unitPrice) })}
                     >
-                      {t.minimumQuantity === 0 ? '1' : t.minimumQuantity}+: {fmt.format(t.unitPrice)}
+                      {tier.minimumQuantity === 0 ? '1' : tier.minimumQuantity}+: {fmt.format(tier.unitPrice)}
                     </span>
                   )
                 })}
@@ -911,7 +937,7 @@ export function OrderRow({
                 value={note}
                 maxLength={30}
                 onChange={e => onNote(e.target.value.slice(0, 30))}
-                placeholder="Skriv bemærkning (maks 30 tegn)…"
+                placeholder={t('notePlaceholder')}
                 className="w-full min-w-0 rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 placeholder:text-gray-300 focus:border-blue-400 focus:outline-none"
               />
             </div>
@@ -927,7 +953,7 @@ export function OrderRow({
               onChange={e => onUomChange?.(e.target.value)}
               disabled={inputsDisabled}
               className="rounded border border-gray-200 py-0.5 text-[11px] text-gray-600 focus:border-blue-400 focus:outline-none bg-white cursor-pointer disabled:opacity-40"
-              title="Vælg bestillingsenhed"
+              title={t('vaelgEnhed')}
             >
               {uoms.map(u => (
                 <option key={u.code} value={u.code}>
@@ -989,7 +1015,7 @@ export function OrderRow({
             className={`shrink-0 p-1 rounded-full transition-colors ${
               isStd ? 'text-amber-500 hover:text-amber-400' : 'text-gray-200 hover:text-amber-400'
             }`}
-            title={isStd ? 'Fjern fra "Varer du altid skal have"' : 'Gør til STD — "Varer du altid skal have"'}
+            title={isStd ? t('fjernStd') : t('goerStd')}
           >
             <Star size={15} fill={isStd ? 'currentColor' : 'none'} />
           </button>
@@ -1001,7 +1027,7 @@ export function OrderRow({
             className={`shrink-0 p-1 rounded-full transition-colors ${
               isFavorite ? 'text-red-400 hover:text-red-300' : 'text-gray-200 hover:text-red-300'
             }`}
-            title={isFavorite ? 'Fjern favorit' : 'Tilføj favorit'}
+            title={isFavorite ? t('fjernFavorit') : t('tilfoejFavorit')}
           >
             <Heart size={15} fill={isFavorite ? 'currentColor' : 'none'} />
           </button>
@@ -1024,6 +1050,8 @@ function DeliveryPicker({
   /** Dage hvor kunden allerede har en åben ordre — markeres, så hun kan se det FØR valget. */
   aabneOrdrer?:  Record<string, { bcOrderNumber: string; antalLinjer: number; pakket: boolean; fraPortal: boolean }>
 }) {
+  const t = useT(bestilDict)
+  const locale = useLocale()
   const now = new Date()
   const [showMore, setShowMore] = useState(false)
 
@@ -1047,7 +1075,7 @@ function DeliveryPicker({
   const moreSelected = selectedDay >= 3
 
   function formatDay(day: Date) {
-    return day.toLocaleDateString('da-DK', { weekday: 'short' }).replace('.', '')
+    return day.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '')
   }
 
   // Vis deadline på knappen kun hvis fristen er i dag (haster) eller falder
@@ -1065,26 +1093,26 @@ function DeliveryPicker({
   function formatDeadlineShort(dl: Date): string {
     const dlMidnight = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
     const todayMid   = new Date(now); todayMid.setHours(0, 0, 0, 0)
-    const time = dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
-    if (dlMidnight.getTime() === todayMid.getTime()) return `bestil inden kl. ${time}`
-    const wd = dl.toLocaleDateString('da-DK', { weekday: 'short' }).replace('.', '')
-    return `bestil ${wd} kl. ${time}`
+    const time = dl.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+    if (dlMidnight.getTime() === todayMid.getTime()) return t('bestilIndenKl', { tid: time })
+    const wd = dl.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '')
+    return t('bestilWdKl', { wd, tid: time })
   }
 
   // Lang fristtekst til bundpanelet: "fredag kl. 12:00" eller "i dag kl. 14:00"
   function formatDeadlineLong(dl: Date): string {
     const dlMidnight = new Date(dl);  dlMidnight.setHours(0, 0, 0, 0)
     const todayMid   = new Date(now); todayMid.setHours(0, 0, 0, 0)
-    const time = dl.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
-    if (dlMidnight.getTime() === todayMid.getTime()) return `i dag kl. ${time}`
-    const wd = dl.toLocaleDateString('da-DK', { weekday: 'long' })
-    return `${wd} kl. ${time}`
+    const time = dl.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+    if (dlMidnight.getTime() === todayMid.getTime()) return t('iDagKl', { tid: time })
+    const wd = dl.toLocaleDateString(locale, { weekday: 'long' })
+    return t('wdKl', { wd, tid: time })
   }
 
   return (
     <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        Vælg leveringsdato
+        {t('vaelgLeveringsdato')}
       </p>
 
       {/* Hurtige knapper + "Mere"-knap på samme linje */}
@@ -1100,20 +1128,20 @@ function DeliveryPicker({
             <button
               key={dlIdx}
               onClick={() => { onSelect(dlIdx); setShowMore(false) }}
-              title={harOrdre ? `Du har allerede en bestilling til denne dag (#${aabneOrdrer[localYmd(day)].bcOrderNumber})` : undefined}
+              title={harOrdre ? t('harOrdreTitel', { nr: aabneOrdrer[localYmd(day)].bcOrderNumber }) : undefined}
               className={`relative flex shrink-0 flex-col items-center rounded-xl px-4 py-2 text-sm font-medium transition ${
                 isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               {harOrdre && (
                 <span
-                  aria-label="Du har allerede en bestilling til denne dag"
+                  aria-label={t('harOrdreAria')}
                   className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-600'}`}
                 />
               )}
               <span className="font-bold">{formatDay(day)}</span>
               <span className="text-xs opacity-80">
-                {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
+                {day.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
               </span>
               {notable && (
                 <span className="mt-0.5 text-[10px] opacity-70">
@@ -1133,13 +1161,13 @@ function DeliveryPicker({
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
-            title="Vælg en anden dato"
+            title={t('andenDato')}
           >
             <Calendar size={15} />
             <span className="text-[11px]">
               {moreSelected
-                ? deliveryDays[selectedDay]?.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })
-                : 'Mere'}
+                ? deliveryDays[selectedDay]?.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+                : t('mere')}
             </span>
           </button>
         )}
@@ -1162,7 +1190,7 @@ function DeliveryPicker({
               >
                 <span className="font-bold">{formatDay(day)}</span>
                 <span className="text-xs opacity-80">
-                  {day.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
+                  {day.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 </span>
                 {notable && (
                   <span className="mt-0.5 text-[10px] opacity-70">
@@ -1182,8 +1210,8 @@ function DeliveryPicker({
         return (
           <p className={`mt-2 text-xs ${isPast ? 'text-red-500' : 'text-gray-400'}`}>
             {isPast
-              ? `⛔ Deadline er overskredet for ${formatLongDate(deliveryDays[selectedDay])}`
-              : `📅 Levering ${formatLongDate(deliveryDays[selectedDay])} — bestil inden ${formatDeadlineLong(dl)}`
+              ? t('deadlineOverskredet', { dato: langDato(locale, deliveryDays[selectedDay]) })
+              : t('leveringBestilInden', { dato: langDato(locale, deliveryDays[selectedDay]), frist: formatDeadlineLong(dl) })
             }
           </p>
         )
@@ -1205,6 +1233,8 @@ export default function OrderList({
   addToOrderId, addBcOrderNumber, addDeadline,
 }: Props) {
   const addMode = !!addToOrderId
+  const t = useT(bestilDict)
+  const locale = useLocale()
   // Disponibilitet er STATE: initialt kun de viste varer (favoritter osv.); kategori/søgning
   // fletter nye varers disponibilitet ind via ensureAvailability (som BC's skygge-opslag).
   const [itemAvailabilities, setItemAvailabilities] = useState<Record<string, BCItemAvailability>>(initialAvail)
@@ -1454,11 +1484,10 @@ export default function OrderList({
   }
 
   // Navn på ugedag for cutoff (til fejlbesked)
-  const weekdayNames = ['', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag']
   function cutoffLabel(itemNo: string): string {
     const cutoff = itemCutoffs.get(itemNo)
     if (!cutoff || cutoff.cutoffWeekday === 0) return ''
-    return `Bestillingsfrist: ${weekdayNames[cutoff.cutoffWeekday]} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00`
+    return t('bestillingsfrist', { dag: liste(t, 'ugedageHele')[cutoff.cutoffWeekday] ?? '', hh: String(cutoff.cutoffHour).padStart(2, '0') })
   }
 
   // Spærret FRIST-vare til en for tidlig dato: fortæl HVORNÅR den kan bestilles i stedet for
@@ -1473,14 +1502,17 @@ export default function OrderList({
     // "levering fra" = første VALGBARE leveringsdag hvor gulvet er nået (kundens leveringsdage +
     // transit/pak-dag), ikke gulvet selv — gulvet er hjemkomst-datoen.
     const first = deliveryDays.find(d => fristReachedFor(itemNo, d, selectedMethod)) ?? floor
-    const kort = ['', 'man', 'tir', 'ons', 'tor', 'fre']
-    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][first.getDay()]
-    return `Bestil senest ${kort[cutoff.cutoffWeekday] ?? ''} kl. ${String(cutoff.cutoffHour).padStart(2, '0')}:00 → levering fra ${wd} ${first.getDate()}/${first.getMonth() + 1}`
+    const kort = liste(t, 'ugedageKortFrist')
+    const wd = liste(t, 'ugedageKort')[first.getDay()]
+    return t('fristBlock', {
+      wd: kort[cutoff.cutoffWeekday] ?? '', hh: String(cutoff.cutoffHour).padStart(2, '0'),
+      dag: t('datoKort', { wd, d: first.getDate(), m: first.getMonth() + 1 }),
+    })
   }
 
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
-    const s = getItemAvailStatus(avail, deliveryDate)
+    const s = getItemAvailStatus(avail, deliveryDate, t)
     if (s.blocked && s.blockLabel) s.blockLabel = fristBlockLabel(itemNo, s.blockLabel)
     // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato) OG anvend LAVESTE FÆLLESNÆVNER:
     // den reelle sidste bestillingstid for DENNE vare til den valgte leveringsdag er den TIDLIGSTE af
@@ -1494,8 +1526,8 @@ export default function OrderList({
       // Loft = 0 (udsolgt, ikke dækket) → BLOKÉR feltet, ikke "Maks 0". Bevar en evt. eksisterende
       // blokerings-tekst fra status (fx "Ikke på lager eller i indkøb lige nu"), ellers generisk.
       if (cap <= 0)
-        return { ...s, blocked: true, blockLabel: s.blockLabel || 'Ingen disponibel', disponibeltLabel: 'Ingen', disponibeltColor: 'red' }
-      return { ...s, disponibeltLabel: `Maks ${Math.round(cap * 10) / 10}`, disponibeltColor: 'orange' }
+        return { ...s, blocked: true, blockLabel: s.blockLabel || t('ingenDisponibel'), disponibeltLabel: t('ingen'), disponibeltColor: 'red' }
+      return { ...s, disponibeltLabel: t('maks', { n: Math.round(cap * 10) / 10 }), disponibeltColor: 'orange' }
     }
     // Intet loft = FRI (kan skaffes/ubegrænset frem i tiden). Vis IKKE lager-tallet — det ligner
     // ellers et maks og forvirrer kunden (Claus). Behold "Bestil [dag] inden …"-teksten.
@@ -1537,8 +1569,8 @@ export default function OrderList({
     if (lead > 0) frist = subWorkdays(frist, lead)
     if (frist < today0) frist = today0
     const diff = Math.round((frist.getTime() - today0.getTime()) / 86400000)
-    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][frist.getDay()]
-    return diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${frist.getDate()}/${frist.getMonth() + 1}`
+    const wd = liste(t, 'ugedageKort')[frist.getDay()]
+    return diff <= 0 ? t('iDag') : diff === 1 ? t('iMorgen') : t('datoKort', { wd, d: frist.getDate(), m: frist.getMonth() + 1 })
   }
   // Varens frist som fuld Date (frist-dag kl. Åbn til) — til laveste-fællesnævner-sammenligning med
   // leveringskodens deadline. Null hvis varen ingen Åbn til/auktions-frist har.
@@ -1585,8 +1617,8 @@ export default function OrderList({
       const n = new Date(today0)
       do { n.setDate(n.getDate() + 1) } while (!isWorkday(n))
       const diff = Math.round((n.getTime() - today0.getTime()) / 86400000)
-      const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][n.getDay()]
-      return `${GENSKAF_PREFIX} ${diff === 1 ? 'i morgen' : `${wd} ${n.getDate()}/${n.getMonth() + 1}`}`
+      const wd = liste(t, 'ugedageKort')[n.getDay()]
+      return t('genskafDag', { dag: diff === 1 ? t('iMorgen') : t('datoKort', { wd, d: n.getDate(), m: n.getMonth() + 1 }) })
     }
     if (eff) {
       // Fristen er et GENSKAFFELSES-vindue (fx salater: produktionen laver mere frem til 11:30), ikke
@@ -1597,21 +1629,25 @@ export default function OrderList({
       return harLager ? formatGenskafLabel(eff) : formatFristLabel(eff)
     }
     const dag = getFristDagLabel(itemNo)
-    return dag ? base.replace('Bestil inden', `Bestil ${dag} inden`) : base
+    // Tiden læses ud af base (som kan komme fra søgemodalen), og teksten bygges forfra på kundens sprog.
+    const tid = base.match(/\d\d:\d\d/)?.[0]
+    return dag && tid ? t('bestilDagInden', { dag, tid }) : base
   }
-  // "Bestil [i dag|i morgen|wd d/m] inden HH:MM" fra en fuld Date.
-  const formatFristLabel = (d: Date): string => {
+  // "[i dag|i morgen|wd d/m]" + "HH:MM" fra en fuld Date.
+  const fristDagTid = (d: Date): { dag: string; tid: string } => {
     const today0 = new Date(); today0.setHours(0, 0, 0, 0)
     const d0 = new Date(d); d0.setHours(0, 0, 0, 0)
     const diff = Math.round((d0.getTime() - today0.getTime()) / 86400000)
-    const wd = ['søn', 'man', 'tirs', 'ons', 'tors', 'fre', 'lør'][d0.getDay()]
-    const dag = diff <= 0 ? 'i dag' : diff === 1 ? 'i morgen' : `${wd} ${d0.getDate()}/${d0.getMonth() + 1}`
+    const wd = liste(t, 'ugedageKort')[d0.getDay()]
+    const dag = diff <= 0 ? t('iDag') : diff === 1 ? t('iMorgen') : t('datoKort', { wd, d: d0.getDate(), m: d0.getMonth() + 1 })
     const hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0')
-    return `Bestil ${dag} inden ${hh}:${mm}`
+    return { dag, tid: `${hh}:${mm}` }
   }
-  // "Vi genskaffer flere frem til [i dag|i morgen|wd d/m] kl. HH:MM" — neutral info (se GENSKAF_PREFIX).
-  const formatGenskafLabel = (d: Date): string =>
-    formatFristLabel(d).replace(/^Bestil (.+) inden (\d\d:\d\d)$/, `${GENSKAF_PREFIX} frem til $1 kl. $2`)
+  // "Bestil [i dag|i morgen|wd d/m] inden HH:MM" fra en fuld Date.
+  const formatFristLabel = (d: Date): string => t('bestilDagInden', fristDagTid(d))
+  // "Vi genskaffer flere frem til [i dag|i morgen|wd d/m] kl. HH:MM" — neutral info (starter med
+  // ordbogens genskafPrefix, som OrderRow farver neutralt).
+  const formatGenskafLabel = (d: Date): string => t('genskafFremTil', fristDagTid(d))
   // Beregn ugedag for valgt leveringsdato (mandag=1 ... fredag=5, weekend→0)
   const selectedWeekday = deliveryDate
     ? (deliveryDate.getDay() === 0 ? 7 : deliveryDate.getDay())
@@ -1954,7 +1990,7 @@ export default function OrderList({
       })
       if (!res.ok) {
         const err = await res.json()
-        setError(err.error ?? 'Reservation fejlede')
+        setError(err.error ?? t('reservationFejlede'))
         return
       }
       const data = await res.json()
@@ -1985,7 +2021,7 @@ export default function OrderList({
       setLines(prev => new Map(prev).set(vare.bcItemNumber, { item: fakeItem, quantity: kg, uom: 'KG' }))
       setLineUoms(prev => new Map(prev).set(vare.bcItemNumber, 'KG'))
     } catch {
-      setError('Serverfejl ved reservation')
+      setError(t('serverfejlReservation'))
     } finally {
       setSpecialReserving(null)
     }
@@ -2023,7 +2059,7 @@ export default function OrderList({
       fetch('/api/portal/favorites', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ itemNo: item.number, itemName: item.displayName, isFavorite: newVal }),
+        body:    JSON.stringify({ itemNo: item.number, itemName: daNavn(item), isFavorite: newVal }),
       }).catch(() => {
         setFavSet(prev => {
           const s = new Set(prev)
@@ -2077,7 +2113,7 @@ export default function OrderList({
       const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
       return {
         bcItemNumber: l.item.number,
-        itemName:     l.item.displayName,
+        itemName:     daNavn(l.item),
         quantity:     l.quantity,
         uom:          uomCode,
         unitPrice:    resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUomCode),
@@ -2135,7 +2171,7 @@ export default function OrderList({
             }
             return n
           })
-          const kort = `Der var ikke nok tilbage til den valgte leveringsdato. Vi har sat antallet ned — tjek det og send igen.`
+          const kort = t('ikkeNokTilbage')
           setError(kort)
           setSendFejl({ besked: kort, aendret })
           return
@@ -2144,7 +2180,7 @@ export default function OrderList({
         throw new Error(
           typeof svar?.error === 'string' && svar.error.trim()
             ? svar.error.trim()
-            : (raa.trim() || `Noget gik galt (${res.status}) — prøv igen`),
+            : (raa.trim() || t('nogetGikGalt', { status: res.status })),
         )
       }
       // Serveren afgør om varerne blev lagt på en eksisterende ordre — ikke browseren.
@@ -2174,7 +2210,7 @@ export default function OrderList({
       // vigtigere at sige end selve den tekniske årsag.
       const besked = typeof e?.message === 'string' && e.message.trim()
         ? e.message.trim()
-        : 'Vi kunne ikke få forbindelse til Venmark. Tjek nettet og prøv igen.'
+        : t('ingenForbindelse')
       setError(besked)
       setSendFejl({ besked, aendret: [] })
     } finally {
@@ -2193,7 +2229,9 @@ export default function OrderList({
     return s + resolvePrice(l.item.number, l.quantity, priceTiers, l.item.unitPrice, uomCode, qtyPerUom, baseUomCode) * l.quantity
   }, 0)
 
-  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const fmt = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const linjerTekst = t(totalLines === 1 ? 'linje1' : 'linjeN', { n: totalLines })
+  const varerTekst  = t(totalLines === 1 ? 'vare1' : 'vareN', { n: totalLines })
 
   const promoNos    = new Set(promotions.map(p => p.item.number))
   const stdFavNos   = new Set(stdFavorites.map(f => f.number))
@@ -2228,7 +2266,7 @@ export default function OrderList({
     fetch('/api/portal/favorites', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ itemNo: item.number, itemName: item.displayName, isStandard: next }),
+      body: JSON.stringify({ itemNo: item.number, itemName: daNavn(item), isStandard: next }),
     })
       .then(r => { if (!r.ok) throw new Error() })
       .catch(() => setStdOverrides(prev => new Map(prev).set(item.number, !next)))
@@ -2396,7 +2434,10 @@ export default function OrderList({
   }
 
   // Ugedagsnavn til sektion-header
-  const weekdayName = ['', 'Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'][selectedWeekday] ?? ''
+  const weekdayName = (() => {
+    const n = selectedWeekday ? liste(t, 'ugedageHele')[selectedWeekday % 7] ?? '' : ''
+    return n.charAt(0).toUpperCase() + n.slice(1)
+  })()
 
   /**
    * Katalog-liste med de spærrede varer samlet nederst bag en bjælke.
@@ -2419,7 +2460,7 @@ export default function OrderList({
           <>
             <div className="flex items-center gap-1.5 border-y border-gray-300 bg-gray-200 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-600">
               <X size={10} className="text-gray-500" />
-              Kan ikke bestilles til {deliveryDate ? kortDagTekst(deliveryDate) : 'den valgte dag'}
+              {t('kanIkkeBestillesTil', { dag: deliveryDate ? kortDagTekst(deliveryDate, locale) : t('denValgteDag') })}
               <span className="font-normal normal-case text-gray-500">({spaerrede.length})</span>
             </div>
             <div className="divide-y divide-gray-100 opacity-75">
@@ -2440,27 +2481,26 @@ export default function OrderList({
           {ordreVaek !== null ? (
             <>
               {/* Målordren var slettet/samlet hos Venmark — sig hvor varerne faktisk landede. */}
-              <h2 className="text-xl font-bold text-gray-900">{lagtPaa ? 'Lagt på din bestilling!' : 'Bestilling indsendt!'}</h2>
+              <h2 className="text-xl font-bold text-gray-900">{lagtPaa ? t('lagtPaaBestilling') : t('bestillingIndsendt')}</h2>
               <p className="mt-1 text-sm text-gray-600">
-                Ordren{ordreVaek ? ` #${ordreVaek}` : ''} fandtes ikke længere hos Venmark, så{' '}
+                {t('ordreVaek', { nr: ordreVaek ? ` #${ordreVaek}` : '' })}
                 {lagtPaa
-                  ? <>varerne er lagt på din bestilling <strong>#{lagtPaa.ordreNummer}</strong></>
-                  : <>varerne er sendt som en ny bestilling</>}
-                {' '}til {formatLongDate(deliveryDate)}.
+                  ? <>{t('ordreVaekLagtPaa')}<strong>#{lagtPaa.ordreNummer}</strong>{t('lagtPaaEfter', { dato: langDato(locale, deliveryDate) })}</>
+                  : <>{t('ordreVaekNy', { dato: langDato(locale, deliveryDate) })}</>}
               </p>
             </>
           ) : (
             <>
-              <h2 className="text-xl font-bold text-gray-900">Tilføjet til ordren!</h2>
+              <h2 className="text-xl font-bold text-gray-900">{t('tilfoejetTilOrdren')}</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Varerne er lagt på ordren{addBcOrderNumber ? ` #${addBcOrderNumber}` : ''}.
+                {t('varerneErLagtPaa', { nr: addBcOrderNumber ? ` #${addBcOrderNumber}` : '' })}
               </p>
             </>
           )}
-          <p className="mt-0.5 text-sm text-gray-400">Sender dig tilbage til dine bestillinger…</p>
+          <p className="mt-0.5 text-sm text-gray-400">{t('senderTilbage')}</p>
         </div>
         <a href="/portal/ordrer" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-          Tilbage til mine bestillinger
+          {t('tilbageTilBestillinger')}
         </a>
       </div>
     )
@@ -2475,28 +2515,28 @@ export default function OrderList({
               besked er vigtigere end "indsendt": kunden skal kunne se at hun har ÉN
               levering, ikke to — også hvis hun aldrig nåede at læse banneret. */}
           <h2 className="text-xl font-bold text-gray-900">
-            {lagtPaa ? 'Lagt på din bestilling!' : 'Bestilling indsendt!'}
+            {lagtPaa ? t('lagtPaaBestilling') : t('bestillingIndsendt')}
           </h2>
           {lagtPaa ? (
             <p className="mt-1 text-sm text-gray-600">
-              {lagtPaa.antal} {lagtPaa.antal === 1 ? 'vare er' : 'varer er'} lagt på din bestilling
-              {' '}<strong>#{lagtPaa.ordreNummer}</strong> til {formatLongDate(deliveryDate)}.
-              {lagtPaa.ialt > 0 && <> Ordren har nu {lagtPaa.ialt} {lagtPaa.ialt === 1 ? 'vare' : 'varer'}.</>}
+              {t(lagtPaa.antal === 1 ? 'lagtPaa1' : 'lagtPaaN', { n: lagtPaa.antal })}
+              {' '}<strong>#{lagtPaa.ordreNummer}</strong>{t('lagtPaaEfter', { dato: langDato(locale, deliveryDate) })}
+              {lagtPaa.ialt > 0 && <>{t(lagtPaa.ialt === 1 ? 'ordrenHarNu1' : 'ordrenHarNuN', { n: lagtPaa.ialt })}</>}
             </p>
           ) : (
-            <p className="mt-1 text-sm text-gray-500">Levering: {formatLongDate(deliveryDate)}</p>
+            <p className="mt-1 text-sm text-gray-500">{t('leveringDato', { dato: langDato(locale, deliveryDate) })}</p>
           )}
-          <p className="mt-0.5 text-sm text-gray-400">Vi bekræfter snarest muligt</p>
+          <p className="mt-0.5 text-sm text-gray-400">{t('viBekraefter')}</p>
         </div>
         <div className="flex gap-3 mt-2">
           <a href="/portal" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-            Tilbage til oversigt
+            {t('tilbageOversigt')}
           </a>
           <button
             onClick={() => { setSubmitted(false); setLines(new Map()); setNotes('') }}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            Ny bestilling
+            {t('nyBestilling')}
           </button>
         </div>
       </div>
@@ -2512,13 +2552,13 @@ export default function OrderList({
       {forAeldet && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
           <span>
-            <strong>Siden har ligget åben et stykke tid.</strong> Priser og mængder kan have ændret sig.
+            <strong>{t('sidenAaben')}</strong>{t('prisMaengdeAendret')}
           </span>
           <button
             onClick={() => window.location.reload()}
             className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
           >
-            Hent friske tal
+            {t('hentFriske')}
           </button>
         </div>
       )}
@@ -2527,10 +2567,10 @@ export default function OrderList({
           over hvorfor der allerede ligger noget. */}
       {kurvGenskabt.current && gemtKurvTid && lines.size > 0 && !submitted && (
         <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900 ring-1 ring-blue-200">
-          Din kurv fra {new Intl.DateTimeFormat('da-DK', {
+          {t('kurvFra', { tid: new Intl.DateTimeFormat(locale, {
             timeZone: 'Europe/Copenhagen', day: '2-digit', month: '2-digit',
             hour: '2-digit', minute: '2-digit',
-          }).format(new Date(gemtKurvTid))} er hentet frem. Priser og mængder er dagens.
+          }).format(new Date(gemtKurvTid)) })}
         </div>
       )}
 
@@ -2551,13 +2591,13 @@ export default function OrderList({
               </span>
             )}
           </span>
-          <span className="text-sm font-bold text-gray-900">Kurv</span>
+          <span className="text-sm font-bold text-gray-900">{t('kurv')}</span>
           <span className="text-xs text-gray-400">
-            {totalLines === 0 ? 'Tom' : `${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'}`}
+            {totalLines === 0 ? t('tom') : t(totalLines === 1 ? 'linje1' : 'linjeN', { n: totalLines })}
           </span>
           <span className="ml-auto flex items-center gap-3">
             {totalAmount > 0 && <span className="text-sm font-semibold text-gray-900">{fmt.format(totalAmount)}</span>}
-            {totalLines > 0 && <span className="text-xs font-semibold text-blue-600">Gennemse →</span>}
+            {totalLines > 0 && <span className="text-xs font-semibold text-blue-600">{t('gennemse')}</span>}
           </span>
         </button>
       </div>
@@ -2571,7 +2611,7 @@ export default function OrderList({
       {/* Leveringsmetode-vælger — kun synlige metoder (skjult i add-mode: ordren har allerede metode) */}
       {!addMode && shipmentMethods.filter(m => m.portalVisible).length > 1 && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Leveringsform</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{t('leveringsform')}</p>
           <div className="flex flex-wrap gap-2">
             {shipmentMethods.filter(m => m.portalVisible).map(m => (
               <button
@@ -2593,8 +2633,8 @@ export default function OrderList({
       {/* Leveringsdato — vælgeren i bestilling; i add-mode er datoen låst til ordrens */}
       {addMode ? (
         <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Levering</p>
-          <div className="font-medium text-gray-900">{deliveryDate ? formatLongDate(deliveryDate) : ''}</div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">{t('levering')}</p>
+          <div className="font-medium text-gray-900">{deliveryDate ? langDato(locale, deliveryDate) : ''}</div>
         </div>
       ) : (
         <DeliveryPicker deliveryDays={deliveryDays} selectedDay={selectedDay} onSelect={setSelectedDay} method={selectedMethod} calendarDays={calendarDays} aabneOrdrer={aabneOrdrer} />
@@ -2607,11 +2647,11 @@ export default function OrderList({
         <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-[13px] leading-snug text-blue-900">
           <ShoppingCart size={16} className="mt-0.5 shrink-0" />
           <span>
-            Du har allerede en bestilling til denne dag — <strong>#{dagensOrdre.bcOrderNumber}</strong>
-            {dagensOrdre.antalLinjer > 0 && <> med {dagensOrdre.antalLinjer} {dagensOrdre.antalLinjer === 1 ? 'vare' : 'varer'}</>}
-            {!dagensOrdre.fraPortal && <> (bestilt pr. telefon/mail)</>}.
-            {' '}Det du lægger i kurven her, bliver <strong>lagt til den ordre</strong> — du får ikke to leveringer.
-            {' '}<a href="/portal/ordrer" className="font-semibold underline">Se ordren</a>
+            {t('harOrdre1')}<strong>#{dagensOrdre.bcOrderNumber}</strong>
+            {dagensOrdre.antalLinjer > 0 && <>{t(dagensOrdre.antalLinjer === 1 ? 'medVare1' : 'medVareN', { n: dagensOrdre.antalLinjer })}</>}
+            {!dagensOrdre.fraPortal && <>{t('telefonMail')}</>}.
+            {t('harOrdre2')}<strong>{t('harOrdre3')}</strong>{t('harOrdre4')}
+            {' '}<a href="/portal/ordrer" className="font-semibold underline">{t('seOrdren')}</a>
           </span>
         </div>
       )}
@@ -2622,8 +2662,8 @@ export default function OrderList({
         <div className="mt-2 flex items-start gap-2 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-[13px] leading-snug text-gray-700">
           <Package size={16} className="mt-0.5 shrink-0" />
           <span>
-            Din bestilling til denne dag (<strong>#{dagensOrdre.bcOrderNumber}</strong>) er allerede pakket.
-            {' '}Det du bestiller nu, bliver derfor en <strong>ny ordre</strong>.
+            {t('pakket1')}<strong>#{dagensOrdre.bcOrderNumber}</strong>{t('pakket2')}
+            {t('pakket3')}<strong>{t('pakket4')}</strong>.
           </span>
         </div>
       )}
@@ -2634,8 +2674,8 @@ export default function OrderList({
         <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] leading-snug text-amber-900">
           <span className="text-base leading-none">⚠️</span>
           <span>
-            <strong>OBS:</strong> Priser fra i morgen og frem kan blive ændret — <strong>især auktionsfisk</strong>.
-            Skriv evt. din maks. pris i bemærkning.
+            <strong>{t('obs')}</strong>{t('obs1')}<strong>{t('obs2')}</strong>.
+            {' '}{t('maksPrisBemaerkning')}
           </span>
         </div>
       )}
@@ -2645,16 +2685,16 @@ export default function OrderList({
 
         {/* Legende */}
         <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] text-gray-400">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400 inline-block" />Rigeligt</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-400 inline-block" />OK</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />Knaphed</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" />Intet</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400 inline-block" />{t('lagerRigeligt')}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-400 inline-block" />{t('legendOk')}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400 inline-block" />{t('lagerKnaphed')}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" />{t('legendIntet')}</span>
           {coverageLoading && (
             <span className="flex items-center gap-1 text-blue-500 font-medium">
-              <span className="h-2 w-2 rounded-full bg-blue-400 inline-block animate-pulse" />Genberegner disponibel…
+              <span className="h-2 w-2 rounded-full bg-blue-400 inline-block animate-pulse" />{t('genberegner')}
             </span>
           )}
-          <span className="hidden sm:flex items-center gap-1 ml-auto"><TrendingDown size={10} />= lavere pris ved større mængde</span>
+          <span className="hidden sm:flex items-center gap-1 ml-auto"><TrendingDown size={10} />{t('lavereVed')}</span>
 
           {/* Søgning skal altid være ved hånden — ikke gemt bag en knap længere nede.
               Feltet er kun indgangen: første tegn åbner søgemodalen med teksten med. */}
@@ -2668,7 +2708,7 @@ export default function OrderList({
                 if (v.trim().length >= 1) setShowSearch(true)
               }}
               onKeyDown={e => { if (e.key === 'Enter' && quickSearch.trim()) setShowSearch(true) }}
-              placeholder="Søg i alle varer…"
+              placeholder={t('soegPlaceholder')}
               className="w-32 bg-transparent text-[11px] text-gray-700 outline-none placeholder:text-gray-400 sm:w-44"
             />
           </span>
@@ -2684,7 +2724,7 @@ export default function OrderList({
                 !isCatalogMode ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Mine varer
+              {t('mineVarer')}
             </button>
             <button
               onClick={() => setCatalogPath([ALLE_VARER])}
@@ -2692,7 +2732,7 @@ export default function OrderList({
                 activeCategory === ALLE_VARER ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Alle varer
+              {t('alleVarer')}
             </button>
             {l0Cats.map(cat => (
               <button
@@ -2759,13 +2799,13 @@ export default function OrderList({
               onClick={() => setShowSpecial(v => !v)}
               className="flex w-full items-center justify-between bg-teal-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-teal-700 border-b border-teal-100"
             >
-              <span className="flex items-center gap-1.5"><Fish size={12} /> Dagens specialvarer ({specialVarer.length})</span>
+              <span className="flex items-center gap-1.5"><Fish size={12} /> {t('specialvarer', { n: specialVarer.length })}</span>
               {showSpecial ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             {showSpecial && (
               <div className="divide-y divide-teal-50">
                 {specialVarer.map(vare => {
-                  const fmt2 = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+                  const fmt2 = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
                   const remaining = vare.availableKg - vare.reservedKg
                   const myRes = specialReservations.get(vare.id)
                   const isReserving = specialReserving === vare.id
@@ -2794,7 +2834,7 @@ export default function OrderList({
                           )}
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
                             <span className="rounded-full bg-teal-100 px-2 py-0.5 font-medium text-teal-800">
-                              {remaining.toFixed(1)} kg tilbage
+                              {t('kgTilbage', { kg: remaining.toFixed(1) })}
                             </span>
                             {vare.pricePerKg && (
                               <span className="font-semibold text-gray-700">{fmt2.format(vare.pricePerKg)}/kg</span>
@@ -2803,13 +2843,13 @@ export default function OrderList({
                           {myRes ? (
                             <div className="mt-2 flex items-center gap-2">
                               <span className="rounded-full bg-teal-600 text-white px-3 py-1 text-xs font-semibold">
-                                Reserveret: {myRes.kg} kg
+                                {t('reserveret', { kg: myRes.kg })}
                               </span>
                               <button
                                 onClick={() => handleCancelReservation(vare)}
                                 className="flex items-center gap-1 rounded-full border border-red-200 px-2 py-0.5 text-xs text-red-500 hover:bg-red-50"
                               >
-                                <X size={10} /> Fortryd
+                                <X size={10} /> {t('fortryd')}
                               </button>
                             </div>
                           ) : remaining > 0 ? (
@@ -2819,11 +2859,11 @@ export default function OrderList({
                                 disabled={isReserving}
                                 className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50 transition"
                               >
-                                {isReserving ? '…' : `Reservér hele partiet (${remaining.toFixed(1)} kg)`}
+                                {isReserving ? '…' : t('reserverHele', { kg: remaining.toFixed(1) })}
                               </button>
                             </div>
                           ) : (
-                            <p className="mt-2 text-xs text-red-500 font-medium">Udsolgt</p>
+                            <p className="mt-2 text-xs text-red-500 font-medium">{t('udsolgt')}</p>
                           )}
                         </div>
                       </div>
@@ -2842,7 +2882,7 @@ export default function OrderList({
               onClick={() => setShowPromos(v => !v)}
               className="flex w-full items-center justify-between bg-orange-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-orange-700 border-b border-orange-100"
             >
-              <span className="flex items-center gap-1.5"><Flame size={12} /> Dagens anbefalinger ({promotions.length})</span>
+              <span className="flex items-center gap-1.5"><Flame size={12} /> {t('dagensAnbefalinger', { n: promotions.length })}</span>
               {showPromos ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             {showPromos && (
@@ -2877,7 +2917,7 @@ export default function OrderList({
               className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition"
             >
               <Search size={15} />
-              Søg og tilføj vare
+              {t('soegOgTilfoej')}
             </button>
           </div>
         )}
@@ -2886,7 +2926,7 @@ export default function OrderList({
         {!isCatalogMode && stdFavSection.length > 0 && (
           <>
             <div className="px-3 py-1.5 bg-amber-100 border-y-2 border-amber-300 text-xs font-bold uppercase tracking-wide text-amber-900 flex items-center gap-1.5">
-              <span className="text-base leading-none">✪</span> STD — varer du altid skal have
+              <span className="text-base leading-none">✪</span> {t('stdSektion')}
             </div>
             <div className="divide-y divide-amber-100 bg-amber-50/40">
               {stdFavSection.map((item) => (
@@ -2917,7 +2957,7 @@ export default function OrderList({
         {!isCatalogMode && customerFavSection.length > 0 && (
           <>
             <div className="px-3 py-1.5 bg-rose-100 border-y-2 border-rose-300 text-xs font-bold uppercase tracking-wide text-rose-900 flex items-center gap-1.5">
-              <Heart size={13} className="text-rose-600 fill-rose-600" /> Dine favoritter
+              <Heart size={13} className="text-rose-600 fill-rose-600" /> {t('dineFavoritter')}
             </div>
             <div className="divide-y divide-blue-200">
               {customerFavSection.map((item) => (
@@ -2948,7 +2988,7 @@ export default function OrderList({
         {!isCatalogMode && venmarkSection.length > 0 && (
           <>
             <div className="px-3 py-1 bg-blue-50 border-y border-blue-100 text-[10px] font-semibold uppercase tracking-wide text-blue-700 flex items-center gap-1">
-              <span className="text-[11px]">⭐</span> Venmark anbefaler
+              <span className="text-[11px]">⭐</span> {t('venmarkAnbefaler')}
             </div>
             <div className="divide-y divide-blue-200">
               {venmarkSection.map(({ item, note }) => (
@@ -2983,7 +3023,7 @@ export default function OrderList({
             >
               <span className="flex items-center gap-1.5">
                 <RefreshCw size={12} />
-                Faste ordrer — {weekdayName} ({standingOrders.length})
+                {t('fasteOrdrer', { dag: weekdayName, n: standingOrders.length })}
               </span>
               {showStanding ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
@@ -3032,9 +3072,9 @@ export default function OrderList({
                   : i === 1
                   ? findCatNode(l1Node?.children ?? [], code)
                   : findCatNode(l2Node?.children ?? [], code)
-                return <span key={code}>{i > 0 && <span className="mx-1 opacity-50">›</span>}{code === ALLE_VARER ? 'Alle varer' : (node?.displayName ?? code)}</span>
+                return <span key={code}>{i > 0 && <span className="mx-1 opacity-50">›</span>}{code === ALLE_VARER ? t('alleVarer') : (node?.displayName ?? code)}</span>
               })}
-              {activeCategory !== ALLE_VARER && <span className="opacity-50 ml-1">— alle varer</span>}
+              {activeCategory !== ALLE_VARER && <span className="opacity-50 ml-1">{t('alleVarerSuffix')}</span>}
             </div>
 
             {/* Grupperet: én sektion pr. kategori, næste side hentes ved scroll / "Vis flere" */}
@@ -3050,26 +3090,26 @@ export default function OrderList({
                 ))}
                 <div ref={catSentinel} />
                 {catGroupLoading && (
-                  <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
+                  <div className="px-4 py-6 text-center text-sm text-gray-400">{t('henterVarer')}</div>
                 )}
                 {!catGroupLoading && catNext < catQueue.length && (
                   <div className="px-4 py-4 text-center">
                     <button onClick={() => loadMoreCats()} className="rounded-full bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">
-                      Vis flere varer
+                      {t('visFlere')}
                     </button>
                   </div>
                 )}
                 {!catGroupLoading && catQueue.length > 0 && catNext >= catQueue.length && catGroups.length === 0 && (
-                  <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen varer i denne kategori</div>
+                  <div className="px-4 py-6 text-center text-sm text-gray-400">{t('ingenIKategori')}</div>
                 )}
               </>
             )}
 
             {!groupedMode && categoryLoading && (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Henter varer…</div>
+              <div className="px-4 py-6 text-center text-sm text-gray-400">{t('henterVarer')}</div>
             )}
             {!groupedMode && !categoryLoading && categoryItems.length === 0 && (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Ingen varer i denne kategori</div>
+              <div className="px-4 py-6 text-center text-sm text-gray-400">{t('ingenIKategori')}</div>
             )}
             {!groupedMode && !categoryLoading && categoryItems.length > 0 &&
               renderKatalogListe(categoryItems, 'cat')}
@@ -3080,7 +3120,7 @@ export default function OrderList({
         {searchedLines.length > 0 && (
           <>
             <div className="px-3 py-1 bg-gray-50 border-y border-gray-100 text-[10px] font-semibold uppercase tracking-wide text-gray-400 flex items-center gap-1">
-              <Search size={10} /> Tilføjede varer
+              <Search size={10} /> {t('tilfoejedeVarer')}
             </div>
             <div className="divide-y divide-blue-200">
               {searchedLines.map(({ item, quantity }) => (
@@ -3104,7 +3144,7 @@ export default function OrderList({
 
         {!isCatalogMode && specialVarer.length === 0 && promotions.length === 0 && favorites.length === 0 && venmarkItems.length === 0 && standingOrders.length === 0 && searchedLines.length === 0 && (
           <div className="px-4 py-10 text-center text-sm text-gray-400">
-            Ingen favoritter endnu — brug søgning nedenfor
+            {t('ingenFavoritter')}
           </div>
         )}
 
@@ -3117,9 +3157,9 @@ export default function OrderList({
           <>
             <div className="px-3 py-2 bg-gray-200 border-y-2 border-gray-300 text-xs font-bold uppercase tracking-wide text-gray-700 flex items-center gap-1.5">
               <X size={13} className="text-gray-500" />
-              Kan ikke bestilles til {deliveryDate ? formatLongDate(deliveryDate) : 'den valgte dag'}
+              {t('kanIkkeBestillesTil', { dag: deliveryDate ? langDato(locale, deliveryDate) : t('denValgteDag') })}
               <span className="ml-1 font-normal normal-case text-gray-500">
-                ({utilgaengeligeVarer.length} {utilgaengeligeVarer.length === 1 ? 'vare' : 'varer'})
+                ({t(utilgaengeligeVarer.length === 1 ? 'vare1' : 'vareN', { n: utilgaengeligeVarer.length })})
               </span>
             </div>
             <div className="divide-y divide-gray-100 opacity-75">
@@ -3152,10 +3192,10 @@ export default function OrderList({
       {/* Gennemse-knap */}
       {!showReview && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
-          {totalLines === 0 && <p className="mb-3 text-sm text-gray-400">Ingen varer valgt endnu</p>}
+          {totalLines === 0 && <p className="mb-3 text-sm text-gray-400">{t('ingenVarerValgt')}</p>}
           {totalAmount > 0 && (
             <div className="mb-3 flex justify-between text-sm text-gray-600">
-              <span>Ca. beløb</span>
+              <span>{t('caBeloeb')}</span>
               <span className="font-semibold">{fmt.format(totalAmount)}</span>
             </div>
           )}
@@ -3164,11 +3204,11 @@ export default function OrderList({
             disabled={totalLines === 0 || pastDeadline || !deliveryDate}
             className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
           >
-            {pastDeadline ? 'Deadline passeret for denne dag'
-              : totalLines === 0 ? 'Tilføj varer'
-              : !deliveryDate ? 'Vælg en leveringsdato'
-              : addMode ? `Gennemse og tilføj (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`
-              : `Gennemse og send (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+            {pastDeadline ? t('deadlinePasseretDag')
+              : totalLines === 0 ? t('tilfoejVarer')
+              : !deliveryDate ? t('vaelgEnLeveringsdato')
+              : addMode ? t('gennemseTilfoej', { linjer: linjerTekst })
+              : t('gennemseSend', { linjer: linjerTekst })}
           </button>
         </div>
       )}
@@ -3179,14 +3219,14 @@ export default function OrderList({
           {/* Header */}
           <div className="bg-blue-600 px-4 py-3 flex items-center justify-between">
             <div>
-              <h2 className="flex items-center gap-2 text-base font-bold text-white"><ShoppingCart size={18} />Kurv</h2>
-              <p className="text-xs text-blue-200">{deliveryDate ? formatLongDate(deliveryDate) : ''}</p>
+              <h2 className="flex items-center gap-2 text-base font-bold text-white"><ShoppingCart size={18} />{t('kurv')}</h2>
+              <p className="text-xs text-blue-200">{deliveryDate ? langDato(locale, deliveryDate) : ''}</p>
             </div>
             <button
               onClick={() => { setShowReview(false); setError('') }}
               className="rounded-lg border border-blue-400 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
             >
-              ← Tilbage (tilføj mere)
+              {t('tilbageTilfoejMere')}
             </button>
           </div>
 
@@ -3216,7 +3256,7 @@ export default function OrderList({
                     <button
                       onClick={() => setQty(l.item, Math.max(0, l.quantity - 1))}
                       className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
-                      aria-label="Færre"
+                      aria-label={t('faerre')}
                     ><Minus size={12} /></button>
                     <input
                       type="number" min={0} step="any"
@@ -3227,7 +3267,7 @@ export default function OrderList({
                     <button
                       onClick={() => setQty(l.item, l.quantity + 1)}
                       className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 active:scale-95 transition"
-                      aria-label="Flere"
+                      aria-label={t('flere')}
                     ><Plus size={12} /></button>
                     <span className="w-11 text-[11px] text-gray-400 truncate">{uomCode}</span>
                   </div>
@@ -3237,8 +3277,8 @@ export default function OrderList({
                   {/* Slet varen */}
                   <button
                     onClick={() => setQty(l.item, 0)}
-                    title="Fjern varen"
-                    aria-label="Fjern varen"
+                    title={t('fjernVaren')}
+                    aria-label={t('fjernVaren')}
                     className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-red-50 hover:text-red-600 active:scale-95 transition"
                   ><X size={14} /></button>
                 </div>
@@ -3249,7 +3289,7 @@ export default function OrderList({
           {/* Total */}
           {totalAmount > 0 && (
             <div className="flex justify-between px-4 py-2 bg-blue-50 border-t border-blue-200 text-sm font-semibold text-blue-800">
-              <span>Ca. total</span>
+              <span>{t('caTotal')}</span>
               <span>{fmt.format(totalAmount)}</span>
             </div>
           )}
@@ -3260,12 +3300,12 @@ export default function OrderList({
             {/* Besked til Venmark */}
             <div>
               <label className="mb-0.5 block text-sm font-semibold text-blue-700">
-                Besked til Venmark <span className="font-normal text-blue-400">(valgfri)</span>
+                {t('beskedTilVenmark')} <span className="font-normal text-blue-400">{t('valgfri')}</span>
               </label>
-              <p className="mb-1.5 text-xs text-blue-400">Vi læser straks i åbningstiden</p>
+              <p className="mb-1.5 text-xs text-blue-400">{t('viLaeser')}</p>
               <textarea
                 rows={3} value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Særlige ønsker, leveringstidspunkt, spørgsmål m.m."
+                placeholder={t('beskedPlaceholder')}
                 className="w-full resize-none rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
             </div>
@@ -3273,13 +3313,13 @@ export default function OrderList({
             {/* PO-nummer (udgår i add-mode — ordren har det allerede) */}
             {!addMode && <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                PO-nummer / Indkøbsordre{requirePoNumber ? ' *' : ' (valgfri)'}
+                {t('poNummer')}{requirePoNumber ? ' *' : ` ${t('valgfri')}`}
               </label>
               <input
                 type="text"
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
-                placeholder={requirePoNumber ? 'Påkrævet — angiv PO-nummer' : 'f.eks. PO-2024-1234'}
+                placeholder={requirePoNumber ? t('poPaakraevet') : t('poEksempel')}
                 className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${
                   requirePoNumber && !poNumber.trim()
                     ? 'border-orange-400 bg-orange-50 focus:border-orange-500'
@@ -3287,22 +3327,22 @@ export default function OrderList({
                 }`}
               />
               {requirePoNumber && !poNumber.trim() && (
-                <p className="mt-1 text-xs text-orange-600">⚠️ Din konto kræver et PO-nummer.</p>
+                <p className="mt-1 text-xs text-orange-600">{t('poKraeves')}</p>
               )}
             </div>}
 
             {/* Chauffør-besked (udgår i add-mode) */}
             {!addMode && <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Besked til chauffør <span className="font-normal normal-case text-gray-400">(valgfri)</span>
+                {t('beskedChauffoer')} <span className="font-normal normal-case text-gray-400">{t('valgfri')}</span>
               </label>
               <textarea
                 rows={2} value={driverNote} onChange={e => setDriverNote(e.target.value)}
-                placeholder="f.eks. Aflever til Jens i dag, ikke i køleskuret"
+                placeholder={t('chauffoerPlaceholder')}
                 className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
               />
               {driverNote.trim() && (
-                <p className="mt-1 text-[11px] text-blue-500">🔔 Chaufføren bekræfter denne besked ved levering</p>
+                <p className="mt-1 text-[11px] text-blue-500">{t('chauffoerBekraefter')}</p>
               )}
             </div>}
 
@@ -3318,15 +3358,15 @@ export default function OrderList({
               disabled={submitting || pastDeadline || coverageLoading}
               className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-40"
             >
-              {submitting ? (addMode || laeggerPaa ? 'Tilføjer…' : 'Sender…')
-                : coverageLoading ? 'Tjekker disponibel…'
-                : pastDeadline ? 'Deadline passeret'
-                : addMode ? `Tilføj ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} til ordren`
+              {submitting ? (addMode || laeggerPaa ? t('tilfoejer') : t('sender'))
+                : coverageLoading ? t('tjekkerDisp')
+                : pastDeadline ? t('deadlinePasseret')
+                : addMode ? t('tilfoejTilOrdren', { varer: varerTekst })
                 // Teksten skal stå dér hvor man trykker. Et banner øverst er scrollet
                 // forbi, og så tror man man opretter en ny ordre.
                 : laeggerPaa && dagensOrdre
-                  ? `Læg ${totalLines} ${totalLines === 1 ? 'vare' : 'varer'} på ordre #${dagensOrdre.bcOrderNumber}`
-                  : `Send bestilling (${totalLines} ${totalLines === 1 ? 'linje' : 'linjer'})`}
+                  ? t('laegPaaOrdre', { varer: varerTekst, nr: dagensOrdre.bcOrderNumber })
+                  : t('sendBestilling', { linjer: linjerTekst })}
             </button>
           </div>
         </div>
@@ -3367,7 +3407,7 @@ export default function OrderList({
           <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center gap-3 bg-red-600 px-5 py-4 text-white">
               <AlertTriangle size={26} className="shrink-0" />
-              <h3 className="text-lg font-bold leading-tight">Bestillingen blev ikke sendt</h3>
+              <h3 className="text-lg font-bold leading-tight">{t('ikkeSendt')}</h3>
             </div>
 
             <div className="px-5 py-4">
@@ -3381,7 +3421,7 @@ export default function OrderList({
                       <span className="whitespace-nowrap font-semibold">
                         <span className="text-gray-400 line-through">{c.from}</span>
                         {' → '}
-                        <span className="text-red-600">{c.to === 0 ? 'fjernet' : c.to}</span>
+                        <span className="text-red-600">{c.to === 0 ? t('fjernet') : c.to}</span>
                       </span>
                     </li>
                   ))}
@@ -3389,7 +3429,7 @@ export default function OrderList({
               )}
 
               <p className="mt-3 text-sm text-gray-500">
-                Din kurv står som den var — der er ikke gået noget tabt.
+                {t('kurvUroert')}
               </p>
             </div>
 
@@ -3398,7 +3438,7 @@ export default function OrderList({
                 onClick={() => setSendFejl(null)}
                 className="w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white transition hover:bg-blue-700 active:scale-[0.98]"
               >
-                Tilbage til bestillingen
+                {t('tilbageTilBestillingen')}
               </button>
             </div>
           </div>
@@ -3408,8 +3448,8 @@ export default function OrderList({
       {dateChangeNotice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDateChangeNotice(null)}>
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="mb-1 text-base font-bold text-gray-900">Antal justeret</h3>
-            <p className="mb-3 text-sm text-gray-600">Efter den nye leveringsdato kan følgende varer ikke bestilles i samme antal. Antallet er reduceret til det mulige maks:</p>
+            <h3 className="mb-1 text-base font-bold text-gray-900">{t('antalJusteret')}</h3>
+            <p className="mb-3 text-sm text-gray-600">{t('antalJusteretTekst')}</p>
             <ul className="mb-4 space-y-1 text-sm">
               {dateChangeNotice.map((c, i) => (
                 <li key={i} className="flex justify-between gap-3">
@@ -3417,7 +3457,7 @@ export default function OrderList({
                   <span className="whitespace-nowrap font-semibold">
                     <span className="text-gray-400 line-through">{c.from}</span>
                     {' → '}
-                    <span className="text-red-600">{c.to === 0 ? 'fjernet' : c.to}</span>
+                    <span className="text-red-600">{c.to === 0 ? t('fjernet') : c.to}</span>
                   </span>
                 </li>
               ))}
@@ -3426,7 +3466,7 @@ export default function OrderList({
               onClick={() => setDateChangeNotice(null)}
               className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 active:scale-[0.98]"
             >
-              OK
+              {t('ok')}
             </button>
           </div>
         </div>

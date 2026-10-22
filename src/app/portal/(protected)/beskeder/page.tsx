@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Send, MessageSquare } from 'lucide-react'
+import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
+import { beskederDict } from '@/lib/i18n/portal/dict/beskeder'
 
 interface Msg {
   id: string
@@ -13,6 +15,8 @@ interface Msg {
 }
 
 export default function BeskederPage() {
+  const t = useT(beskederDict)
+  const locale = useLocale()
   const [messages, setMessages] = useState<Msg[]>([])
   const [loading,  setLoading]  = useState(true)
   const [body,     setBody]     = useState('')
@@ -46,18 +50,18 @@ export default function BeskederPage() {
       <div className="mb-4 flex items-center gap-3">
         <MessageSquare size={20} className="text-blue-600" />
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Beskeder</h1>
-          <p className="text-xs text-gray-400">Direkte kontakt med Venmark — beskeder gemmes i 30 dage</p>
+          <h1 className="text-xl font-bold text-gray-900">{t('titel')}</h1>
+          <p className="text-xs text-gray-400">{t('undertitel')}</p>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto rounded-xl bg-white ring-1 ring-gray-200 p-4 space-y-3">
         {loading ? (
-          <div className="flex h-full items-center justify-center text-sm text-gray-400">Henter…</div>
+          <div className="flex h-full items-center justify-center text-sm text-gray-400">{t('henter')}</div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-gray-400">
             <MessageSquare size={32} className="text-gray-200" />
-            <p>Ingen beskeder endnu.<br />Send en besked nedenfor.</p>
+            <p>{t('ingen1')}<br />{t('ingen2')}</p>
           </div>
         ) : messages.map(m => (
           <div key={m.id} className={`flex ${m.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
@@ -71,9 +75,9 @@ export default function BeskederPage() {
               )}
               <p className="whitespace-pre-wrap">{m.body}</p>
               <p className={`mt-1 text-xs ${m.sender === 'customer' ? 'text-blue-200' : 'text-gray-400'}`}>
-                {new Date(m.createdAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                {new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                 {' · '}
-                {new Date(m.createdAt).toLocaleDateString('da-DK', { day: 'numeric', month: 'short' })}
+                {new Date(m.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
               </p>
             </div>
           </div>
@@ -86,7 +90,7 @@ export default function BeskederPage() {
           value={body}
           onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder="Skriv en besked… (Enter for at sende)"
+          placeholder={t('placeholder')}
           rows={2}
           className="flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
         />
@@ -96,7 +100,7 @@ export default function BeskederPage() {
           className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
         >
           <Send size={15} />
-          Send
+          {t('send')}
         </button>
       </div>
     </div>

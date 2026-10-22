@@ -12,6 +12,9 @@ import {
 } from '@/lib/businesscentral'
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import { prisma } from '@/lib/prisma'
+import { getPortalLang, getT } from '@/lib/i18n/portal/server'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { bestilApiDict } from '@/lib/i18n/portal/dict/bestil-api'
 
 function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): number | null {
   const applicable = prices.filter(
@@ -28,7 +31,9 @@ function startPrice(itemNo: string, prices: BCPortalPrice[], today: string): num
 // GET /api/portal/category-items?category=FERSK
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  const lang = await getPortalLang()
+  const t = await getT(bestilApiDict, lang)
+  if (!session) return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
 
   const customerNo = (session?.user as any)?.bcCustomerNumber  as string ?? ''
   const priceGrp   = (session?.user as any)?.bcPriceGroup      as string ?? ''
@@ -39,7 +44,7 @@ export async function GET(req: NextRequest) {
   // Loft på 10 pr. kald, så et kald ikke vokser sig ubegrænset stort.
   const categories = (req.nextUrl.searchParams.get('category') ?? '')
     .split(',').map(s => s.trim()).filter(Boolean).slice(0, 10)
-  if (categories.length === 0) return NextResponse.json({ error: 'category mangler' }, { status: 400 })
+  if (categories.length === 0) return NextResponse.json({ error: t('categoryMangler') }, { status: 400 })
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -59,7 +64,10 @@ export async function GET(req: NextRequest) {
 
   if (filteredNos.length === 0) return NextResponse.json({ items: [], priceTiers: [] })
 
-  const bcItems = await getItemsByNumbers(filteredNos)
+  // Varenavne på kundens sprog; det danske navn i navnDa (sendes tilbage ved bestilling/favorit).
+  const bcItems = await oversaetVarenavne(
+    (await getItemsByNumbers(filteredNos)).map(i => ({ ...i, navnDa: i.displayName })), lang,
+  )
 
   if (bcItems.length === 0) return NextResponse.json({ items: [], priceTiers: [] })
 

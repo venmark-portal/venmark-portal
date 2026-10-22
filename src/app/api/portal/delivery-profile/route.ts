@@ -3,11 +3,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
+import { getT } from '@/lib/i18n/portal/server'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 // ── GET: hent eksisterende leveringsprofil ────────────────────────────────────
 export async function GET() {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: (await getT(faellesDict))('ikkeLoggetInd') }, { status: 401 })
   const customerId = (session.user as any)?.id as string
 
   const profiles = await prisma.$queryRaw<any[]>`
@@ -26,7 +28,7 @@ export async function GET() {
 // ── PUT: gem/opdater leveringsprofil ──────────────────────────────────────────
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: (await getT(faellesDict))('ikkeLoggetInd') }, { status: 401 })
   const customerId = (session.user as any)?.id as string
 
   const { doorCode, keyboxCode, alarmCode, deliveryDescription, driverMessage, photos } =

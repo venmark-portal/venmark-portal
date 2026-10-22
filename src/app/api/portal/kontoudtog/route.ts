@@ -6,12 +6,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getPostedInvoices } from '@/lib/businesscentral'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
 
 export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
+  const lang   = await getPortalLang()
+  const t      = makeT(fakturaDict, lang)
+  const locale = localeOf(lang)
   const session = await getServerSession(authOptions)
-  if (!session?.user) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session?.user) return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
 
   const customerNo   = (session.user as any)?.bcCustomerNumber as string ?? ''
   const customerName = (session.user as any)?.name as string ?? customerNo
@@ -31,26 +37,26 @@ export async function GET(req: NextRequest) {
   const outstanding = invoices.reduce((s, inv) => s + inv.remainingAmount, 0)
 
   // ── Byg CSV (semikolon-separeret for dansk Excel) ────────────────────────
-  const fmt = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const rows: string[][] = []
 
   // Titel
-  rows.push([`Kontoudtog — ${customerName} (${customerNo})`])
-  rows.push([`Periode: ${from} til ${to}`])
-  rows.push([`Genereret: ${new Date().toLocaleDateString('da-DK')}`])
+  rows.push([t('kontoudtogTitel', { navn: customerName, nr: customerNo })])
+  rows.push([t('periode', { fra: from, til: to })])
+  rows.push([t('genereret', { dato: new Date().toLocaleDateString(locale) })])
   rows.push([])
 
   // Header
   rows.push([
-    'Fakturanr.',
-    'Fakturadato',
-    'Forfaldsdato',
-    'Betalingsbetingelse',
-    'Ekskl. moms',
-    'Inkl. moms',
-    'Udestående',
-    'Status',
+    t('fakturanr'),
+    t('fakturadato'),
+    t('forfaldsdato'),
+    t('betalingsbetingelse'),
+    t('eksklMomsKol'),
+    t('inklMomsKol'),
+    t('udestaaende'),
+    t('status'),
   ])
 
   // Data-rækker
@@ -58,10 +64,10 @@ export async function GET(req: NextRequest) {
     const dueDate = inv.dueDate ?? ''
     const isOverdue = dueDate && !inv.closed && dueDate < new Date().toISOString().split('T')[0]
     const status = inv.closed || inv.remainingAmount === 0
-      ? 'Betalt'
+      ? t('betalt')
       : isOverdue
-        ? 'Forfaldent'
-        : 'Udestående'
+        ? t('forfaldent')
+        : t('udestaaende')
 
     rows.push([
       inv.number,
@@ -77,7 +83,7 @@ export async function GET(req: NextRequest) {
 
   // Totallinje
   rows.push([])
-  rows.push(['', '', '', 'TOTAL', '', fmt.format(totalAmount), fmt.format(outstanding), ''])
+  rows.push(['', '', '', t('total'), '', fmt.format(totalAmount), fmt.format(outstanding), ''])
 
   // Konverter til CSV med semikolon (dansk Excel-standard)
   const csv = rows
@@ -97,7 +103,8 @@ export async function GET(req: NextRequest) {
   const BOM  = '\uFEFF'
   const body = BOM + csv
 
-  const filename = `Kontoudtog-${customerNo}-${from}-${to}.csv`
+  // Filnavnet i headeren skal være ASCII — de oversatte præfikser er det (Kontoudtog/Statement/Kontoauszug).
+  const filename = `${t('kontoudtogFil')}-${customerNo}-${from}-${to}.csv`
 
   return new NextResponse(body, {
     status: 200,

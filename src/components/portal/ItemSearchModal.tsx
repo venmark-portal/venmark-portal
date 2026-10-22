@@ -3,6 +3,12 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus, ChevronLeft, ChevronRight, Check, Clock } from 'lucide-react'
 import type { BCItem, BCItemCategory, BCItemAvailability } from '@/lib/businesscentral'
+import { useT, useLocale, useLang } from '@/lib/i18n/portal/LangProvider'
+import { makeT, type TFunc } from '@/lib/i18n/portal/lang'
+import { ordrerSoegDict } from '@/lib/i18n/portal/dict/ordrer-soeg'
+import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
+
+type SoegT = TFunc<keyof typeof ordrerSoegDict.da>
 
 type EnrichedItem = BCItem & { unitPrice: number }
 
@@ -18,11 +24,10 @@ function parseAabnTil(s: string): { hh: number; mm: number } | null {
   return (hh === 0 && mm === 0) ? null : { hh, mm }
 }
 
-const DA_WEEKDAYS = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, locale: string): string {
   const t = new Date(dateStr + 'T00:00:00')
   const diff = Math.round((new Date(t.toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000)
-  if (diff <= 6) return `${DA_WEEKDAYS[t.getDay()]}`
+  if (diff <= 6) return t.toLocaleDateString(locale, { weekday: 'long' })
   return `${String(t.getDate()).padStart(2,'0')}/${String(t.getMonth()+1).padStart(2,'0')}`
 }
 
@@ -43,6 +48,8 @@ function localYmd(d: Date): string {
 function computeStatus(
   avail: BCItemAvailability | undefined,
   deliveryDate: Date | undefined,
+  t: SoegT,
+  locale: string,
 ): RowStatus {
   const none: RowStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
   if (!avail || !deliveryDate) return none
@@ -56,11 +63,11 @@ function computeStatus(
   const fristTid = avail.aabnTil ?? avail.auktionsFrist
   if (fristTid) {
     const p = parseAabnTil(fristTid)
-    if (p) aabnTilLabel = `Bestil inden ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`
+    if (p) aabnTilLabel = t('bestilInden', { tid: `${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}` })
   }
 
   if (avail.tilgaengeligFra && deliveryStr < avail.tilgaengeligFra)
-    return { blocked: true, blockLabel: `Tilgængelig ${formatDate(avail.tilgaengeligFra)}`, disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+    return { blocked: true, blockLabel: t('tilgaengelig', { dato: formatDate(avail.tilgaengeligFra, locale) }), disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
 
   if (avail.strengtLager) {
     const disp = avail.disponibelt
@@ -68,8 +75,8 @@ function computeStatus(
     // afgangsdatoen (torsdags-afgang → fredags-levering). Se OrderList.getItemAvailStatus.
     const coveredByAfgang = !!avail.naesteLevering && deliveryStr >= avail.naesteLevering
     if (disp <= 0 && !coveredByAfgang) {
-      const label = avail.naesteLevering ? `Tilgængelig til afgang ${formatDate(avail.naesteLevering)}` : 'Ikke på lager eller i indkøb lige nu'
-      return { blocked: true, blockLabel: label, disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel: null }
+      const label = avail.naesteLevering ? t('tilgaengeligAfgang', { dato: formatDate(avail.naesteLevering, locale) }) : t('ikkeLagerIndkoeb')
+      return { blocked: true, blockLabel: label, disponibeltLabel: t('ingen'), disponibeltColor: 'red', aabnTilLabel: null }
     }
     if (disp <= 0) return { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
@@ -77,10 +84,10 @@ function computeStatus(
   }
 
   if (isToday) {
-    if (avail.lukAfgang) return { blocked: true, blockLabel: 'Ikke mere i dag', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
+    if (avail.lukAfgang) return { blocked: true, blockLabel: t('ikkeMereIdag'), disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
     // Åbn til passeret blokerer ikke — efter fristen afgør lageret (se OrderList.getItemAvailStatus).
     const disp = avail.disponibelt
-    if (disp <= 0) return { blocked: true, blockLabel: 'Ingen disponibel i dag', disponibeltLabel: 'Ingen', disponibeltColor: 'red', aabnTilLabel }
+    if (disp <= 0) return { blocked: true, blockLabel: t('ingenDispIdag'), disponibeltLabel: t('ingen'), disponibeltColor: 'red', aabnTilLabel }
     if (disp < 50) return { blocked: false, blockLabel: '', disponibeltLabel: `${Math.round(disp*10)/10}`, disponibeltColor: 'orange', aabnTilLabel }
     return { ...none, aabnTilLabel }
   }
@@ -130,6 +137,10 @@ export default function ItemSearchModal({
   itemAvailabilities, deliveryDate, getFristLabel, getBlockLabel, onResults, getDisplayPrice, getMaxQty,
   getRowStatus, initialQuery = '',
 }: Props) {
+  const t      = useT(ordrerSoegDict)
+  const locale = useLocale()
+  // = OrderList.GENSKAF_PREFIX på kundens sprog (bestil-ordbogen) — afgør neutral vs. rød frist-badge.
+  const genskafPrefix = makeT(bestilDict, useLang())('genskafPrefix')
   const singleMode  = !!onSelect
   const favMode     = !!onAddFavorites
   // ?debug=1 på siden → vis rå disponibel-felter pr. række (samme kontakt som OrderList's [disp]-log).
@@ -195,14 +206,15 @@ export default function ItemSearchModal({
       setError('')
       try {
         const top = favMode ? PAGE_SIZE : 30
-        const params = new URLSearchParams({ top: String(top) })
+        // portal=1 → varenavne på kundens sprog (admin bruger samme rute og skal have dansk).
+        const params = new URLSearchParams({ top: String(top), portal: '1' })
         if (favMode) params.set('skip', String(page * PAGE_SIZE))
         if (hasQuery) params.set('search', query.trim())
         if (selCat)   params.set('category', selCat)
         const res  = await fetch(`/api/products?${params}`)
         const data = await res.json()
         if (!res.ok || data.error) {
-          setError(data.error ?? `Fejl fra server (${res.status})`)
+          setError(data.error ?? t('fejlServer', { status: res.status }))
           setResults([])
           setHasMore(false)
         } else {
@@ -214,7 +226,7 @@ export default function ItemSearchModal({
           onResults?.(items.map((i: EnrichedItem) => i.number))
         }
       } catch {
-        setError('Kunne ikke nå serveren — prøv igen')
+        setError(t('kunneIkkeNaa'))
         setResults([])
         setHasMore(false)
       } finally {
@@ -292,7 +304,7 @@ export default function ItemSearchModal({
   const erSpaerret = (nr: string) =>
     !favMode && !singleMode &&
     (getRowStatus ? getRowStatus(nr).blocked
-                  : computeStatus(itemAvailabilities?.[nr], deliveryDate).blocked)
+                  : computeStatus(itemAvailabilities?.[nr], deliveryDate, t, locale).blocked)
 
   const sorteredeResultater = (!favMode && !singleMode)
     ? [...results.filter(r => !erSpaerret(r.number)), ...results.filter(r => erSpaerret(r.number))]
@@ -302,10 +314,10 @@ export default function ItemSearchModal({
     : -1
 
   const dagTekst = deliveryDate
-    ? deliveryDate.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
-    : 'den valgte dag'
+    ? deliveryDate.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
+    : t('denValgteDag')
 
-  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const fmt = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const selectedCatLabel = selCat ? (categories.find(c => c.code === selCat)?.displayName ?? selCat) : null
   // Tælles på tværs af søgninger — ellers viste bunden "0 varer klar" selv om man havde
   // tastet antal i en tidligere søgning, og knappen var der slet ikke.
@@ -330,20 +342,20 @@ export default function ItemSearchModal({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={favMode ? 'Filtrer på navn eller varenummer…' : 'Søg på varenummer eller navn…'}
+            placeholder={favMode ? t('phFilter') : t('phSoeg')}
             className="flex-1 bg-transparent text-base outline-none placeholder:text-gray-400"
           />
           <button
             onClick={() => setShowCats(v => !v)}
             className={`rounded-full p-1.5 transition-colors ${showCats || selCat ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-400'}`}
-            title="Filtrer på kategori"
+            title={t('filtrerKategori')}
           >
             <Filter size={16} />
           </button>
           {/* Krydset forsvinder så snart der er tastet et antal: så er den eneste vej ud
               knappen "Indsæt og luk søgning", og antallet kan ikke blive væk ved et uheld. */}
           {antalMedTal === 0 && (
-            <button onClick={lukPaent} className="rounded-full p-1 hover:bg-gray-100" aria-label="Luk søgning">
+            <button onClick={lukPaent} className="rounded-full p-1 hover:bg-gray-100" aria-label={t('lukSoegning')}>
               <X size={18} className="text-gray-500" />
             </button>
           )}
@@ -352,7 +364,7 @@ export default function ItemSearchModal({
         {/* ── Kategori-filter ── */}
         {showCats && (
           <div className="border-b border-gray-100 px-4 py-3 shrink-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Kategori</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">{t('kategori')}</p>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
               <button
                 onClick={() => { setSelCat(null); setShowCats(false) }}
@@ -360,7 +372,7 @@ export default function ItemSearchModal({
                   !selCat ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                Alle
+                {t('alle')}
               </button>
               {categories.map(cat => (
                 <button
@@ -380,7 +392,7 @@ export default function ItemSearchModal({
         {/* Aktiv filter-chip */}
         {selCat && !showCats && (
           <div className="px-4 py-2 border-b border-gray-100 shrink-0 flex items-center gap-2">
-            <span className="text-xs text-gray-500">Kategori:</span>
+            <span className="text-xs text-gray-500">{t('kategori')}:</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
               <Tag size={10} />
               {selectedCatLabel}
@@ -399,18 +411,18 @@ export default function ItemSearchModal({
               disabled={page === 0}
               className="flex items-center gap-0.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
             >
-              <ChevronLeft size={13} /> Forrige
+              <ChevronLeft size={13} /> {t('forrige')}
             </button>
             <span className="text-xs text-gray-400">
-              Side {page + 1}{hasMore ? '+' : ''} · {results.length} varer
-              {selected.size > 0 && <span className="ml-2 font-semibold text-blue-600">{selected.size} valgt</span>}
+              {t('sideInfo', { side: `${page + 1}${hasMore ? '+' : ''}`, n: results.length })}
+              {selected.size > 0 && <span className="ml-2 font-semibold text-blue-600">{t('valgt', { n: selected.size })}</span>}
             </span>
             <button
               onClick={() => setPage(p => p + 1)}
               disabled={!hasMore}
               className="flex items-center gap-0.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
             >
-              Næste <ChevronRight size={13} />
+              {t('naeste')} <ChevronRight size={13} />
             </button>
           </div>
         )}
@@ -418,24 +430,24 @@ export default function ItemSearchModal({
         {/* ── Resultater ── */}
         <div className="overflow-y-auto flex-1">
           {loading && (
-            <div className="px-4 py-6 text-center text-sm text-gray-400">Henter…</div>
+            <div className="px-4 py-6 text-center text-sm text-gray-400">{t('henter')}</div>
           )}
           {!loading && error && (
             <div className="px-4 py-6 text-center">
-              <p className="text-sm text-red-600 font-medium">Fejl</p>
+              <p className="text-sm text-red-600 font-medium">{t('fejl')}</p>
               <p className="text-xs text-gray-400 mt-1">{error}</p>
             </div>
           )}
           {!loading && !error && !favMode && !selCat && query.trim().length < 2 && (
             <div className="px-4 py-6 text-center text-sm text-gray-400">
-              Skriv mindst 2 tegn, eller vælg en kategori via <Filter size={13} className="inline" />
+              {t('skrivMindst')} <Filter size={13} className="inline" />
             </div>
           )}
           {!loading && !error && results.length === 0 && (favMode || query.trim().length >= 2 || selCat) && (
             <div className="px-4 py-6 text-center text-sm text-gray-400">
-              Ingen varer fundet
-              {query.trim().length >= 2 && <> for &ldquo;{query}&rdquo;</>}
-              {selCat && <> i {selectedCatLabel}</>}
+              {t('ingenFundet')}
+              {query.trim().length >= 2 && <> {t('forQ')} &ldquo;{query}&rdquo;</>}
+              {selCat && <> {t('iKat')} {selectedCatLabel}</>}
             </div>
           )}
 
@@ -453,7 +465,7 @@ export default function ItemSearchModal({
             // Katalogets færdige status når den gives (tekster allerede anvendt → må ikke køres igen)
             const fromCatalog = !favMode && !singleMode && !!getRowStatus
             const status: RowStatus = (!favMode && !singleMode)
-              ? (getRowStatus ? getRowStatus(item.number) : computeStatus(itemAvailabilities?.[item.number], deliveryDate))
+              ? (getRowStatus ? getRowStatus(item.number) : computeStatus(itemAvailabilities?.[item.number], deliveryDate, t, locale))
               : { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
             // Antals-loft (samme cap som favoritlisten) — vises som "Maks X" og håndhæves.
             const cap = (!favMode && !singleMode) ? (getMaxQty?.(item.number) ?? null) : null
@@ -463,7 +475,7 @@ export default function ItemSearchModal({
               {visBjaelke && (
                 <div className="sticky top-0 z-10 flex items-center gap-1.5 border-y-2 border-gray-300 bg-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-700">
                   <X size={11} className="text-gray-500" />
-                  Kan ikke bestilles til {dagTekst}
+                  {t('kanIkkeBestilles', { dag: dagTekst })}
                 </div>
               )}
               <div
@@ -492,7 +504,7 @@ export default function ItemSearchModal({
                 {!status.blockLabel && status.aabnTilLabel && (() => {
                   const txt = fromCatalog ? status.aabnTilLabel : getFristLabel ? getFristLabel(item.number, status.aabnTilLabel) : status.aabnTilLabel
                   if (!txt) return null
-                  const info = txt.startsWith('Vi genskaffer')   // = OrderList.GENSKAF_PREFIX → neutral, ikke rød
+                  const info = txt.startsWith(genskafPrefix)   // = OrderList.GENSKAF_PREFIX → neutral, ikke rød
                   return (
                     <div className={`mb-1 flex items-center gap-1 text-[10px] rounded px-1.5 py-0.5 w-fit ${
                       info ? 'font-medium text-sky-700 bg-sky-50' : 'font-bold text-red-600 bg-red-50'
@@ -555,12 +567,12 @@ export default function ItemSearchModal({
                           // øverst — vis så IKKE også "Udsolgt" (modsiger den, som varekataloget heller ikke gør)
                           status.blockLabel ? null : (
                           <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-red-100 text-red-600">
-                            Udsolgt
+                            {t('udsolgt')}
                           </span>
                           )
                         ) : (
                           <span className="rounded px-1 py-0 leading-tight text-[10px] font-semibold bg-orange-100 text-orange-600">
-                            Maks {Math.round(cap * 10) / 10} {item.baseUnitOfMeasureCode}
+                            {t('maks', { n: Math.round(cap * 10) / 10, enhed: item.baseUnitOfMeasureCode })}
                           </span>
                         )
                       ) : (!favMode && !singleMode) ? null /* FRI (kan skaffes frem i tid) → vis IKKE lager-tal (ligner et maks) */
@@ -575,7 +587,7 @@ export default function ItemSearchModal({
                           {status.disponibeltLabel} {item.baseUnitOfMeasureCode}
                         </span>
                       ) : null}
-                      {isExist && <span className="text-gray-400 italic">allerede favorit</span>}
+                      {isExist && <span className="text-gray-400 italic">{t('alleredeFavorit')}</span>}
                     </div>
                   </div>
 
@@ -586,7 +598,7 @@ export default function ItemSearchModal({
                       className={`shrink-0 p-1 rounded-full transition-colors ${
                         isFav ? 'text-red-400 hover:text-red-300' : 'text-gray-200 hover:text-red-300'
                       }`}
-                      title={isFav ? 'Fjern favorit' : 'Tilføj favorit'}
+                      title={isFav ? t('fjernFavorit') : t('tilfoejFavorit')}
                     >
                       <Heart size={15} fill={isFav ? 'currentColor' : 'none'} />
                     </button>
@@ -648,29 +660,29 @@ export default function ItemSearchModal({
             <>
               <span className="flex-1 text-xs text-gray-400">
                 {selected.size > 0
-                  ? `${selected.size} vare${selected.size !== 1 ? 'r' : ''} valgt`
-                  : 'Klik på varer for at markere dem'}
+                  ? t(selected.size !== 1 ? 'varerValgtN' : 'varerValgt1', { n: selected.size })
+                  : t('klikMarkere')}
               </span>
               {selected.size > 0 ? (
                 <button
                   onClick={handleAddFavorites}
                   className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
                 >
-                  Tilføj {selected.size} favorit{selected.size !== 1 ? 'ter' : ''}
+                  {t(selected.size !== 1 ? 'tilfoejFavN' : 'tilfoejFav1', { n: selected.size })}
                 </button>
               ) : (
                 <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
-                  Luk
+                  {t('luk')}
                 </button>
               )}
             </>
           ) : singleMode ? (
             <>
               <span className="flex-1 text-xs text-gray-400">
-                {results.length > 0 ? `${results.length} varer — klik for at vælge` : ''}
+                {results.length > 0 ? t('klikVaelge', { n: results.length }) : ''}
               </span>
               <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
-                Luk
+                {t('luk')}
               </button>
             </>
           ) : (
@@ -678,8 +690,8 @@ export default function ItemSearchModal({
               <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
                 {results.length > 0
                   ? antalMedTal > 0
-                    ? `${antalMedTal} vare${antalMedTal !== 1 ? 'r' : ''} klar`
-                    : `${results.length} varer — sæt antal`
+                    ? t(antalMedTal !== 1 ? 'klarN' : 'klar1', { n: antalMedTal })
+                    : t('saetAntal', { n: results.length })
                   : ''}
               </span>
               {antalMedTal > 0 ? (
@@ -687,11 +699,11 @@ export default function ItemSearchModal({
                   onClick={handleAdd}
                   className="shrink-0 whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
                 >
-                  Indsæt og luk søgning
+                  {t('indsaetLuk')}
                 </button>
               ) : (
                 <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">
-                  Luk
+                  {t('luk')}
                 </button>
               )}
             </>

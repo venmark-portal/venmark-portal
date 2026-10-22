@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Send, Loader2 } from 'lucide-react'
+import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
+import { reklamationDict } from '@/lib/i18n/portal/dict/reklamation'
 
 interface Message {
   id:             string
@@ -31,6 +33,8 @@ interface Ticket {
 }
 
 export default function TicketThread({ ticket }: { ticket: Ticket }) {
+  const t      = useT(reklamationDict)
+  const locale = useLocale()
   const [messages, setMessages] = useState<Message[]>(ticket.messages)
   const [reply,    setReply]    = useState('')
   const [sending,  setSending]  = useState(false)
@@ -69,29 +73,29 @@ export default function TicketThread({ ticket }: { ticket: Ticket }) {
       setMessages(prev => [...prev, msg])
       setReply('')
     } catch (e: any) {
-      setError(e.message ?? 'Fejl')
+      setError(e.message ?? t('fejl'))
     } finally {
       setSending(false)
     }
   }
 
   const fmt = (d: string) =>
-    new Date(d).toLocaleDateString('da-DK', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
   const statusColor = ticket.status === 'CLOSED' ? 'bg-gray-100 text-gray-600'
     : ticket.status === 'IN_PROGRESS'            ? 'bg-blue-100 text-blue-800'
     :                                              'bg-yellow-100 text-yellow-800'
 
-  const statusLabel = ticket.status === 'CLOSED' ? 'Lukket'
-    : ticket.status === 'IN_PROGRESS'            ? 'Under behandling'
-    :                                              'Åben'
+  const statusLabel = ticket.status === 'CLOSED' ? t('statusLukket')
+    : ticket.status === 'IN_PROGRESS'            ? t('statusIgang')
+    :                                              t('statusOpen')
 
   return (
     <div className="space-y-3">
       {/* Oprindelig beskrivelse */}
       <div className="rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
-          <span className="text-xs text-gray-400">{fmt(ticket.createdAt)} · Din reklamation</span>
+          <span className="text-xs text-gray-400">{fmt(ticket.createdAt)} · {t('dinReklamation')}</span>
           <span className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${statusColor}`}>{statusLabel}</span>
         </div>
         <div className="p-4 text-sm text-gray-800 whitespace-pre-wrap">{ticket.body}</div>
@@ -148,7 +152,7 @@ export default function TicketThread({ ticket }: { ticket: Ticket }) {
           <textarea
             value={reply}
             onChange={e => setReply(e.target.value)}
-            placeholder="Skriv et svar..."
+            placeholder={t('skrivSvar')}
             rows={2}
             className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e as any) } }}

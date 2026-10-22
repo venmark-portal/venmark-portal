@@ -6,11 +6,17 @@ import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWar
 import { getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getPortalCalendarDays, type BCCalendarDay } from '@/lib/businesscentral'
 import { getDeliveryDatesForMethod, getDeadlineForMethodDelivery, getDeadlineForDelivery, addBusinessDays } from '@/lib/dateUtils'
 import AuktionForsideWidget from '@/components/portal/AuktionForsideWidget'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { forsideDict } from '@/lib/i18n/portal/dict/forside'
 
 export default async function PortalDashboard() {
   const session    = await getServerSession(authOptions)
   const userId     = (session?.user as any)?.id as string
   const customerNo = (session?.user as any)?.bcCustomerNumber as string ?? ''
+  const lang       = await getPortalLang()
+  const t          = makeT(forsideDict, lang)
+  const locale     = localeOf(lang)
 
   // Hent seneste ordrer
   const recentOrders = await prisma.order.findMany({
@@ -88,20 +94,20 @@ export default async function PortalDashboard() {
     const dage = Math.round(
       (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() -
        new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)
-    if (dage === 0) return 'i dag'
-    if (dage === 1) return 'i morgen'
-    return d.toLocaleDateString('da-DK', { weekday: 'long' })
+    if (dage === 0) return t('iDag')
+    if (dage === 1) return t('iMorgen')
+    return t('paaDag', { dag: d.toLocaleDateString(locale, { weekday: 'long' }) })
   }
   const klokken = (d: Date) =>
     `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
   const statusLabel: Record<string, { label: string; color: string }> = {
-    DRAFT:      { label: 'Kladde',       color: 'text-gray-500 bg-gray-100' },
-    SUBMITTED:  { label: 'Afventer',     color: 'text-yellow-700 bg-yellow-100' },
-    APPROVED:   { label: 'Godkendt',     color: 'text-blue-700 bg-blue-100' },
-    SENT_TO_BC: { label: 'Sendt',        color: 'text-blue-700 bg-blue-100' },
-    CONFIRMED:  { label: 'Bekræftet',    color: 'text-green-700 bg-green-100' },
-    REJECTED:   { label: 'Afvist',       color: 'text-red-700 bg-red-100' },
+    DRAFT:      { label: t('stKladde'),     color: 'text-gray-500 bg-gray-100' },
+    SUBMITTED:  { label: t('stAfventer'),   color: 'text-yellow-700 bg-yellow-100' },
+    APPROVED:   { label: t('stGodkendt'),   color: 'text-blue-700 bg-blue-100' },
+    SENT_TO_BC: { label: t('stSendt'),      color: 'text-blue-700 bg-blue-100' },
+    CONFIRMED:  { label: t('stBekraeftet'), color: 'text-green-700 bg-green-100' },
+    REJECTED:   { label: t('stAfvist'),     color: 'text-red-700 bg-red-100' },
   }
 
   return (
@@ -109,11 +115,11 @@ export default async function PortalDashboard() {
       {/* Velkomst */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Hej, {session?.user?.name?.split(' ')[0]} 👋
+          {t('hej', { navn: session?.user?.name?.split(' ')[0] })}
         </h1>
         {nextDelivery && deadline && (
           <p className="mt-1 text-sm text-gray-500">
-            Bestil {dagOrd(deadline)} inden kl. {klokken(deadline)} for levering {dagOrd(nextDelivery)}
+            {t('bestilInden', { dag: dagOrd(deadline), kl: klokken(deadline), lev: dagOrd(nextDelivery) })}
           </p>
         )}
       </div>
@@ -123,8 +129,8 @@ export default async function PortalDashboard() {
         <div className="flex items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <Clock size={18} className="shrink-0" />
           <span>
-            <strong>Deadline {dagOrd(deadline)} kl. {klokken(deadline)}</strong> — Næste levering:{' '}
-            {nextDelivery.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })}
+            <strong>{t('deadline', { dag: dagOrd(deadline), kl: klokken(deadline) })}</strong> — {t('naesteLevering')}{' '}
+            {nextDelivery.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
           </span>
         </div>
       )}
@@ -137,8 +143,8 @@ export default async function PortalDashboard() {
         >
           <ShoppingCart size={24} />
           <div>
-            <div className="font-semibold">Ny bestilling</div>
-            <div className="text-xs text-blue-200">Vælg varer og indsend</div>
+            <div className="font-semibold">{t('nyBestilling')}</div>
+            <div className="text-xs text-blue-200">{t('nyBestillingTekst')}</div>
           </div>
           <ChevronRight size={18} className="ml-auto" />
         </Link>
@@ -149,8 +155,8 @@ export default async function PortalDashboard() {
         >
           <RefreshCw size={24} className="text-blue-600" />
           <div>
-            <div className="font-semibold text-gray-900">Faste ordrer</div>
-            <div className="text-xs text-gray-500">Se og ret ugeskabelon</div>
+            <div className="font-semibold text-gray-900">{t('fasteOrdrer')}</div>
+            <div className="text-xs text-gray-500">{t('fasteOrdrerTekst')}</div>
           </div>
           <ChevronRight size={18} className="ml-auto text-gray-400" />
         </Link>
@@ -161,8 +167,8 @@ export default async function PortalDashboard() {
         >
           <Package size={24} className="text-blue-600" />
           <div>
-            <div className="font-semibold text-gray-900">Mine ordrer</div>
-            <div className="text-xs text-gray-500">Se status og historik</div>
+            <div className="font-semibold text-gray-900">{t('mineOrdrer')}</div>
+            <div className="text-xs text-gray-500">{t('mineOrdrerTekst')}</div>
           </div>
           <ChevronRight size={18} className="ml-auto text-gray-400" />
         </Link>
@@ -175,18 +181,15 @@ export default async function PortalDashboard() {
             <Phone size={22} />
           </span>
           <div>
-            <div className="font-semibold text-gray-900">Brug for hjælp? Ring til Claus</div>
-            <div className="text-sm text-gray-500">
-              Du er velkommen til at ringe når som helst — også uden for åbningstid. Tager jeg den
-              ikke, så send en kort SMS, og jeg vender tilbage, så snart jeg kan.
-            </div>
+            <div className="font-semibold text-gray-900">{t('hotlineTitel')}</div>
+            <div className="text-sm text-gray-500">{t('hotlineTekst')}</div>
           </div>
         </div>
         <a
           href="tel:+4541969644"
           className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700 sm:ml-auto"
         >
-          <Phone size={18} /> 41 96 96 44
+          <Phone size={18} /> {t('hotlineNummer')}
         </a>
       </div>
 
@@ -199,12 +202,12 @@ export default async function PortalDashboard() {
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
               <MessageSquare size={17} className="text-blue-600" />
-              Beskeder fra Venmark
+              {t('beskederFraVenmark')}
               {unreadMessages > 0 && (
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{unreadMessages}</span>
               )}
             </h2>
-            <Link href="/portal/beskeder" className="text-xs text-blue-600 hover:underline">Se alle</Link>
+            <Link href="/portal/beskeder" className="text-xs text-blue-600 hover:underline">{t('seAlle')}</Link>
           </div>
           <div className="divide-y divide-gray-100 overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
             {(newestMessages as any[]).map((m: any) => (
@@ -212,13 +215,13 @@ export default async function PortalDashboard() {
                 <div className="mt-0.5 shrink-0">
                   {m.sender === 'admin'
                     ? <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">V</div>
-                    : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">Du</div>}
+                    : <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600">{t('du')}</div>}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm truncate ${!m.readByCustomer && m.sender === 'admin' ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{m.body}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(m.createdAt).toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' })}
-                    {' · '}{new Date(m.createdAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(m.createdAt).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {' · '}{new Date(m.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
                 {!m.readByCustomer && m.sender === 'admin' && (
@@ -244,10 +247,10 @@ export default async function PortalDashboard() {
           <div className="flex-1">
             <div className="text-sm font-semibold text-gray-900">
               {unreadTicketMessages > 0
-                ? `${unreadTicketMessages} ny${unreadTicketMessages > 1 ? 'e beskeder' : ' besked'} på din reklamation`
-                : `${openTickets} åben${openTickets > 1 ? 'e reklamationer' : ' reklamation'}`}
+                ? t(unreadTicketMessages > 1 ? 'nyeBeskeder' : 'nyBesked', { n: unreadTicketMessages })
+                : t(openTickets > 1 ? 'aabneRekl' : 'aabenRekl', { n: openTickets })}
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">Tryk for at se og svare</div>
+            <div className="text-xs text-gray-500 mt-0.5">{t('trykForAtSe')}</div>
           </div>
           {unreadTicketMessages > 0 && (
             <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
@@ -260,12 +263,12 @@ export default async function PortalDashboard() {
 
       {/* Seneste ordrer */}
       <div>
-        <h2 className="mb-3 text-base font-semibold text-gray-900">Seneste ordrer</h2>
+        <h2 className="mb-3 text-base font-semibold text-gray-900">{t('senesteOrdrer')}</h2>
         {recentOrders.length === 0 ? (
           <div className="rounded-xl bg-white px-5 py-8 text-center text-sm text-gray-500 ring-1 ring-gray-200">
-            Ingen ordrer endnu.{' '}
+            {t('ingenOrdrer')}{' '}
             <Link href="/portal/bestil" className="text-blue-600 hover:underline">
-              Opret din første bestilling
+              {t('opretFoerste')}
             </Link>
           </div>
         ) : (
@@ -280,12 +283,12 @@ export default async function PortalDashboard() {
                 >
                   <div>
                     <div className="text-sm font-medium text-gray-900">
-                      {order.bcOrderNumber ?? `Ordre ${order.id.slice(-6).toUpperCase()}`}
+                      {order.bcOrderNumber ?? t('ordreNr', { nr: order.id.slice(-6).toUpperCase() })}
                     </div>
                     <div className="mt-0.5 text-xs text-gray-500">
-                      {order.deliveryDate.toLocaleDateString('da-DK', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {order.deliveryDate.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}
                       {' · '}
-                      {order.lines.length} {order.lines.length === 1 ? 'linje' : 'linjer'}
+                      {t(order.lines.length === 1 ? 'linje' : 'linjer', { n: order.lines.length })}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">

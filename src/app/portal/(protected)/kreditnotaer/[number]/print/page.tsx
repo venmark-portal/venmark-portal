@@ -3,6 +3,10 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { getPostedCreditMemos, getPostedCreditMemoLines } from '@/lib/businesscentral'
 import PrintButtons from './PrintButtons'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,15 +22,19 @@ export default async function KreditnotaPrintPage({ params }: { params: { number
   const creditMemo  = creditMemos.find(cm => cm.number === params.number)
   if (!creditMemo) redirect('/portal/fakturaer')
 
-  const lines = await getPostedCreditMemoLines(creditMemo.number)
-  const fmt   = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const lang   = await getPortalLang()
+  const t      = makeT(fakturaDict, lang)
+  const locale = localeOf(lang)
+  const lines = await oversaetVarenavne(
+    await getPostedCreditMemoLines(creditMemo.number), lang, { nr: 'itemNumber', navn: 'description' })
+  const fmt   = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const itemLines = lines.filter(l => l.type !== '' && l.description)
 
   return (
-    <html lang="da">
+    <html lang={lang}>
       <head>
         <meta charSet="utf-8" />
-        <title>Kreditnota {creditMemo.number} — Venmark Fisk</title>
+        <title>{`${t('kreditnota')} ${creditMemo.number} — Venmark Fisk`}</title>
         <style dangerouslySetInnerHTML={{ __html: `
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, sans-serif; font-size: 12px; color: #111; background: #fff; }
@@ -81,23 +89,23 @@ export default async function KreditnotaPrintPage({ params }: { params: { number
           <div className="header">
             <div>
               <div className="logo">Venmark Fisk</div>
-              <div className="logo-sub">Søndergade · 9850 Hirtshals · CVR: xxxxxxxxxx</div>
+              <div className="logo-sub">Søndergade · 9850 Hirtshals · {t('cvr')}: xxxxxxxxxx</div>
               <div className="logo-sub">fisk@venmark.dk · venmark.dk</div>
             </div>
             <div className="doc-title">
-              <h1>KREDITNOTA</h1>
+              <h1>{t('printKreditnota')}</h1>
               <div className="num">{creditMemo.number}</div>
             </div>
           </div>
 
           <div className="addresses">
             <div className="addr-block">
-              <div className="addr-label">Krediteret til</div>
+              <div className="addr-label">{t('krediteretTil')}</div>
               <div className="addr-name">{creditMemo.customerName}</div>
-              <div className="addr-line">Debitor nr. {creditMemo.customerNumber}</div>
+              <div className="addr-line">{t('debitorNr', { nr: creditMemo.customerNumber })}</div>
             </div>
             <div className="addr-block">
-              <div className="addr-label">Fra</div>
+              <div className="addr-label">{t('fra')}</div>
               <div className="addr-name">Venmark Fisk AS</div>
               <div className="addr-line">Søndergade, 9850 Hirtshals</div>
             </div>
@@ -105,20 +113,20 @@ export default async function KreditnotaPrintPage({ params }: { params: { number
 
           <div className="meta">
             <div className="meta-item">
-              <div className="meta-label">Dato</div>
+              <div className="meta-label">{t('dato')}</div>
               <div className="meta-value">
-                {new Date(creditMemo.postingDate).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}
+                {new Date(creditMemo.postingDate).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
               </div>
             </div>
             {creditMemo.appliesToDocNo && (
               <div className="meta-item">
-                <div className="meta-label">Vedr. faktura</div>
+                <div className="meta-label">{t('vedrFaktura')}</div>
                 <div className="meta-value" style={{ fontFamily: 'monospace' }}>{creditMemo.appliesToDocNo}</div>
               </div>
             )}
             {creditMemo.paymentTermsCode && (
               <div className="meta-item">
-                <div className="meta-label">Betalingsbetingelse</div>
+                <div className="meta-label">{t('betalingsbetingelse')}</div>
                 <div className="meta-value">{creditMemo.paymentTermsCode}</div>
               </div>
             )}
@@ -127,12 +135,12 @@ export default async function KreditnotaPrintPage({ params }: { params: { number
           <table>
             <thead>
               <tr>
-                <th>Varenr.</th>
-                <th>Beskrivelse</th>
-                <th className="right">Antal</th>
-                <th>Enhed</th>
-                <th className="right">Enhedspris</th>
-                <th className="right">Beløb</th>
+                <th>{t('varenr')}</th>
+                <th>{t('beskrivelse')}</th>
+                <th className="right">{t('antal')}</th>
+                <th>{t('enhed')}</th>
+                <th className="right">{t('enhedspris')}</th>
+                <th className="right">{t('beloeb')}</th>
               </tr>
             </thead>
             <tbody>
@@ -151,22 +159,22 @@ export default async function KreditnotaPrintPage({ params }: { params: { number
 
           <div className="totals">
             <div className="totals-row">
-              <span className="label">Beløb ekskl. moms</span>
+              <span className="label">{t('beloebEkskl')}</span>
               <span>{fmt.format(creditMemo.totalAmountExcludingTax)}</span>
             </div>
             <div className="totals-row">
-              <span className="label">Moms (25%)</span>
+              <span className="label">{t('moms')}</span>
               <span>{fmt.format(creditMemo.totalAmountIncludingTax - creditMemo.totalAmountExcludingTax)}</span>
             </div>
             <div className="totals-row bold">
-              <span>Total inkl. moms</span>
+              <span>{t('totalInkl')}</span>
               <span>−{fmt.format(creditMemo.totalAmountIncludingTax)}</span>
             </div>
           </div>
 
           <div className="footer">
             <span>Venmark Fisk AS · Søndergade · 9850 Hirtshals</span>
-            <span>Kreditnota {creditMemo.number} · {new Date(creditMemo.postingDate).toLocaleDateString('da-DK')}</span>
+            <span>{t('kreditnota')} {creditMemo.number} · {new Date(creditMemo.postingDate).toLocaleDateString(locale)}</span>
           </div>
         </div>
       </body>

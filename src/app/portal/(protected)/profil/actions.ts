@@ -5,11 +5,13 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { compare, hash } from 'bcryptjs'
 import { revalidatePath } from 'next/cache'
+import { getT } from '@/lib/i18n/portal/server'
+import { profilDict } from '@/lib/i18n/portal/dict/profil'
 
 async function getCustomerId(): Promise<string> {
   const session = await getServerSession(authOptions)
   const id = (session?.user as any)?.id as string | undefined
-  if (!id) throw new Error('Ikke logget ind')
+  if (!id) throw new Error((await getT(profilDict))('ikkeLoggetInd'))
   return id
 }
 
@@ -62,14 +64,15 @@ export async function changePassword(
   newPassword:     string,
 ): Promise<void> {
   const customerId = await getCustomerId()
+  const t          = await getT(profilDict)
   const customer   = await prisma.customer.findUnique({ where: { id: customerId } })
-  if (!customer) throw new Error('Kunde ikke fundet')
+  if (!customer) throw new Error(t('kundeIkkeFundet'))
 
   const valid = await compare(currentPassword, customer.passwordHash)
-  if (!valid) throw new Error('Nuværende adgangskode er forkert')
+  if (!valid) throw new Error(t('nuvaerendeForkert'))
 
-  if (newPassword.length < 8) throw new Error('Ny adgangskode skal være mindst 8 tegn')
-  if (newPassword === currentPassword) throw new Error('Ny adgangskode må ikke være den samme')
+  if (newPassword.length < 8) throw new Error(t('nyMin8'))
+  if (newPassword === currentPassword) throw new Error(t('nySamme'))
 
   const passwordHash = await hash(newPassword, 12)
   await prisma.customer.update({ where: { id: customerId }, data: { passwordHash } })

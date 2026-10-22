@@ -12,6 +12,8 @@ import {
   Plus, Trash2, Loader2, CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import type { BCItem } from '@/lib/businesscentral'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { profilDict } from '@/lib/i18n/portal/dict/profil'
 
 type Favorite = { bcItemNumber: string; itemName: string; sortOrder: number }
 
@@ -24,6 +26,7 @@ export default function ProfileClient({
   initialFavorites: Favorite[]
   initialBlocked:   string[]
 }) {
+  const t = useT(profilDict)
   const [tab,       setTab]       = useState<Tab>('favoritter')
   const [favorites, setFavorites] = useState(initialFavorites)
   const [blocked,   setBlocked]   = useState(initialBlocked)
@@ -37,7 +40,8 @@ export default function ProfileClient({
     if (newItems.length === 0) return
     startTransition(async () => {
       for (const item of newItems) {
-        await addFavorite(item.number, item.displayName)
+        // Gemmes med det danske navn (navnDa fra søgningen) — visningen oversætter selv.
+        await addFavorite(item.number, (item as { navnDa?: string }).navnDa || item.displayName)
       }
       setFavorites(prev => [
         ...prev,
@@ -60,7 +64,7 @@ export default function ProfileClient({
     setBlkSearch(false)
     if (blocked.includes(item.number)) return
     startTransition(async () => {
-      await addBlockedItem(item.number, item.displayName)
+      await addBlockedItem(item.number, (item as { navnDa?: string }).navnDa || item.displayName)
       setBlocked((prev) => [...prev, item.number])
       setBlockedNames((prev) => ({ ...prev, [item.number]: item.displayName }))
       // Fjern fra favoritter lokalt hvis tilstede
@@ -83,27 +87,27 @@ export default function ProfileClient({
   function handleChangePassword() {
     setPwMsg(null)
     if (!pwForm.current || !pwForm.next || !pwForm.confirm) {
-      setPwMsg({ ok: false, text: 'Udfyld alle felter' }); return
+      setPwMsg({ ok: false, text: t('udfyldAlle') }); return
     }
     if (pwForm.next !== pwForm.confirm) {
-      setPwMsg({ ok: false, text: 'Ny adgangskode og bekræftelse stemmer ikke overens' }); return
+      setPwMsg({ ok: false, text: t('stemmerIkke') }); return
     }
     startPwTransition(async () => {
       try {
         await changePassword(pwForm.current, pwForm.next)
-        setPwMsg({ ok: true, text: 'Adgangskode ændret ✓' })
+        setPwMsg({ ok: true, text: t('kodeAendret') })
         setPwForm({ current: '', next: '', confirm: '' })
       } catch (err) {
-        setPwMsg({ ok: false, text: err instanceof Error ? err.message : 'Fejl' })
+        setPwMsg({ ok: false, text: err instanceof Error ? err.message : t('fejl') })
       }
     })
   }
 
   // ── Tabs UI ─────────────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; Icon: React.ElementType; count?: number }[] = [
-    { id: 'favoritter',  label: 'Favoritter',    Icon: Star,    count: favorites.length },
-    { id: 'skjulte',     label: 'Skjulte varer', Icon: EyeOff,  count: blocked.length > 0 ? blocked.length : undefined },
-    { id: 'adgangskode', label: 'Adgangskode',   Icon: KeyRound },
+    { id: 'favoritter',  label: t('favoritter'), Icon: Star,    count: favorites.length },
+    { id: 'skjulte',     label: t('skjulteVarer'), Icon: EyeOff,  count: blocked.length > 0 ? blocked.length : undefined },
+    { id: 'adgangskode', label: t('adgangskode'), Icon: KeyRound },
   ]
 
   return (
@@ -138,14 +142,14 @@ export default function ProfileClient({
         <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-sm text-gray-500">
-              Favoritvarer vises øverst i din bestillingsliste for hurtig adgang
+              {t('favInfo')}
             </p>
           </div>
 
           {favorites.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-gray-400">
               <Star size={32} className="mx-auto mb-2 text-gray-200" />
-              Ingen favoritter endnu
+              {t('ingenFav')}
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -160,7 +164,7 @@ export default function ProfileClient({
                     onClick={() => handleRemoveFav(fav.bcItemNumber)}
                     disabled={isPending}
                     className="rounded p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
-                    title="Fjern favorit"
+                    title={t('fjernFav')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -175,7 +179,7 @@ export default function ProfileClient({
               className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
             >
               <Plus size={15} />
-              Tilføj favorit
+              {t('tilfoejFav')}
             </button>
           </div>
         </div>
@@ -186,14 +190,14 @@ export default function ProfileClient({
         <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-sm text-gray-500">
-              Skjulte varer vises ikke i din bestillingsliste eller søgning
+              {t('skjulteInfo')}
             </p>
           </div>
 
           {blocked.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-gray-400">
               <EyeOff size={32} className="mx-auto mb-2 text-gray-200" />
-              Ingen skjulte varer
+              {t('ingenSkjulte')}
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -210,10 +214,10 @@ export default function ProfileClient({
                     onClick={() => handleRemoveBlocked(num)}
                     disabled={isPending}
                     className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-                    title="Vis igen"
+                    title={t('visIgen')}
                   >
                     <Eye size={13} />
-                    Vis igen
+                    {t('visIgen')}
                   </button>
                 </div>
               ))}
@@ -226,7 +230,7 @@ export default function ProfileClient({
               className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-800"
             >
               <Plus size={15} />
-              Skjul en vare
+              {t('skjulVare')}
             </button>
           </div>
         </div>
@@ -246,9 +250,9 @@ export default function ProfileClient({
             )}
 
             {[
-              { label: 'Nuværende adgangskode', key: 'current',  ph: '••••••••' },
-              { label: 'Ny adgangskode',         key: 'next',     ph: 'Min. 8 tegn' },
-              { label: 'Bekræft ny adgangskode', key: 'confirm',  ph: '••••••••' },
+              { label: t('nuvaerende'), key: 'current',  ph: '••••••••' },
+              { label: t('nyKode'),     key: 'next',     ph: t('min8') },
+              { label: t('bekraeft'),   key: 'confirm',  ph: '••••••••' },
             ].map(({ label, key, ph }) => (
               <div key={key}>
                 <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
@@ -268,7 +272,7 @@ export default function ProfileClient({
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {pwPending ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
-              Skift adgangskode
+              {t('skiftKode')}
             </button>
           </div>
         </div>

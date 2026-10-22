@@ -8,15 +8,22 @@ import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPort
 import { findAabenOrdre } from '@/lib/aabenOrdre'
 import { revalidatePath } from 'next/cache'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { ordrerApiDict } from '@/lib/i18n/portal/dict/ordrer-api'
 
 // Coverage-kaldet til BC (afgang-dækkede linjer) kan tage >10s ved tunge producerede varer —
 // samme grund som coverage/route. Uden dette kunne et serverless-timeout afbryde ordren.
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
+  // Kundesynlige fejltekster på kundens sprog; console-logs og admin-tekster forbliver danske.
+  const lang   = await getPortalLang()
+  const t      = makeT(ordrerApiDict, lang)
+  const locale = localeOf(lang)
   const session = await getServerSession(authOptions)
   if (!session) {
-    return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+    return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
   }
 
   const userId = (session.user as any)?.id as string
@@ -26,7 +33,7 @@ export async function POST(req: NextRequest) {
   const parentNo         = getParentCustomerNo(session)
   const activeCustomerNo = getActiveCustomerNo(session)
   if (!(await isCustomerAllowed(parentNo, activeCustomerNo))) {
-    return NextResponse.json({ error: 'Ingen adgang til den valgte butik' }, { status: 403 })
+    return NextResponse.json({ error: t('ingenAdgangButik') }, { status: 403 })
   }
 
   try {
@@ -34,7 +41,7 @@ export async function POST(req: NextRequest) {
     const { deliveryDate: deliveryDateStr, notes, lines, shipmentMethodCode, poNumber, driverNote } = body
 
     if (!deliveryDateStr || !lines?.length) {
-      return NextResponse.json({ error: 'Mangler leveringsdato eller linjer' }, { status: 400 })
+      return NextResponse.json({ error: t('manglerDatoLinjer') }, { status: 400 })
     }
 
     const deliveryDate = new Date(deliveryDateStr)
@@ -58,7 +65,7 @@ export async function POST(req: NextRequest) {
     // Tjek deadline
     if (new Date() > deadline) {
       return NextResponse.json(
-        { error: `Deadline for denne dato er passeret (${deadline.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })})` },
+        { error: t('deadlinePasseret', { tid: deadline.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }) },
         { status: 422 }
       )
     }
@@ -114,7 +121,7 @@ export async function POST(req: NextRequest) {
       // 1. Frist-vare til for tidlig dato UDEN lager OG uden afgang der dækker → afvis.
       //    (En købsordre der ankommer senest leveringsdatoen dækker — spejler klientens isItemAvailable.)
       if (floor && !floorForward && disp <= 0 && !coveredByAfgang) {
-        tooEarly.push(`${l.itemName || l.bcItemNumber} (tidligst ${floor.toLocaleDateString('da-DK')})`)
+        tooEarly.push(t('tidligst', { navn: l.itemName || l.bcItemNumber, dato: floor.toLocaleDateString(locale) }))
         continue
       }
       // 2. Antals-loft: ALLE varetyper cappes ved disponibelt (intet oversalg), UNDTAGET
@@ -141,7 +148,7 @@ export async function POST(req: NextRequest) {
       const auctionFree = a.auktionsKategori && handelsdag
         && (afsendStr > todayStr || prisDato !== todayStr)
       if (!auctionFree && !isForward && disp > 0 && l.quantity > disp) {
-        overCap.push(`${l.itemName || l.bcItemNumber}: maks ${Math.round(disp * 10) / 10}`)
+        overCap.push(t('maks', { navn: l.itemName || l.bcItemNumber, n: Math.round(disp * 10) / 10 }))
         lofter.push({ itemNo: l.bcItemNumber, navn: l.itemName || l.bcItemNumber, maks: Math.round(disp * 10) / 10 })
       }
       // 3. Dækket KUN af afgang (lager ≤ 0, ikke frist-forward) → loftet = BC coverage (mængden på vej).
@@ -158,9 +165,9 @@ export async function POST(req: NextRequest) {
         for (const row of cov?.results ?? []) {
           const ln = afgangLines.find(x => x.itemNo === row.itemNo)
           if (!ln || row.unlimited) continue
-          if (row.maxQty <= 0) tooEarly.push(`${ln.name} (ikke dækket til denne dato)`)
+          if (row.maxQty <= 0) tooEarly.push(t('ikkeDaekket', { navn: ln.name }))
           else if (ln.qty > row.maxQty) {
-            overCap.push(`${ln.name}: maks ${Math.round(row.maxQty * 10) / 10}`)
+            overCap.push(t('maks', { navn: ln.name, n: Math.round(row.maxQty * 10) / 10 }))
             lofter.push({ itemNo: ln.itemNo, navn: ln.name, maks: Math.round(row.maxQty * 10) / 10 })
           }
         }
@@ -168,20 +175,20 @@ export async function POST(req: NextRequest) {
     }
     if (tooEarly.length) {
       return NextResponse.json(
-        { error: `Bestillingsfrist ikke nået — vælg en senere leveringsdato for: ${tooEarly.join(', ')}` },
+        { error: t('fristIkkeNaaet', { liste: tooEarly.join(', ') }) },
         { status: 422 }
       )
     }
     if (overCap.length) {
       return NextResponse.json(
-        { error: `For stort antal — ${overCap.join(', ')}. Vi har ikke mere til denne leveringsdato.`, lofter },
+        { error: t('forStortAntalNy', { liste: overCap.join(', ') }), lofter },
         { status: 422 }
       )
     }
 
     const customer = await prisma.customer.findUnique({ where: { id: userId } })
     if (!customer) {
-      return NextResponse.json({ error: 'Kunde ikke fundet' }, { status: 404 })
+      return NextResponse.json({ error: t('kundeIkkeFundet') }, { status: 404 })
     }
 
     // ── ÉN ORDRE PR. LEVERANCE ───────────────────────────────────────────────
@@ -208,7 +215,7 @@ export async function POST(req: NextRequest) {
       } else if (errors.length > 0) {
         console.error('[ordre] kunne ikke lægge paa', eksisterende.bcOrderNumber, errors)
         return NextResponse.json(
-          { error: `Varerne kunne ikke lægges på din bestilling ${eksisterende.bcOrderNumber}: ${errors.join(' · ')}` },
+          { error: t('kunneIkkeLaeggePaaBestilling', { nr: eksisterende.bcOrderNumber, fejl: errors.join(' · ') }) },
           { status: 502 },
         )
       }
@@ -348,11 +355,11 @@ export async function POST(req: NextRequest) {
       }).catch((e) => console.warn('Email-notifikation fejlede:', e.message))
 
       // Returner success til kunden — ordren er gemt og admin notificeres
-      return NextResponse.json({ orderId: order.id, bcWarning: 'Ordre modtaget — behandles snarest' }, { status: 201 })
+      return NextResponse.json({ orderId: order.id, bcWarning: t('ordreModtaget') }, { status: 201 })
     }
 
   } catch (e: any) {
     console.error('Ordre-fejl:', e)
-    return NextResponse.json({ error: 'Serverfejl' }, { status: 500 })
+    return NextResponse.json({ error: t('serverfejl') }, { status: 500 })
   }
 }

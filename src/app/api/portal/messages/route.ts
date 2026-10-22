@@ -4,6 +4,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { flagBeskedUlaest, pushBeskedTilBC } from '@/lib/businesscentral'
+import { getT } from '@/lib/i18n/portal/server'
+import { beskederDict } from '@/lib/i18n/portal/dict/beskeder'
 
 // GET — kundens tråd (seneste 30 dage)
 export async function GET() {
@@ -31,13 +33,14 @@ export async function GET() {
 
 // POST — kunden sender besked
 export async function POST(req: Request) {
+  const t = await getT(beskederDict)
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: t('ikkeLoggetInd') }, { status: 401 })
   const customerId = (session.user as any)?.id as string
   const customerName = session.user?.name ?? 'Kunde'
 
   const { body } = await req.json()
-  if (!body?.trim()) return NextResponse.json({ error: 'Tom besked' }, { status: 400 })
+  if (!body?.trim()) return NextResponse.json({ error: t('tomBesked') }, { status: 400 })
 
   const expires = new Date(); expires.setDate(expires.getDate() + 30)
   const msgId = randomUUID()

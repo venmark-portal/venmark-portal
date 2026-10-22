@@ -3,6 +3,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import DeliveryProfileForm from './DeliveryProfileForm'
+import { getT } from '@/lib/i18n/portal/server'
+import { profilDict } from '@/lib/i18n/portal/dict/profil'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,13 +47,15 @@ export default async function LeveringPage() {
     `
   } catch {}
 
+  const t = await getT(profilDict)
+
   return (
     <div className="space-y-4">
       <div>
-        <a href="/portal/profil" className="text-sm text-blue-600 hover:underline">← Tilbage til profil</a>
-        <h1 className="text-2xl font-bold text-gray-900 mt-1">Leveringsoplysninger</h1>
+        <a href="/portal/profil" className="text-sm text-blue-600 hover:underline">{t('tilbageProfil')}</a>
+        <h1 className="text-2xl font-bold text-gray-900 mt-1">{t('leveringsoplysninger')}</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Adgangskoder og instruktioner til chauffører. Gemmes sikkert og vises kun til vores chauffører.
+          {t('leveringIntro')}
         </p>
       </div>
       <DeliveryProfileForm initialProfile={profile as any} initialPodRecipients={podRecipients} />

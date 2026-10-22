@@ -3,11 +3,14 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Camera, Image as ImageIcon, X, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { reklamationDict } from '@/lib/i18n/portal/dict/reklamation'
 
 interface ImageData { data: string; mimeType: string; fileName: string }
 
 export default function ReklamationForm() {
   const router = useRouter()
+  const t = useT(reklamationDict)
   const cameraRef    = useRef<HTMLInputElement>(null)
   const galleryRef   = useRef<HTMLInputElement>(null)
   const imageSection = useRef<HTMLDivElement>(null)
@@ -48,7 +51,7 @@ export default function ReklamationForm() {
       if (!res.ok) throw new Error(await res.text())
       setDone(true)
     } catch (e: any) {
-      setError(e.message ?? 'Fejl — prøv igen')
+      setError(e.message ?? t('fejlProevIgen'))
     } finally {
       setSaving(false)
       setShowNoBillede(false)
@@ -71,14 +74,14 @@ export default function ReklamationForm() {
       <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-white py-16 text-center ring-1 ring-gray-200">
         <CheckCircle2 size={52} className="text-green-500" />
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Reklamation modtaget!</h2>
-          <p className="mt-1 text-sm text-gray-500">Vi vender tilbage snarest muligt</p>
+          <h2 className="text-xl font-bold text-gray-900">{t('modtaget')}</h2>
+          <p className="mt-1 text-sm text-gray-500">{t('vendTilbage')}</p>
         </div>
         <button
           onClick={() => router.push('/portal')}
           className="mt-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
         >
-          Tilbage til forsiden
+          {t('tilForsiden')}
         </button>
       </div>
     )
@@ -90,14 +93,14 @@ export default function ReklamationForm() {
         {/* Emne */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-            Emne *
+            {t('emne')}
           </label>
           <input
             type="text"
             value={subject}
             onChange={e => setSubject(e.target.value)}
             required
-            placeholder="f.eks. Forkert vare leveret — eller: Søgningen finder ikke varen"
+            placeholder={t('emnePh')}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
           />
         </div>
@@ -105,13 +108,13 @@ export default function ReklamationForm() {
         {/* Ordrenummer */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-            Ordrenummer (valgfri)
+            {t('ordrenr')}
           </label>
           <input
             type="text"
             value={orderRef}
             onChange={e => setOrderRef(e.target.value)}
-            placeholder="f.eks. SO-1234"
+            placeholder={t('ordrenrPh')}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
           />
         </div>
@@ -119,14 +122,14 @@ export default function ReklamationForm() {
         {/* Beskrivelse */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-            Beskrivelse *
+            {t('beskrivelse')}
           </label>
           <textarea
             rows={5}
             value={body}
             onChange={e => setBody(e.target.value)}
             required
-            placeholder="Beskriv problemet så detaljeret som muligt..."
+            placeholder={t('beskrivelsePh')}
             className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
           />
         </div>
@@ -134,7 +137,7 @@ export default function ReklamationForm() {
         {/* Billeder */}
         <div ref={imageSection}>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-            Billeder (maks. 5)
+            {t('billeder')}
           </label>
           <div className="flex flex-wrap gap-2">
             {images.map((img, i) => (
@@ -161,7 +164,7 @@ export default function ReklamationForm() {
                   className="w-20 h-9 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center gap-1 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition"
                 >
                   <Camera size={14} />
-                  <span className="text-[11px] font-medium">Kamera</span>
+                  <span className="text-[11px] font-medium">{t('kamera')}</span>
                 </button>
                 <button
                   type="button"
@@ -169,7 +172,7 @@ export default function ReklamationForm() {
                   className="w-20 h-9 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center gap-1 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition"
                 >
                   <ImageIcon size={14} />
-                  <span className="text-[11px] font-medium">Galleri</span>
+                  <span className="text-[11px] font-medium">{t('galleri')}</span>
                 </button>
               </div>
             )}
@@ -188,7 +191,7 @@ export default function ReklamationForm() {
         disabled={saving || !subject.trim() || !body.trim()}
         className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-2"
       >
-        {saving ? <><Loader2 size={18} className="animate-spin" /> Sender...</> : 'Send reklamation'}
+        {saving ? <><Loader2 size={18} className="animate-spin" /> {t('sender')}</> : t('send')}
       </button>
 
       {/* Dialog: ingen billede vedhæftet */}
@@ -198,9 +201,9 @@ export default function ReklamationForm() {
             <div className="bg-amber-50 px-5 pt-5 pb-4 flex gap-3">
               <AlertTriangle size={22} className="shrink-0 text-amber-500 mt-0.5" />
               <div>
-                <h3 className="text-base font-bold text-gray-900">Har du husket dokumentation?</h3>
+                <h3 className="text-base font-bold text-gray-900">{t('husketDok')}</h3>
                 <p className="mt-1 text-sm text-gray-600">
-                  Et billede af problemet er ofte afgørende for at behandle din reklamation hurtigt — og sparer en opringning.
+                  {t('husketDokTekst')}
                 </p>
               </div>
             </div>
@@ -215,7 +218,7 @@ export default function ReklamationForm() {
                 }}
                 className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white hover:bg-blue-700 transition flex items-center justify-center gap-2"
               >
-                <Camera size={16} /> Tilføj billede nu
+                <Camera size={16} /> {t('tilfoejBillede')}
               </button>
               <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-gray-200 px-4 py-3 hover:bg-gray-50 transition">
                 <input
@@ -224,7 +227,7 @@ export default function ReklamationForm() {
                   onChange={e => setBekraeftNoBill(e.target.checked)}
                   className="mt-0.5 h-4 w-4 rounded accent-blue-600"
                 />
-                <span className="text-sm text-gray-700">Jeg har ikke et billede — send reklamationen uden</span>
+                <span className="text-sm text-gray-700">{t('ingenBillede')}</span>
               </label>
               {bekraeftNoBill && (
                 <button
@@ -232,7 +235,7 @@ export default function ReklamationForm() {
                   disabled={saving}
                   className="w-full rounded-xl bg-gray-700 py-3 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-40 transition flex items-center justify-center gap-2"
                 >
-                  {saving ? <><Loader2 size={16} className="animate-spin" /> Sender...</> : 'Send uden billede'}
+                  {saving ? <><Loader2 size={16} className="animate-spin" /> {t('sender')}</> : t('sendUden')}
                 </button>
               )}
             </div>

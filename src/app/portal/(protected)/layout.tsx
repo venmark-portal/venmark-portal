@@ -10,6 +10,11 @@ import SessionProvider from '@/components/portal/SessionProvider'
 import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
 import TicketNotifier from '@/components/portal/TicketNotifier'
 import PushSubscribeButton from '@/components/portal/PushSubscribeButton'
+import SprogSkifter from '@/components/portal/SprogSkifter'
+import { LangProvider } from '@/lib/i18n/portal/LangProvider'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT } from '@/lib/i18n/portal/lang'
+import { navDict } from '@/lib/i18n/portal/dict/nav'
 
 export const metadata: Metadata = {
   title: 'Venmark Portal',
@@ -31,6 +36,9 @@ export default async function PortalLayout({
   if (!session) {
     redirect('/portal/login')
   }
+
+  const lang = await getPortalLang()
+  const t = makeT(navDict, lang)
 
   // Hent portal-udseende-indstillinger via rå SQL (undgår Prisma generate-krav)
   const defaultSettings = {
@@ -68,12 +76,13 @@ export default async function PortalLayout({
 
   return (
     <SessionProvider session={session}>
-      <div className="flex min-h-screen flex-col" style={{ backgroundColor: settings.bgColor }}>
+    <LangProvider lang={lang}>
+      <div lang={lang} className="flex min-h-screen flex-col" style={{ backgroundColor: settings.bgColor }}>
 
         {/* Admin kigger med som kunden — skal kunne ses på HVER side. */}
         {(session.user as any)?.impersonatedBy && (
           <SomKundeBaand
-            kunde={session.user?.name ?? 'kunden'}
+            kunde={session.user?.name ?? t('kunden')}
             admin={(session.user as any).impersonatedBy}
           />
         )}
@@ -86,22 +95,23 @@ export default async function PortalLayout({
               <span className="text-blue-600">.dk</span>
             </span>
             <nav className="flex items-center gap-6 text-sm font-medium text-gray-600">
-              <a href="/portal"                className="hover:text-gray-900 transition-colors">Oversigt</a>
-              <a href="/portal/bestil"         className="hover:text-gray-900 transition-colors">Bestil</a>
-              <a href="/portal/ordrer"         className="hover:text-gray-900 transition-colors">Ordrer</a>
-              <a href="/portal/fakturaer"      className="hover:text-gray-900 transition-colors">Fakturaer</a>
-              <a href="/portal/beskeder"       className="hover:text-gray-900 transition-colors">Beskeder</a>
-              <a href="/portal/reklamationer"  className="hover:text-gray-900 transition-colors">Reklamationer</a>
-              <a href="/portal/profil"         className="hover:text-gray-900 transition-colors">Profil</a>
-              <a href="/portal/hjaelp"         className="hover:text-gray-900 transition-colors">Hjælp</a>
+              <a href="/portal"                className="hover:text-gray-900 transition-colors">{t('oversigt')}</a>
+              <a href="/portal/bestil"         className="hover:text-gray-900 transition-colors">{t('bestil')}</a>
+              <a href="/portal/ordrer"         className="hover:text-gray-900 transition-colors">{t('ordrer')}</a>
+              <a href="/portal/fakturaer"      className="hover:text-gray-900 transition-colors">{t('fakturaer')}</a>
+              <a href="/portal/beskeder"       className="hover:text-gray-900 transition-colors">{t('beskeder')}</a>
+              <a href="/portal/reklamationer"  className="hover:text-gray-900 transition-colors">{t('reklamationer')}</a>
+              <a href="/portal/profil"         className="hover:text-gray-900 transition-colors">{t('profil')}</a>
+              <a href="/portal/hjaelp"         className="hover:text-gray-900 transition-colors">{t('hjaelp')}</a>
             </nav>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{session.user?.name}</span>
+              <SprogSkifter />
               <a
                 href="/api/auth/signout"
                 className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
               >
-                Log ud
+                {t('logUd')}
               </a>
             </div>
           </div>
@@ -114,7 +124,10 @@ export default async function PortalLayout({
               <span className="text-gray-900">Venmark</span>
               <span className="text-blue-600">.dk</span>
             </span>
-            <span className="text-sm text-gray-500">{session.user?.name}</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm text-gray-500">{session.user?.name}</span>
+              <SprogSkifter />
+            </div>
           </div>
         </header>
 
@@ -147,6 +160,7 @@ export default async function PortalLayout({
         {/* Mobil-bundnavigation */}
         <PortalNav />
       </div>
+    </LangProvider>
     </SessionProvider>
   )
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 /**
  * Opdager at der er deployet en ny udgave mens kunden havde portalen åben.
@@ -19,6 +21,7 @@ import { RefreshCw } from 'lucide-react'
 export default function VersionVagt() {
   const minVersion = useRef<string | null>(null)
   const [nyVersion, setNyVersion] = useState(false)
+  const t = useT(faellesDict)
 
   useEffect(() => {
     let stoppet = false
@@ -48,13 +51,13 @@ export default function VersionVagt() {
       <div className="mx-auto flex max-w-5xl items-center gap-3">
         <RefreshCw size={18} className="shrink-0 text-amber-600" />
         <span className="min-w-0 flex-1 text-sm text-amber-900">
-          Der er kommet en ny udgave af portalen.
+          {t('nyUdgave')}
         </span>
         <button
           onClick={() => window.location.reload()}
           className="shrink-0 whitespace-nowrap rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white active:scale-95"
         >
-          Opdater
+          {t('opdater')}
         </button>
       </div>
     </div>

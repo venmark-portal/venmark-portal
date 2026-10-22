@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 interface Store {
   customerNo:   string
@@ -19,6 +21,7 @@ interface Store {
 export default function CustomerSwitcher() {
   const { data: session, update } = useSession()
   const router = useRouter()
+  const t = useT(faellesDict)
 
   const [self, setSelf]     = useState<Store | null>(null)
   const [stores, setStores] = useState<Store[]>([])
@@ -69,7 +72,7 @@ export default function CustomerSwitcher() {
     >
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-sm font-medium text-gray-700">
-          {onBehalf ? '⚠️ Bestiller for:' : 'Bestiller for:'}
+          {onBehalf ? `⚠️ ${t('bestillerFor')}` : t('bestillerFor')}
         </span>
         <select
           value={active}
@@ -78,7 +81,7 @@ export default function CustomerSwitcher() {
           className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60"
         >
           <option value={self.customerNo}>
-            {self.customerName} (mig selv)
+            {self.customerName} {t('migSelv')}
           </option>
           {stores.map(s => (
             <option key={s.customerNo} value={s.customerNo}>
@@ -86,10 +89,10 @@ export default function CustomerSwitcher() {
             </option>
           ))}
         </select>
-        {busy && <span className="text-xs text-gray-500">Skifter…</span>}
+        {busy && <span className="text-xs text-gray-500">{t('skifter')}</span>}
         {onBehalf && !busy && (
           <span className="text-xs text-amber-700">
-            Priser, levering og historik vises for den valgte butik.
+            {t('valgtButikInfo')}
           </span>
         )}
       </div>

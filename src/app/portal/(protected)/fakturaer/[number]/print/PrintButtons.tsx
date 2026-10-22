@@ -1,6 +1,10 @@
 'use client'
 
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
+
 export default function PrintButtons() {
+  const t = useT(fakturaDict)
   return (
     <div style={{ marginBottom: '20px', display: 'flex', gap: '8px' }}>
       <button
@@ -10,7 +14,7 @@ export default function PrintButtons() {
           padding: '8px 20px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
         }}
       >
-        🖨️ Udskriv / Gem som PDF
+        {t('udskriv')}
       </button>
       <button
         onClick={() => window.close()}
@@ -19,7 +23,7 @@ export default function PrintButtons() {
           padding: '8px 16px', cursor: 'pointer', fontSize: '13px',
         }}
       >
-        Luk
+        {t('luk')}
       </button>
     </div>
   )

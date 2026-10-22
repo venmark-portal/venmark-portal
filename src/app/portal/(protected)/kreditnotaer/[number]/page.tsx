@@ -4,6 +4,10 @@ import { redirect } from 'next/navigation'
 import { getPostedCreditMemos, getPostedCreditMemoLines } from '@/lib/businesscentral'
 import { ArrowLeft, Printer } from 'lucide-react'
 import Link from 'next/link'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { fakturaDict } from '@/lib/i18n/portal/dict/faktura'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +16,9 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
   if (!session?.user) redirect('/portal/login')
 
   const customerNo = (session.user as any)?.bcCustomerNumber as string ?? ''
+  const lang   = await getPortalLang()
+  const t      = makeT(fakturaDict, lang)
+  const locale = localeOf(lang)
 
   const oneYearAgo = new Date()
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
@@ -22,8 +29,9 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
 
   if (!creditMemo) redirect('/portal/fakturaer')
 
-  const lines = await getPostedCreditMemoLines(creditMemo.number)
-  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const lines = await oversaetVarenavne(
+    await getPostedCreditMemoLines(creditMemo.number), lang, { nr: 'itemNumber', navn: 'description' })
+  const fmt = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
 
   return (
     <div className="space-y-4">
@@ -35,7 +43,7 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
         <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900 font-mono">{creditMemo.number}</h1>
           <p className="text-xs text-gray-500">
-            Kreditnota · bogført {new Date(creditMemo.postingDate).toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}
+            {t('kreditnotaBogfoert', { dato: new Date(creditMemo.postingDate).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) })}
           </p>
         </div>
         <a
@@ -53,29 +61,29 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
       <div className="rounded-xl bg-purple-50 p-4 ring-1 ring-purple-100">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-purple-700">Kreditnota</p>
+            <p className="text-sm font-semibold text-purple-700">{t('kreditnota')}</p>
             {creditMemo.appliesToDocNo && (
               <p className="text-xs text-gray-500 mt-1">
-                Vedr. faktura: <span className="font-mono">{creditMemo.appliesToDocNo}</span>
+                {t('vedrFaktura')}: <span className="font-mono">{creditMemo.appliesToDocNo}</span>
               </p>
             )}
             {creditMemo.paymentTermsCode && (
-              <p className="text-xs text-gray-400 mt-0.5">Betalingsbetingelse: {creditMemo.paymentTermsCode}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{t('betalingsbetingelse')}: {creditMemo.paymentTermsCode}</p>
             )}
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-purple-700">−{fmt.format(creditMemo.totalAmountIncludingTax)}</div>
-            <div className="text-xs text-gray-500">inkl. moms</div>
+            <div className="text-xs text-gray-500">{t('inklMoms')}</div>
           </div>
         </div>
       </div>
 
       {/* Linjer */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Linjer</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">{t('linjer')}</p>
         {lines.length === 0 ? (
           <div className="rounded-xl bg-white ring-1 ring-gray-200 px-4 py-8 text-center text-sm text-gray-400">
-            Ingen linjer fundet
+            {t('ingenLinjer')}
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
@@ -90,13 +98,13 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
                       <span className="text-sm text-gray-800">{line.description}</span>
                       <div className="mt-0.5 text-xs text-gray-400">
                         {line.quantity} {line.unitOfMeasureCode}
-                        {line.unitPrice > 0 && ` · ${fmt.format(line.unitPrice)}/stk`}
+                        {line.unitPrice > 0 && ` · ${fmt.format(line.unitPrice)}${t('prStk')}`}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-semibold text-gray-900">{fmt.format(line.lineAmount)}</div>
                       {line.amountIncludingVAT !== line.lineAmount && (
-                        <div className="text-xs text-gray-400">inkl. {fmt.format(line.amountIncludingVAT)}</div>
+                        <div className="text-xs text-gray-400">{t('inklBeloeb', { beloeb: fmt.format(line.amountIncludingVAT) })}</div>
                       )}
                     </div>
                   </div>
@@ -105,11 +113,11 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
             </div>
             <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 space-y-1">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Beløb ekskl. moms</span>
+                <span className="text-gray-500">{t('beloebEkskl')}</span>
                 <span className="font-medium text-gray-900">{fmt.format(creditMemo.totalAmountExcludingTax)}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold">
-                <span className="text-gray-700">Beløb inkl. moms</span>
+                <span className="text-gray-700">{t('beloebInkl')}</span>
                 <span className="text-purple-700">−{fmt.format(creditMemo.totalAmountIncludingTax)}</span>
               </div>
             </div>
@@ -118,9 +126,9 @@ export default async function KreditnotaDetailPage({ params }: { params: { numbe
       </div>
 
       <p className="text-center text-xs text-gray-400">
-        Spørgsmål til kreditnotaen?{' '}
-        <a href={`mailto:fisk@venmark.dk?subject=Kreditnota ${creditMemo.number}`} className="text-blue-600 hover:underline">
-          Kontakt os
+        {t('kreditnotaSpm')}{' '}
+        <a href={`mailto:fisk@venmark.dk?subject=${t('kreditnota')} ${creditMemo.number}`} className="text-blue-600 hover:underline">
+          {t('kontaktOs')}
         </a>
       </p>
     </div>

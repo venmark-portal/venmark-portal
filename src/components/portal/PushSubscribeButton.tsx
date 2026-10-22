@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -10,6 +12,7 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export default function PushSubscribeButton() {
+  const t = useT(faellesDict)
   const [status, setStatus] = useState<'loading' | 'unsupported' | 'denied' | 'subscribed' | 'unsubscribed'>('loading')
   const [working, setWorking] = useState(false)
 
@@ -83,9 +86,9 @@ export default function PushSubscribeButton() {
       <button
         onClick={unsubscribe}
         disabled={working}
-        title="Slå push-notifikationer fra"
+        title={t('pushFra')}
         className="fixed bottom-20 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 md:bottom-6 disabled:opacity-50"
-        aria-label="Notifikationer aktiveret — klik for at slå fra"
+        aria-label={t('pushAktiveret')}
       >
         <span className="text-base">🔔</span>
       </button>
@@ -96,9 +99,9 @@ export default function PushSubscribeButton() {
     <button
       onClick={subscribe}
       disabled={working}
-      title="Aktivér push-notifikationer"
+      title={t('pushTil')}
       className="fixed bottom-20 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-white border border-gray-300 text-gray-500 shadow-lg hover:bg-gray-50 md:bottom-6 disabled:opacity-50"
-      aria-label="Aktivér push-notifikationer"
+      aria-label={t('pushTil')}
     >
       <span className="text-base">🔕</span>
     </button>

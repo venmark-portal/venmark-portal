@@ -2,31 +2,43 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getStandingOrderLines } from '@/lib/businesscentral'
 import { RefreshCw } from 'lucide-react'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { ordrerFastDict } from '@/lib/i18n/portal/dict/ordrer-fast'
 
 export const dynamic = 'force-dynamic'
 
-const DAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre'] as const
+// Ordbogsnøgler for kolonnerne man–fre
+const DAYS = ['kortMan', 'kortTir', 'kortOns', 'kortTor', 'kortFre'] as const
 
 export default async function FastPage() {
   const session    = await getServerSession(authOptions)
   const customerNo = (session?.user as any)?.bcCustomerNumber as string ?? ''
 
-  const lines = await getStandingOrderLines(customerNo).catch(() => [])
+  const lang = await getPortalLang()
+  const t    = makeT(ordrerFastDict, lang)
+  // Varenavne på kundens sprog (BC-varetranslationer); dansk = uændret.
+  const lines = await oversaetVarenavne(
+    await getStandingOrderLines(customerNo).catch(() => []),
+    lang,
+    { nr: 'itemNo', navn: 'description' },
+  )
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Faste ordrer</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('titel')}</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Dine faste ugentlige ordrelinjer — styres af Venmark
+          {t('undertitel')}
         </p>
       </div>
 
       {lines.length === 0 ? (
         <div className="rounded-2xl bg-white ring-1 ring-gray-200 px-6 py-12 text-center">
           <RefreshCw size={32} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">Ingen faste ordrelinjer opsat endnu</p>
-          <p className="text-xs text-gray-400 mt-1">Kontakt Venmark for at få oprettet faste ordrelinjer</p>
+          <p className="text-sm text-gray-500">{t('ingenLinjer')}</p>
+          <p className="text-xs text-gray-400 mt-1">{t('kontakt')}</p>
         </div>
       ) : (
         <div className="rounded-2xl bg-white ring-1 ring-gray-200 overflow-hidden">
@@ -34,12 +46,12 @@ export default async function FastPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                  <th className="px-4 py-3 text-left">Vare</th>
-                  <th className="px-3 py-3 text-left">Enhed</th>
+                  <th className="px-4 py-3 text-left">{t('kolVare')}</th>
+                  <th className="px-3 py-3 text-left">{t('kolEnhed')}</th>
                   {DAYS.map(d => (
-                    <th key={d} className="px-3 py-3 text-center w-14">{d}</th>
+                    <th key={d} className="px-3 py-3 text-center w-14">{t(d)}</th>
                   ))}
-                  <th className="px-4 py-3 text-left">Note</th>
+                  <th className="px-4 py-3 text-left">{t('kolNote')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

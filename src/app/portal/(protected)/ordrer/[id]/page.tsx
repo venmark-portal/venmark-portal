@@ -6,16 +6,21 @@ import { ArrowLeft, RefreshCw, PlusCircle } from 'lucide-react'
 import { getPortalLineStatuses } from '@/lib/businesscentral'
 import OrderLineStatus from '@/components/portal/OrderLineStatus'
 import Link from 'next/link'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { ordrerDict } from '@/lib/i18n/portal/dict/ordrer'
 
 export const dynamic = 'force-dynamic'
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  DRAFT:      { label: 'Kladde',    cls: 'bg-gray-100   text-gray-600'   },
-  SUBMITTED:  { label: 'Afventer', cls: 'bg-amber-100  text-amber-700'  },
-  APPROVED:   { label: 'Godkendt', cls: 'bg-blue-100   text-blue-700'   },
-  SENT_TO_BC: { label: 'Modtaget', cls: 'bg-green-100  text-green-700'  },
-  CONFIRMED:  { label: 'Bekræftet',cls: 'bg-green-100  text-green-700'  },
-  REJECTED:   { label: 'Afvist',   cls: 'bg-red-100    text-red-700'    },
+// label = ordbogsnøgle
+const STATUS: Record<string, { label: keyof typeof ordrerDict.da; cls: string }> = {
+  DRAFT:      { label: 'stKladde',     cls: 'bg-gray-100   text-gray-600'   },
+  SUBMITTED:  { label: 'stAfventer',   cls: 'bg-amber-100  text-amber-700'  },
+  APPROVED:   { label: 'stGodkendt',   cls: 'bg-blue-100   text-blue-700'   },
+  SENT_TO_BC: { label: 'stModtaget',   cls: 'bg-green-100  text-green-700'  },
+  CONFIRMED:  { label: 'stBekraeftet', cls: 'bg-green-100  text-green-700'  },
+  REJECTED:   { label: 'stAfvist',     cls: 'bg-red-100    text-red-700'    },
 }
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
@@ -36,7 +41,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     ? await getPortalLineStatuses(order.bcOrderNumber)
     : null
 
-  const fmt = new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
+  const lang   = await getPortalLang()
+  const t      = makeT(ordrerDict, lang)
+  const locale = localeOf(lang)
+  // Varenavne på kundens sprog (BC-varetranslationer); dansk = uændret.
+  const visLinjer = await oversaetVarenavne(order.lines, lang, { nr: 'bcItemNumber', navn: 'itemName' })
+
+  const fmt = new Intl.NumberFormat(locale, { style: 'currency', currency: 'DKK', minimumFractionDigits: 2 })
   const st = STATUS[order.status] ?? STATUS.DRAFT
   const total = order.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0)
   const withinDeadline = new Date() < new Date(order.deadline) && order.status !== 'REJECTED'
@@ -51,22 +62,23 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-bold text-gray-900">
-              {order.bcOrderNumber ? `#${order.bcOrderNumber}` : 'Ordre'}
+              {order.bcOrderNumber ? `#${order.bcOrderNumber}` : t('ordre')}
             </h1>
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
-              {st.label}
+              {t(st.label)}
             </span>
             {order.type === 'STANDING' && (
               <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
                 <RefreshCw size={10} />
-                Fast ordre
+                {t('fastOrdre')}
               </span>
             )}
           </div>
           <div className="mt-0.5 text-xs text-gray-500">
-            Levering{' '}
-            {new Date(order.deliveryDate).toLocaleDateString('da-DK', {
-              weekday: 'long', day: 'numeric', month: 'long',
+            {t('levering', {
+              dato: new Date(order.deliveryDate).toLocaleDateString(locale, {
+                weekday: 'long', day: 'numeric', month: 'long',
+              }),
             })}
           </div>
         </div>
@@ -75,30 +87,30 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       {/* Info-kort */}
       <div className="rounded-xl bg-white ring-1 ring-gray-200 divide-y divide-gray-100 text-sm">
         <div className="flex justify-between px-4 py-2.5 text-gray-500">
-          <span>Bestilt</span>
+          <span>{t('bestilt')}</span>
           <span className="text-gray-800">
-            {new Date(order.createdAt).toLocaleDateString('da-DK', {
+            {new Date(order.createdAt).toLocaleDateString(locale, {
               day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
             })}
           </span>
         </div>
         <div className="flex justify-between px-4 py-2.5 text-gray-500">
-          <span>Deadline</span>
+          <span>{t('deadline')}</span>
           <span className={`font-medium ${withinDeadline ? 'text-green-600' : 'text-red-500'}`}>
-            {new Date(order.deadline).toLocaleDateString('da-DK', {
+            {new Date(order.deadline).toLocaleDateString(locale, {
               day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
             })}
           </span>
         </div>
         {total > 0 && (
           <div className="flex justify-between px-4 py-2.5 text-gray-500">
-            <span>Total</span>
+            <span>{t('total')}</span>
             <span className="font-semibold text-gray-800">{fmt.format(total)}</span>
           </div>
         )}
         {order.notes && (
           <div className="flex justify-between px-4 py-2.5 text-gray-500">
-            <span>Note</span>
+            <span>{t('note')}</span>
             <span className="text-gray-800 italic">{order.notes}</span>
           </div>
         )}
@@ -111,17 +123,17 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800"
         >
           <PlusCircle size={15} />
-          Tilføj vare til denne ordre
+          {t('tilfoejVareDenne')}
         </Link>
       )}
 
       {/* Ordrelinjer */}
       <div>
         <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">
-          {order.lines.length} {order.lines.length === 1 ? 'linje' : 'linjer'}
+          {t(order.lines.length === 1 ? 'linjer1' : 'linjerN', { n: order.lines.length })}
         </p>
         <div className="overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
-          {order.lines.map((line) => {
+          {visLinjer.map((line) => {
             const bcLine = bcLines?.find((b) => b.lineObjectNumber === line.bcItemNumber)
             return (
               <OrderLineStatus

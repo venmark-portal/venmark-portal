@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
+import type { TFunc } from '@/lib/i18n/portal/lang'
+import { auktionDict } from '@/lib/i18n/portal/dict/auktion'
+
+type AuktionKey = keyof typeof auktionDict.da
 
 interface Detail {
   id: string; status: string; currentPrice: number; bidCount: number; minNext: number
@@ -17,16 +22,18 @@ function useNow(ms = 1000) {
   useEffect(() => { const t = setInterval(() => setN(Date.now()), ms); return () => clearInterval(t) }, [ms])
   return n
 }
-function countdown(endsAt: string, now: number): string {
+function countdown(endsAt: string, now: number, t: TFunc<AuktionKey>): string {
   const d = new Date(endsAt).getTime() - now
-  if (d <= 0) return 'Afsluttet'
+  if (d <= 0) return t('afsluttet')
   const s = Math.floor(d / 1000)
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60
-  return h > 0 ? `${h}t ${m}m ${String(ss).padStart(2, '0')}s` : `${m}:${String(ss).padStart(2, '0')}`
+  return h > 0 ? t('tidTMS', { h, m, s: String(ss).padStart(2, '0') }) : `${m}:${String(ss).padStart(2, '0')}`
 }
-const unit = (m: string) => (m === 'PER_KG' ? ' kr/kg' : ' kr')
+const unit = (m: string, t: TFunc<AuktionKey>) => ' ' + t('kr') + (m === 'PER_KG' ? t('prKg') : '')
 
 export default function AuktionDetaljePage() {
+  const t = useT(auktionDict)
+  const locale = useLocale()
   const { id } = useParams<{ id: string }>()
   const [a, setA] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,7 +61,7 @@ export default function AuktionDetaljePage() {
 
   const bid = async () => {
     const amount = Number(bidInput)
-    if (!Number.isFinite(amount) || amount <= 0) { setMsg('Angiv et gyldigt bud.'); return }
+    if (!Number.isFinite(amount) || amount <= 0) { setMsg(t('angivGyldigt')); return }
     setBusy(true); setMsg('')
     try {
       const r = await fetch(`/api/portal/auktioner/${id}/bid`, {
@@ -62,17 +69,17 @@ export default function AuktionDetaljePage() {
         body: JSON.stringify({ amount }),
       })
       const d = await r.json()
-      if (!d.ok) setMsg(d.error ?? 'Kunne ikke byde.')
-      else setMsg(d.leading ? '✅ Du fører nu!' : `Du blev straks overbudt. Nuværende bud: ${d.currentPrice} kr.`)
+      if (!d.ok) setMsg(d.error ?? t('kunneIkkeByde'))
+      else setMsg(d.leading ? t('duFoererNu') : t('overbudt', { p: d.currentPrice }))
       await load()
-    } catch { setMsg('Serverfejl — prøv igen.') }
+    } catch { setMsg(t('serverfejl')) }
     setBusy(false)
   }
 
-  if (loading) return <div className="p-6 text-center text-sm text-gray-400">Henter…</div>
+  if (loading) return <div className="p-6 text-center text-sm text-gray-400">{t('henter')}</div>
   if (!a) return (
     <div className="p-6 text-center text-sm text-gray-500">
-      Auktionen findes ikke. <Link href="/portal/auktioner" className="text-blue-600 underline">Tilbage</Link>
+      {t('findesIkke')} <Link href="/portal/auktioner" className="text-blue-600 underline">{t('tilbage')}</Link>
     </div>
   )
 
@@ -82,7 +89,7 @@ export default function AuktionDetaljePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4">
-      <Link href="/portal/auktioner" className="text-sm text-blue-600">← Alle auktioner</Link>
+      <Link href="/portal/auktioner" className="text-sm text-blue-600">{t('alleAuktioner')}</Link>
 
       {a.imageIds.length > 0 && (
         <div className="flex gap-2 overflow-x-auto">
@@ -103,33 +110,33 @@ export default function AuktionDetaljePage() {
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-end justify-between">
           <div>
-            <div className="text-xs uppercase text-gray-400">Nuværende bud</div>
+            <div className="text-xs uppercase text-gray-400">{t('nuvaerendeBud')}</div>
             <div className="text-3xl font-bold text-gray-900">
-              {a.currentPrice > 0 ? a.currentPrice : a.minNext}<span className="text-base font-normal text-gray-500">{unit(a.priceMode)}</span>
+              {a.currentPrice > 0 ? a.currentPrice : a.minNext}<span className="text-base font-normal text-gray-500">{unit(a.priceMode, t)}</span>
             </div>
-            <div className="text-xs text-gray-400">{a.bidCount} bud{a.priceMode === 'PER_KG' ? ' · pris pr. kg' : ''}</div>
+            <div className="text-xs text-gray-400">{t(a.bidCount === 1 ? 'bud1' : 'budN', { n: a.bidCount })}{a.priceMode === 'PER_KG' ? t('prisPrKg') : ''}</div>
           </div>
           <div className="text-right">
-            <div className={`text-2xl font-bold ${soon ? 'text-red-600' : 'text-gray-800'}`}>{countdown(a.endsAt, now)}</div>
-            {a.youLead && !ended && <div className="mt-1 rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Du fører</div>}
+            <div className={`text-2xl font-bold ${soon ? 'text-red-600' : 'text-gray-800'}`}>{countdown(a.endsAt, now, t)}</div>
+            {a.youLead && !ended && <div className="mt-1 rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">{t('duFoerer')}</div>}
           </div>
         </div>
 
         {ended ? (
           <div className={`mt-4 rounded-lg p-3 text-center text-sm font-semibold ${a.youLead ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-600'}`}>
-            {a.youLead ? '🎉 Du vandt! Venmark kontakter dig for levering (ASAP).' : 'Auktionen er afsluttet.'}
+            {a.youLead ? t('vandt') : t('erAfsluttet')}
           </div>
         ) : (
           <div className="mt-4 space-y-2">
             <label className="block text-sm text-gray-600">
-              Dit maksbud <span className="text-gray-400">(mindst {a.minNext} kr — vi byder automatisk op til dit maks)</span>
+              {t('ditMaksbud')} <span className="text-gray-400">{t('maksbudHjaelp', { p: a.minNext })}</span>
               <input type="number" min={a.minNext} step={a.minIncrement} value={bidInput}
                 onChange={(e) => setBidInput(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-lg font-semibold focus:border-blue-400 focus:outline-none" />
             </label>
             <button onClick={bid} disabled={busy}
               className="w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50">
-              {busy ? 'Byder…' : 'Byd'}
+              {busy ? t('byder') : t('byd')}
             </button>
             {msg && <div className="text-center text-sm text-gray-700">{msg}</div>}
           </div>
@@ -138,12 +145,12 @@ export default function AuktionDetaljePage() {
 
       {a.bids.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-          <div className="mb-1 text-xs uppercase text-gray-400">Bud</div>
+          <div className="mb-1 text-xs uppercase text-gray-400">{t('budListe')}</div>
           <ul className="divide-y divide-gray-100 text-sm">
             {a.bids.map((b, i) => (
               <li key={i} className="flex justify-between py-1.5">
-                <span className={b.mine ? 'font-semibold text-blue-600' : 'text-gray-500'}>{b.mine ? 'Dit bud' : 'Bud'}</span>
-                <span className="tabular-nums">{b.amount}{unit(a.priceMode)} · {new Date(b.at).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span className={b.mine ? 'font-semibold text-blue-600' : 'text-gray-500'}>{b.mine ? t('ditBud') : t('bud')}</span>
+                <span className="tabular-nums">{b.amount}{unit(a.priceMode, t)} · {new Date(b.at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</span>
               </li>
             ))}
           </ul>

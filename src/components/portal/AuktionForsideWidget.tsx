@@ -3,22 +3,28 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Gavel } from 'lucide-react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { auktionDict } from '@/lib/i18n/portal/dict/auktion'
+import type { TFunc } from '@/lib/i18n/portal/lang'
 
 interface A {
   id: string; title: string; currentPrice: number; minNext: number
   priceMode: 'TOTAL' | 'PER_KG'; bidCount: number; endsAt: string; youLead: boolean
 }
 
+type AuktionKey = keyof typeof auktionDict.da
+
 /** Tid tilbage — samme format som auktionslisten ("1t 20m" / "20:05"). */
-function nedtaelling(endsAt: string, now: number): string {
+function nedtaelling(endsAt: string, now: number, t: TFunc<AuktionKey>): string {
   const d = new Date(endsAt).getTime() - now
-  if (d <= 0) return 'Afsluttet'
+  if (d <= 0) return t('afsluttet')
   const s = Math.floor(d / 1000)
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60
-  return h > 0 ? `${h}t ${m}m` : `${m}:${String(ss).padStart(2, '0')}`
+  return h > 0 ? t('tidTM', { h, m }) : `${m}:${String(ss).padStart(2, '0')}`
 }
 
 export default function AuktionForsideWidget() {
+  const t = useT(auktionDict)
   const [auctions, setAuctions] = useState<A[] | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
@@ -44,8 +50,8 @@ export default function AuktionForsideWidget() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-base font-bold text-gray-900"><Gavel size={18} /> Auktioner</h2>
-        <Link href="/portal/auktioner" className="text-sm font-medium text-blue-600">Se alle →</Link>
+        <h2 className="flex items-center gap-2 text-base font-bold text-gray-900"><Gavel size={18} /> {t('titel')}</h2>
+        <Link href="/portal/auktioner" className="text-sm font-medium text-blue-600">{t('seAlle')}</Link>
       </div>
       <div className="space-y-1.5">
         {/* Listen kommer sorteret på endsAt fra API'et, så index 0 er den der udløber først.
@@ -62,14 +68,14 @@ export default function AuktionForsideWidget() {
                   <span className={`rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${
                     snart ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                   }`}>
-                    {nedtaelling(x.endsAt, now)}
+                    {nedtaelling(x.endsAt, now, t)}
                   </span>
                 )}
                 <span>
-                  {x.currentPrice > 0 ? `${x.currentPrice} kr` : `fra ${x.minNext} kr`}{x.priceMode === 'PER_KG' ? '/kg' : ''}
-                  <span className="text-gray-400"> · {x.bidCount} bud</span>
+                  {x.currentPrice > 0 ? t('pris', { p: x.currentPrice }) : t('fraPris', { p: x.minNext })}{x.priceMode === 'PER_KG' ? t('prKg') : ''}
+                  <span className="text-gray-400"> · {t(x.bidCount === 1 ? 'bud1' : 'budN', { n: x.bidCount })}</span>
                 </span>
-                {x.youLead && <span className="rounded bg-green-100 px-1 text-xs font-semibold text-green-700">fører</span>}
+                {x.youLead && <span className="rounded bg-green-100 px-1 text-xs font-semibold text-green-700">{t('foerer')}</span>}
               </span>
             </Link>
           )

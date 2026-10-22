@@ -6,6 +6,8 @@ import {
   Camera, Image as ImageIcon, X, Eye, EyeOff, CheckCircle2, Loader2, Truck,
   Bell, Plus, Trash2,
 } from 'lucide-react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { profilDict } from '@/lib/i18n/portal/dict/profil'
 
 interface Photo { data: string; mimeType: string; fileName: string }
 
@@ -33,6 +35,7 @@ interface Props {
 }
 
 export default function DeliveryProfileForm({ initialProfile, initialPodRecipients }: Props) {
+  const t = useT(profilDict)
   const [doorCode,            setDoorCode]            = useState(initialProfile?.doorCode            ?? '')
   const [keyboxCode,          setKeyboxCode]          = useState(initialProfile?.keyboxCode          ?? '')
   const [alarmCode,           setAlarmCode]           = useState(initialProfile?.alarmCode           ?? '')
@@ -96,7 +99,7 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (e: any) {
-      setError(e.message ?? 'Fejl — prøv igen')
+      setError(e.message ?? t('fejlProevIgen'))
     } finally {
       setSaving(false)
     }
@@ -141,30 +144,30 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
       {/* ── Adgangskoder ──────────────────────────────────────────── */}
       <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-4">
         <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-          <Lock size={15} className="text-gray-400" /> Adgangskoder
+          <Lock size={15} className="text-gray-400" /> {t('adgangskoder')}
         </h2>
-        <p className="text-xs text-gray-400 -mt-2">Gemmes krypteret — kun synlige for chaufføren ved levering</p>
+        <p className="text-xs text-gray-400 -mt-2">{t('krypteretInfo')}</p>
 
-        {secretInput('Dørkodenummer', <KeyRound size={12} />, doorCode, setDoorCode, showDoor, setShowDoor, 'f.eks. 1234#')}
-        {secretInput('Nøglebokskode', <Lock size={12} />, keyboxCode, setKeyboxCode, showKeybox, setShowKeybox, 'f.eks. A-2847')}
-        {secretInput('Alarmkode', <ShieldAlert size={12} />, alarmCode, setAlarmCode, showAlarm, setShowAlarm, 'f.eks. 9876')}
+        {secretInput(t('doerkode'), <KeyRound size={12} />, doorCode, setDoorCode, showDoor, setShowDoor, t('eks', { v: '1234#' }))}
+        {secretInput(t('noegleboks'), <Lock size={12} />, keyboxCode, setKeyboxCode, showKeybox, setShowKeybox, t('eks', { v: 'A-2847' }))}
+        {secretInput(t('alarmkode'), <ShieldAlert size={12} />, alarmCode, setAlarmCode, showAlarm, setShowAlarm, t('eks', { v: '9876' }))}
       </div>
 
       {/* ── Leveringsbeskrivelse ───────────────────────────────────── */}
       <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
         <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-          <MapPin size={15} className="text-gray-400" /> Leveringssted
+          <MapPin size={15} className="text-gray-400" /> {t('leveringssted')}
         </h2>
 
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-            Beskrivelse
+            {t('beskrivelse')}
           </label>
           <textarea
             rows={3}
             value={deliveryDescription}
             onChange={e => setDeliveryDescription(e.target.value)}
-            placeholder="f.eks. Kør ind bagved. Grøn port, ring 2x. Sæt varer i køleskur til venstre."
+            placeholder={t('beskrivelsePh')}
             className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
           />
         </div>
@@ -172,7 +175,7 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
         {/* Fotos af leveringssted */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-            Fotos af leveringssted (maks. 3)
+            {t('fotos')}
           </label>
           <div className="flex flex-wrap gap-2">
             {photos.map((img, i) => (
@@ -198,14 +201,14 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
                   onClick={() => cameraRef.current?.click()}
                   className="w-24 h-11 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center gap-1.5 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition text-xs font-medium"
                 >
-                  <Camera size={14} /> Kamera
+                  <Camera size={14} /> {t('kamera')}
                 </button>
                 <button
                   type="button"
                   onClick={() => galleryRef.current?.click()}
                   className="w-24 h-11 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center gap-1.5 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition text-xs font-medium"
                 >
-                  <ImageIcon size={14} /> Galleri
+                  <ImageIcon size={14} /> {t('galleri')}
                 </button>
               </div>
             )}
@@ -220,14 +223,14 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
       {/* ── Fast besked til chauffør ───────────────────────────────── */}
       <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
         <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-          <MessageSquare size={15} className="text-gray-400" /> Fast besked til chauffør
+          <MessageSquare size={15} className="text-gray-400" /> {t('fastBesked')}
         </h2>
-        <p className="text-xs text-gray-400 -mt-2">Vises til chaufføren ved hver levering. Brug ekstra besked ved bestilling til engangs-instrukser.</p>
+        <p className="text-xs text-gray-400 -mt-2">{t('fastBeskedInfo')}</p>
         <textarea
           rows={3}
           value={driverMessage}
           onChange={e => setDriverMessage(e.target.value)}
-          placeholder="f.eks. Ring altid inden levering. Aflever kun til Jens eller Mette."
+          placeholder={t('fastBeskedPh')}
           className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
         />
       </div>
@@ -236,15 +239,15 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
       <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 space-y-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <Bell size={15} className="text-gray-400" /> Leveringskvittering
+            <Bell size={15} className="text-gray-400" /> {t('kvittering')}
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            Modtag automatisk besked med foto når din ordre er leveret.
+            {t('kvitteringInfo')}
           </p>
         </div>
 
         {podRecipients.length === 0 && (
-          <p className="text-xs text-gray-400 italic">Ingen modtagere endnu — tilføj herunder.</p>
+          <p className="text-xs text-gray-400 italic">{t('ingenModtagere')}</p>
         )}
 
         {podRecipients.map((r, i) => (
@@ -254,7 +257,7 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
                 type="text"
                 value={r.name}
                 onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                placeholder="Navn"
+                placeholder={t('navn')}
                 className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
               />
               <button
@@ -270,14 +273,14 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
                 type="email"
                 value={r.email}
                 onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, email: e.target.value } : x))}
-                placeholder="Email"
+                placeholder={t('email')}
                 className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
               />
               <input
                 type="tel"
                 value={r.phone}
                 onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, phone: e.target.value } : x))}
-                placeholder="Mobil (SMS)"
+                placeholder={t('mobil')}
                 className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-blue-400 focus:outline-none"
               />
             </div>
@@ -289,7 +292,7 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
                   onChange={e => setPodRecipients(prev => prev.map((x, j) => j === i ? { ...x, sendEmail: e.target.checked } : x))}
                   className="rounded border-gray-300 text-blue-600"
                 />
-                Email
+                {t('email')}
               </label>
               <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input
@@ -309,7 +312,7 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
           onClick={() => setPodRecipients(prev => [...prev, { name: '', email: '', phone: '', sendEmail: true, sendSms: false }])}
           className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
         >
-          <Plus size={14} /> Tilføj modtager
+          <Plus size={14} /> {t('tilfoejModtager')}
         </button>
       </div>
 
@@ -320,9 +323,9 @@ export default function DeliveryProfileForm({ initialProfile, initialPodRecipien
         disabled={saving}
         className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-2"
       >
-        {saving  ? <><Loader2 size={18} className="animate-spin" /> Gemmer...</>
-        : saved   ? <><CheckCircle2 size={18} /> Gemt!</>
-        : 'Gem leveringsoplysninger'}
+        {saving  ? <><Loader2 size={18} className="animate-spin" /> {t('gemmer')}</>
+        : saved   ? <><CheckCircle2 size={18} /> {t('gemt')}</>
+        : t('gemLevering')}
       </button>
     </form>
   )

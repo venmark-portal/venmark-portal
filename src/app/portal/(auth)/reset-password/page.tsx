@@ -3,8 +3,11 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { loginDict, loginApiFejl } from '@/lib/i18n/portal/dict/login'
 
 function ResetPasswordForm() {
+  const t            = useT(loginDict)
   const router       = useRouter()
   const searchParams = useSearchParams()
   const token        = searchParams.get('token') ?? ''
@@ -18,13 +21,13 @@ function ResetPasswordForm() {
     return (
       <div className="space-y-4">
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          Ugyldigt link — token mangler. Bed om et nyt reset-link.
+          {t('ugyldigtLink')}
         </p>
         <Link
           href="/portal/forgot-password"
           className="block w-full rounded-lg bg-blue-600 py-3 text-center text-base font-semibold text-white hover:bg-blue-700"
         >
-          Bed om nyt link
+          {t('nytLink')}
         </Link>
       </div>
     )
@@ -35,11 +38,11 @@ function ResetPasswordForm() {
     setError('')
 
     if (password !== password2) {
-      setError('Adgangskoderne er ikke ens')
+      setError(t('ikkeEns'))
       return
     }
     if (password.length < 8) {
-      setError('Adgangskoden skal være mindst 8 tegn')
+      setError(t('min8'))
       return
     }
 
@@ -52,12 +55,12 @@ function ResetPasswordForm() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error ?? 'Noget gik galt — prøv igen')
+        setError(loginApiFejl[data.error] ? t(loginApiFejl[data.error]) : (data.error ?? t('noget')))
       } else {
         router.push('/portal/login?reset=1')
       }
     } catch {
-      setError('Serverfejl — prøv igen')
+      setError(t('serverfejl'))
     } finally {
       setLoading(false)
     }
@@ -66,12 +69,12 @@ function ResetPasswordForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <p className="text-sm text-gray-500">
-        Vælg en ny adgangskode til din konto.
+        {t('vaelgNy')}
       </p>
 
       <div>
         <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
-          Ny adgangskode
+          {t('nyKode')}
         </label>
         <input
           id="password"
@@ -82,13 +85,13 @@ function ResetPasswordForm() {
           value={password}
           onChange={e => setPassword(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-4 py-3 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          placeholder="Mindst 8 tegn"
+          placeholder={t('min8Placeholder')}
         />
       </div>
 
       <div>
         <label htmlFor="password2" className="mb-1 block text-sm font-medium text-gray-700">
-          Gentag adgangskode
+          {t('gentagKode')}
         </label>
         <input
           id="password2"
@@ -111,13 +114,14 @@ function ResetPasswordForm() {
         disabled={loading}
         className="w-full rounded-lg bg-blue-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
       >
-        {loading ? 'Gemmer…' : 'Gem ny adgangskode'}
+        {loading ? t('gemmer') : t('gemNyKode')}
       </button>
     </form>
   )
 }
 
 export default function ResetPasswordPage() {
+  const t = useT(loginDict)
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
@@ -126,12 +130,12 @@ export default function ResetPasswordPage() {
             <span className="text-gray-900">Venmark</span>
             <span className="text-blue-600">.dk</span>
           </span>
-          <p className="mt-2 text-sm text-gray-500">Kundeportal</p>
+          <p className="mt-2 text-sm text-gray-500">{t('kundeportal')}</p>
         </div>
 
         <div className="rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
-          <h1 className="mb-6 text-xl font-semibold text-gray-900">Ny adgangskode</h1>
-          <Suspense fallback={<div className="text-sm text-gray-400">Indlæser…</div>}>
+          <h1 className="mb-6 text-xl font-semibold text-gray-900">{t('nyKode')}</h1>
+          <Suspense fallback={<div className="text-sm text-gray-400">{t('indlaeser')}</div>}>
             <ResetPasswordForm />
           </Suspense>
         </div>

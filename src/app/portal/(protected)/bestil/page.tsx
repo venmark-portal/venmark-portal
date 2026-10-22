@@ -7,6 +7,10 @@ import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/busin
 import OrderList from '@/components/portal/OrderList'
 import { aabneOrdrerPrDato } from '@/lib/aabenOrdre'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
 
 export const dynamic = 'force-dynamic'
 
@@ -147,10 +151,17 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   const allNumbers = Array.from(new Set([...allFavNos, ...promoNumbers, ...Array.from(venmarkNos), ...standingNos, ...kurvNos]))
 
   // ── Hent varekortdetaljer + disponibilitet (SCOPET til de viste varer) parallelt ──────
-  const [bcItems, itemAvailabilities] = await _mark('items+avail', Promise.all([
+  const [rawBcItems, itemAvailabilities, lang] = await _mark('items+avail', Promise.all([
     getItemsByNumbers(allNumbers),
     getItemAvailabilities(custLocation, allNumbers).catch(() => new Map()),
+    getPortalLang(),
   ]))
+  const t = makeT(bestilDict, lang)
+  // Varenavne på kundens sprog. Det danske navn gemmes i navnDa, så det der sendes tilbage
+  // (ordrelinjer, favoritter i BC) fortsat er det danske — personalet skal se det.
+  const bcItems = await oversaetVarenavne(
+    rawBcItems.map(i => ({ ...i, navnDa: i.displayName })), lang,
+  )
   const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
   // Attributter + enheder batchet parallelt. Attributter via ny BC-API (page 50327) = ét
   // filtreret kald pr. batch i stedet for ét pr. vare (var ~4s af page-load).
@@ -318,9 +329,9 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
         </pre>
       )}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Ny bestilling</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('nyBestilling')}</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Vælg leveringsdato og tilpas mængder
+          {t('undertitel')}
         </p>
       </div>
 

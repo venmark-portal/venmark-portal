@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getT } from '@/lib/i18n/portal/server'
+import { reklamationDict } from '@/lib/i18n/portal/dict/reklamation'
+import { faellesDict } from '@/lib/i18n/portal/dict/faelles'
 
 // GET: hent ticket med beskeder (marker ulæste som læst)
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: (await getT(faellesDict))('ikkeLoggetInd') }, { status: 401 })
   const customerId = (session.user as any)?.id as string
 
   const ticket = await prisma.ticket.findFirst({
@@ -16,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       images:   { orderBy: { createdAt: 'asc' } },
     },
   })
-  if (!ticket) return NextResponse.json({ error: 'Ikke fundet' }, { status: 404 })
+  if (!ticket) return NextResponse.json({ error: (await getT(reklamationDict))('ikkeFundet') }, { status: 404 })
 
   // Marker ulæste beskeder som læst via raw SQL (klient ikke regenereret endnu)
   await prisma.$executeRaw`
@@ -31,15 +34,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 // POST: tilføj svar fra kunde
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: (await getT(faellesDict))('ikkeLoggetInd') }, { status: 401 })
   const customerId = (session.user as any)?.id as string
   const name       = (session.user as any)?.name as string
 
   const ticket = await prisma.ticket.findFirst({ where: { id: params.id, customerId } })
-  if (!ticket) return NextResponse.json({ error: 'Ikke fundet' }, { status: 404 })
+  if (!ticket) return NextResponse.json({ error: (await getT(reklamationDict))('ikkeFundet') }, { status: 404 })
 
   const { body } = await req.json()
-  if (!body?.trim()) return NextResponse.json({ error: 'Tom besked' }, { status: 400 })
+  if (!body?.trim()) return NextResponse.json({ error: (await getT(reklamationDict))('tomBesked') }, { status: 400 })
 
   // Opret besked via raw SQL for at undgå manglende readByCustomer-type
   const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`

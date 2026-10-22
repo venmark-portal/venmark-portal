@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { makeT, type TFunc } from '@/lib/i18n/portal/lang'
+import { auktionDict } from '@/lib/i18n/portal/dict/auktion'
+
+type AuktionKey = keyof typeof auktionDict.da
 
 interface A {
   id: string; title: string; priceMode: 'TOTAL' | 'PER_KG'
@@ -15,15 +20,16 @@ function useNow(ms = 1000) {
   return n
 }
 
-export function countdown(endsAt: string, now: number): string {
+export function countdown(endsAt: string, now: number, t: TFunc<AuktionKey> = makeT(auktionDict, 'da')): string {
   const d = new Date(endsAt).getTime() - now
-  if (d <= 0) return 'Afsluttet'
+  if (d <= 0) return t('afsluttet')
   const s = Math.floor(d / 1000)
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60
-  return h > 0 ? `${h}t ${m}m` : `${m}:${String(ss).padStart(2, '0')}`
+  return h > 0 ? t('tidTM', { h, m }) : `${m}:${String(ss).padStart(2, '0')}`
 }
 
 export default function AuktionerListePage() {
+  const t = useT(auktionDict)
   const [auctions, setAuctions] = useState<A[]>([])
   const [loading, setLoading] = useState(true)
   const now = useNow()
@@ -45,12 +51,12 @@ export default function AuktionerListePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4">
-      <h1 className="text-xl font-bold text-gray-900">Auktioner</h1>
+      <h1 className="text-xl font-bold text-gray-900">{t('titel')}</h1>
 
       {loading ? (
-        <div className="py-10 text-center text-sm text-gray-400">Henter…</div>
+        <div className="py-10 text-center text-sm text-gray-400">{t('henter')}</div>
       ) : auctions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 py-12 text-center text-gray-500">Ingen auktion lige nu.</div>
+        <div className="rounded-xl border border-dashed border-gray-300 py-12 text-center text-gray-500">{t('ingen')}</div>
       ) : (
         <div className="space-y-3">
           {auctions.map((a) => {
@@ -69,15 +75,15 @@ export default function AuktionerListePage() {
                   <div className="truncate font-semibold text-gray-900">{a.title}</div>
                   {a.lotText && <div className="truncate text-xs text-gray-500">{a.lotText}</div>}
                   <div className="mt-0.5 text-sm">
-                    <span className="font-bold text-gray-900">{a.currentPrice > 0 ? `${a.currentPrice} kr` : `fra ${a.minNext} kr`}</span>
-                    <span className="text-gray-400">{a.priceMode === 'PER_KG' ? ' /kg' : ''} · {a.bidCount} bud</span>
+                    <span className="font-bold text-gray-900">{a.currentPrice > 0 ? t('pris', { p: a.currentPrice }) : t('fraPris', { p: a.minNext })}</span>
+                    <span className="text-gray-400">{a.priceMode === 'PER_KG' ? ' ' + t('prKg') : ''} · {t(a.bidCount === 1 ? 'bud1' : 'budN', { n: a.bidCount })}</span>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className={`rounded px-2 py-0.5 text-xs font-semibold ${soon ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {countdown(a.endsAt, now)}
+                    {countdown(a.endsAt, now, t)}
                   </span>
-                  {a.youLead && <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Du fører</span>}
+                  {a.youLead && <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">{t('duFoerer')}</span>}
                 </div>
               </Link>
             )

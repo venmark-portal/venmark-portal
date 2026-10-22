@@ -10,6 +10,10 @@ import {
 import type { BCPortalPrice, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
 import { findTilfoejMaal } from '@/lib/tilfoejOrdre'
+import { getPortalLang } from '@/lib/i18n/portal/server'
+import { makeT, localeOf } from '@/lib/i18n/portal/lang'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { ordrerDict } from '@/lib/i18n/portal/dict/ordrer'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,10 +101,17 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
 
   const allNumbers = Array.from(new Set([...allFavNos, ...Array.from(venmarkNos)]))
 
-  const [bcItems, itemAvailabilities] = await Promise.all([
+  const lang = await getPortalLang()
+  const t    = makeT(ordrerDict, lang)
+  const [bcItemsDa, itemAvailabilities] = await Promise.all([
     getItemsByNumbers(allNumbers),
     getItemAvailabilities(custLocation, allNumbers).catch(() => new Map()),
   ])
+  // Varenavne på kundens sprog (BC-varetranslationer) før de sendes til OrderList. Det danske
+  // navn gemmes i navnDa, så ordrelinjer/favoritter i BC fortsat får det danske (som bestil-siden).
+  const bcItems = await oversaetVarenavne(
+    bcItemsDa.map(i => ({ ...i, navnDa: i.displayName })), lang,
+  )
   const itemRefs = bcItems.map(i => ({ id: i.id, number: i.number }))
   const [attrMap, uomMap] = await Promise.all([
     getItemsAttributeValues(itemRefs),
@@ -153,16 +164,16 @@ export default async function TilfoejVarePage({ params }: { params: { id: string
 
   // addToOrderId er id'et fra ADRESSEN (portalens eget eller BC's) — endepunktet slår
   // begge op, og så skal siden ikke vide hvilken slags ordre det er.
-  const deliveryLabel = new Date(order.deliveryDate).toLocaleDateString('da-DK', {
+  const deliveryLabel = new Date(order.deliveryDate).toLocaleDateString(localeOf(lang), {
     weekday: 'long', day: 'numeric', month: 'short',
   })
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Tilføj vare til ordre</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('tilfoejTitel')}</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Levering {deliveryLabel}
+          {t('levering', { dato: deliveryLabel })}
           {order.bcOrderNumber && <span className="ml-1 font-mono">#{order.bcOrderNumber}</span>}
         </p>
       </div>

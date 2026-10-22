@@ -7,24 +7,26 @@ import {
   Home, ShoppingCart, Package, MessageSquare, FileText, Gavel,
   MessageSquareWarning, User, HelpCircle, LogOut, MoreHorizontal, X,
 } from 'lucide-react'
+import { useT } from '@/lib/i18n/portal/LangProvider'
+import { navDict } from '@/lib/i18n/portal/dict/nav'
 
 // Bundbjælken har plads til fem punkter på en telefon. Desktop-topbaren har otte, og de tre
 // sidste (Reklamationer, Profil, Hjælp) fandtes slet ikke på mobil — man kunne ikke engang
 // logge ud. De ligger nu under "Mere" i stedet for at blive presset ned i en ekstra række.
 const BJAELKE = [
-  { href: '/portal',          label: 'Hjem',     icon: Home          },
-  { href: '/portal/bestil',   label: 'Bestil',   icon: ShoppingCart  },
-  { href: '/portal/ordrer',   label: 'Ordrer',   icon: Package       },
-  { href: '/portal/beskeder', label: 'Beskeder', icon: MessageSquare },
-]
+  { href: '/portal',          label: 'hjem',     icon: Home          },
+  { href: '/portal/bestil',   label: 'bestil',   icon: ShoppingCart  },
+  { href: '/portal/ordrer',   label: 'ordrer',   icon: Package       },
+  { href: '/portal/beskeder', label: 'beskeder', icon: MessageSquare },
+] as const
 
 const MERE = [
-  { href: '/portal/fakturaer',     label: 'Fakturaer',     icon: FileText            },
-  { href: '/portal/auktioner',     label: 'Auktioner',     icon: Gavel               },
-  { href: '/portal/reklamationer', label: 'Reklamationer', icon: MessageSquareWarning },
-  { href: '/portal/profil',        label: 'Profil',        icon: User                },
-  { href: '/portal/hjaelp',        label: 'Hjælp',         icon: HelpCircle          },
-]
+  { href: '/portal/fakturaer',     label: 'fakturaer',     icon: FileText            },
+  { href: '/portal/auktioner',     label: 'auktioner',     icon: Gavel               },
+  { href: '/portal/reklamationer', label: 'reklamationer', icon: MessageSquareWarning },
+  { href: '/portal/profil',        label: 'profil',        icon: User                },
+  { href: '/portal/hjaelp',        label: 'hjaelp',        icon: HelpCircle          },
+] as const
 
 // Sider hvor den fulde menu er i vejen på mobil: man taster antal, og bjælken dækker
 // både varelisten og "Indsæt"-knappen i søgningen. Her vises kun en lille Hjem-knap.
@@ -33,6 +35,7 @@ const KUN_HJEM = ['/portal/bestil', '/portal/fast']
 export default function PortalNav() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const t = useT(navDict)
 
   // Luk arket når man er navigeret videre — ellers står det åbent oven på den nye side.
   useEffect(() => { setOpen(false) }, [pathname])
@@ -41,7 +44,7 @@ export default function PortalNav() {
     return (
       <Link
         href="/portal"
-        aria-label="Hjem"
+        aria-label={t('hjem')}
         className="fixed bottom-3 left-3 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-500 shadow-lg backdrop-blur transition active:scale-95 md:hidden"
       >
         <Home size={20} />
@@ -63,8 +66,8 @@ export default function PortalNav() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-              <span className="text-sm font-semibold text-gray-900">Mere</span>
-              <button onClick={() => setOpen(false)} className="rounded-full p-1 hover:bg-gray-100" aria-label="Luk">
+              <span className="text-sm font-semibold text-gray-900">{t('mere')}</span>
+              <button onClick={() => setOpen(false)} className="rounded-full p-1 hover:bg-gray-100" aria-label={t('luk')}>
                 <X size={18} className="text-gray-500" />
               </button>
             </div>
@@ -79,7 +82,7 @@ export default function PortalNav() {
                   }`}
                 >
                   <Icon size={19} className="shrink-0" />
-                  {label}
+                  {t(label)}
                 </Link>
               ))}
 
@@ -90,7 +93,7 @@ export default function PortalNav() {
                 className="flex items-center gap-3 px-5 py-3.5 text-sm font-medium text-gray-500 transition-colors active:bg-gray-50"
               >
                 <LogOut size={19} className="shrink-0" />
-                Log ud
+                {t('logUd')}
               </a>
             </div>
           </div>
@@ -110,7 +113,7 @@ export default function PortalNav() {
                 }`}
               >
                 <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
-                {label}
+                {t(label)}
               </Link>
             )
           })}
@@ -123,7 +126,7 @@ export default function PortalNav() {
             }`}
           >
             <MoreHorizontal size={20} strokeWidth={mereAktiv || open ? 2.5 : 1.8} />
-            Mere
+            {t('mere')}
           </button>
         </div>
       </nav>
