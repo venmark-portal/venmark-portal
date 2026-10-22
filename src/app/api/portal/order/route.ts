@@ -198,21 +198,30 @@ export async function POST(req: NextRequest) {
         eksisterende.bcOrderId,
         lines.map((l: any) => ({ itemNumber: l.bcItemNumber, quantity: l.quantity, uomCode: l.uom })),
       )
-      if (errors.length > 0) {
+      // Slettes ordren i BC i sekundet mellem opslaget og linjerne (kontoret rydder op), afviser
+      // BC ALLE linjer med "No document with the specified ID exists". Så findes den ikke længere
+      // → fald igennem og opret en NY ordre nedenfor (Claus: "ellers opret ny ordre").
+      const ordreForsvandt = errors.length > 0 && errors.length >= lines.length &&
+        errors.every((e: string) => /No document with the specified ID exists/i.test(e))
+      if (ordreForsvandt) {
+        console.warn('[ordre]', eksisterende.bcOrderNumber, 'forsvandt under afsendelse → opretter ny ordre')
+      } else if (errors.length > 0) {
         console.error('[ordre] kunne ikke lægge paa', eksisterende.bcOrderNumber, errors)
         return NextResponse.json(
           { error: `Varerne kunne ikke lægges på din bestilling ${eksisterende.bcOrderNumber}: ${errors.join(' · ')}` },
           { status: 502 },
         )
       }
-      revalidatePath('/portal/ordrer')
-      return NextResponse.json({
-        tilfoejet:   true,
-        ordreNummer: eksisterende.bcOrderNumber,
-        antal:       lines.length,
-        ialt:        eksisterende.antalLinjer + lines.length,
-        fraPortal:   eksisterende.fraPortal,
-      }, { status: 200 })
+      if (!ordreForsvandt) {
+        revalidatePath('/portal/ordrer')
+        return NextResponse.json({
+          tilfoejet:   true,
+          ordreNummer: eksisterende.bcOrderNumber,
+          antal:       lines.length,
+          ialt:        eksisterende.antalLinjer + lines.length,
+          fraPortal:   eksisterende.fraPortal,
+        }, { status: 200 })
+      }
     }
 
     // Gem ordre i DB — nye felter (driverNote, poNumber, orderedByName, orderedByEmail)

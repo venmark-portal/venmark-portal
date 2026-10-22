@@ -27,7 +27,10 @@ export async function POST(
 
   const maal = await findTilfoejMaal(params.id, session)
   if (!maal) {
+    // kode = ORDRE_VAEK → klienten sender varerne videre som almindelig bestilling (samme dag +
+    // leveringskode → læg på anden åben ordre, ellers ny). error-teksten er til ældre klienter.
     return NextResponse.json({
+      kode:  'ORDRE_VAEK',
       error: 'Ordren findes ikke længere hos Venmark — den kan være samlet med en anden ordre. ' +
              'Bestil varerne som en ny bestilling under "Bestil", eller kontakt os.',
     }, { status: 404 })

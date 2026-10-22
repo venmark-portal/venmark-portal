@@ -1767,6 +1767,8 @@ export default function OrderList({
   const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
   /** Sat når serveren lagde varerne på en eksisterende ordre i stedet for at oprette en ny. */
   const [lagtPaa, setLagtPaa] = useState<{ ordreNummer: string; antal: number; ialt: number } | null>(null)
+  /** Tilføj-tilstand: målordren var slettet hos Venmark (nummeret), og varerne gik via checkout. null = nej. */
+  const [ordreVaek, setOrdreVaek] = useState<string | null>(null)
   /** Bestillingen gik IKKE igennem. Vises som dialog — en rød linje over knappen var for nem at overse. */
   const [sendFejl, setSendFejl] = useState<{ besked: string; aendret: { name: string; from: number; to: number }[] } | null>(null)
 
@@ -2085,18 +2087,31 @@ export default function OrderList({
 
     try {
       const url = addToOrderId ? `/api/portal/order/${addToOrderId}/lines` : '/api/portal/order'
-      const body = addToOrderId
-        ? { lines: orderLines }
-        : {
-            deliveryDate: `${deliveryDate.getFullYear()}-${String(deliveryDate.getMonth()+1).padStart(2,'0')}-${String(deliveryDate.getDate()).padStart(2,'0')}`, notes, driverNote, poNumber, lines: orderLines,
-            shipmentMethodCode: selectedMethodCode,
-            reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
-          }
-      const res = await fetch(url, {
+      const nyOrdreBody = {
+        deliveryDate: `${deliveryDate.getFullYear()}-${String(deliveryDate.getMonth()+1).padStart(2,'0')}-${String(deliveryDate.getDate()).padStart(2,'0')}`, notes, driverNote, poNumber, lines: orderLines,
+        shipmentMethodCode: selectedMethodCode,
+        reservationIds: Array.from(specialReservations.values()).map(r => r.reservationId),
+      }
+      const body = addToOrderId ? { lines: orderLines } : nyOrdreBody
+      let res = await fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
       })
+      // Tilføj-målet er slettet/samlet hos Venmark mens kunden valgte varer → følg checkout-
+      // reglen: læg på en anden åben ordre samme dag + samme leveringskode, ellers ny ordre.
+      // Serverens almindelige ordre-rute afgør det (live BC). Dato + kode er ordrens egne.
+      if (addToOrderId && res.status === 404) {
+        const svar404 = await res.clone().json().catch(() => null)
+        if (svar404?.kode === 'ORDRE_VAEK') {
+          setOrdreVaek(addBcOrderNumber || '')
+          res = await fetch('/api/portal/order', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(nyOrdreBody),
+          })
+        }
+      }
       if (!res.ok) {
         const raa = await res.text().catch(() => '')
         let svar: any = null
@@ -2422,10 +2437,26 @@ export default function OrderList({
       <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-white py-16 text-center ring-1 ring-gray-200">
         <CheckCircle2 size={52} className="text-green-500" />
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Tilføjet til ordren!</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Varerne er lagt på ordren{addBcOrderNumber ? ` #${addBcOrderNumber}` : ''}.
-          </p>
+          {ordreVaek !== null ? (
+            <>
+              {/* Målordren var slettet/samlet hos Venmark — sig hvor varerne faktisk landede. */}
+              <h2 className="text-xl font-bold text-gray-900">{lagtPaa ? 'Lagt på din bestilling!' : 'Bestilling indsendt!'}</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Ordren{ordreVaek ? ` #${ordreVaek}` : ''} fandtes ikke længere hos Venmark, så{' '}
+                {lagtPaa
+                  ? <>varerne er lagt på din bestilling <strong>#{lagtPaa.ordreNummer}</strong></>
+                  : <>varerne er sendt som en ny bestilling</>}
+                {' '}til {formatLongDate(deliveryDate)}.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-bold text-gray-900">Tilføjet til ordren!</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Varerne er lagt på ordren{addBcOrderNumber ? ` #${addBcOrderNumber}` : ''}.
+              </p>
+            </>
+          )}
           <p className="mt-0.5 text-sm text-gray-400">Sender dig tilbage til dine bestillinger…</p>
         </div>
         <a href="/portal/ordrer" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
