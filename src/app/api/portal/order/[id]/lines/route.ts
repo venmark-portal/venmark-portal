@@ -27,7 +27,10 @@ export async function POST(
 
   const maal = await findTilfoejMaal(params.id, session)
   if (!maal) {
-    return NextResponse.json({ error: 'Ordren blev ikke fundet' }, { status: 404 })
+    return NextResponse.json({
+      error: 'Ordren findes ikke længere hos Venmark — den kan være samlet med en anden ordre. ' +
+             'Bestil varerne som en ny bestilling under "Bestil", eller kontakt os.',
+    }, { status: 404 })
   }
   if (new Date() > maal.deadline) {
     return NextResponse.json({ error: 'Fristen for denne leveringsdato er passeret' }, { status: 422 })

@@ -77,9 +77,14 @@ export async function findTilfoejMaal(
     // BC-ordren er facit for leveringsform OG dato: flyttes ordren i BC, skal tilføj-siden
     // følge med (portalens Order-række husker kun datoen fra bestillingen). Findes BC-ordren
     // ikke (fx BC nede), bruges portalens egne tal som før.
-    const bcOrdre = custNo
-      ? (await getCustomerOrders(custNo).catch(() => [])).find(o => o.id === portalOrdre.bcOrderId)
-      : undefined
+    const bcListe = custNo ? await getCustomerOrders(custNo).catch(() => []) : []
+    const bcOrdre = bcListe.find(o => o.id === portalOrdre.bcOrderId)
+    // Kontoret samler ofte kundens W-ordrer i én BC-ordre og sletter W-ordren (Farum,
+    // W0000103 → 284426, 22-10-2026). Portalens række ved det ikke, så "Tilføj vare" prøvede
+    // et BC-id der ikke findes → "No document with the specified ID exists" på hver linje.
+    // Kunne vi hente kundens ordrer (listen er ikke tom), men er denne væk → den findes ikke
+    // længere. Tom liste = BC-fejl eller ingen ordrer → gammel adfærd (fallback).
+    if (bcListe.length > 0 && !bcOrdre) return null
     let levering = new Date(portalOrdre.deliveryDate)
     let deadline = new Date(portalOrdre.deadline)
     if (bcOrdre?.requestedDeliveryDate) {
