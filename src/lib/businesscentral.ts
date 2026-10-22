@@ -1302,6 +1302,23 @@ export interface BCCreateOrderResult {
 }
 
 /**
+ * POST mod BC med genforsøg ved deadlock. BC svarer 409 "The activity was deadlocked with
+ * another user who was modifying the Item table. Please retry" når en anden samtidig
+ * retter varer (22-10-2026: kunden fik "Noget gik galt (502)" på checkout, 2. forsøg virkede).
+ * BC har rullet transaktionen tilbage, så samme POST kan sikkert sendes igen.
+ */
+async function fetchBcDeadlockRetry(url: string, init: RequestInit, forsoeg = 4): Promise<Response> {
+  for (let i = 1; ; i++) {
+    const res = await fetch(url, init)
+    if (res.ok || i >= forsoeg) return res
+    const tekst = await res.clone().text().catch(() => '')
+    if (!/deadlock|Please retry/i.test(tekst)) return res
+    console.warn(`[bc] deadlock (${res.status}) på ${url.split('/').pop()} — forsøg ${i}/${forsoeg}, prøver igen`)
+    await new Promise(r => setTimeout(r, 400 * i + Math.random() * 300))
+  }
+}
+
+/**
  * Opretter en salgsordre i BC med tilhørende ordrelinjer.
  * Bruger standard v2.0 API: POST /salesOrders + POST /salesOrderLines.
  * Kaster en fejl hvis ordrehovedet ikke kan oprettes.
@@ -1344,7 +1361,7 @@ export async function createBCSalesOrder(
     orderBody.shipmentMethodCode = shipmentMethodCode.trim()
   }
 
-  const orderRes = await fetch(`${portalBase}/portalSalesOrders`, {
+  const orderRes = await fetchBcDeadlockRetry(`${portalBase}/portalSalesOrders`, {
     method:  'POST',
     headers: {
       Authorization:  `Bearer ${token}`,
@@ -1365,7 +1382,7 @@ export async function createBCSalesOrder(
   // 2. Opret linjer via standard v2.0 API — fejl samles og returneres
   const lineErrors: string[] = []
   for (const line of lines) {
-    const lineRes = await fetch(`${stdBase}/salesOrderLines`, {
+    const lineRes = await fetchBcDeadlockRetry(`${stdBase}/salesOrderLines`, {
       method:  'POST',
       headers: {
         Authorization:  `Bearer ${token}`,
@@ -1474,7 +1491,7 @@ export async function addLinesToBCOrder(
   const errors: string[] = []
 
   for (const line of lines) {
-    const lineRes = await fetch(`${base}/salesOrderLines`, {
+    const lineRes = await fetchBcDeadlockRetry(`${base}/salesOrderLines`, {
       method:  'POST',
       headers: {
         Authorization:  `Bearer ${token}`,
