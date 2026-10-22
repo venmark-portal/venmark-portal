@@ -178,7 +178,7 @@ export default async function PortalDashboard() {
             <div className="font-semibold text-gray-900">Brug for hjælp? Ring til Claus</div>
             <div className="text-sm text-gray-500">
               Du er velkommen til at ringe når som helst — også uden for åbningstid. Tager jeg den
-              ikke, ringer jeg tilbage, så snart jeg kan.
+              ikke, så send en kort SMS, og jeg vender tilbage, så snart jeg kan.
             </div>
           </div>
         </div>
