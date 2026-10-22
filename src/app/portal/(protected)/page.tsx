@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning, MessageSquare } from 'lucide-react'
+import { ShoppingCart, RefreshCw, Package, ChevronRight, Clock, MessageSquareWarning, MessageSquare, Phone } from 'lucide-react'
 import { getPortalShipmentMethods, getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getPortalCalendarDays, type BCCalendarDay } from '@/lib/businesscentral'
 import { getDeliveryDatesForMethod, getDeadlineForMethodDelivery, getDeadlineForDelivery, addBusinessDays } from '@/lib/dateUtils'
 import AuktionForsideWidget from '@/components/portal/AuktionForsideWidget'
@@ -166,6 +166,28 @@ export default async function PortalDashboard() {
           </div>
           <ChevronRight size={18} className="ml-auto text-gray-400" />
         </Link>
+      </div>
+
+      {/* Hotline — Claus' direkte nummer (Claus 22-10-2026). tel:-link så mobilkunder ringer med ét tryk. */}
+      <div className="flex flex-col gap-3 rounded-xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-700">
+            <Phone size={22} />
+          </span>
+          <div>
+            <div className="font-semibold text-gray-900">Brug for hjælp? Ring til Claus</div>
+            <div className="text-sm text-gray-500">
+              Du er velkommen til at ringe når som helst — også uden for åbningstid. Tager jeg den
+              ikke, ringer jeg tilbage, så snart jeg kan.
+            </div>
+          </div>
+        </div>
+        <a
+          href="tel:+4541969644"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700 sm:ml-auto"
+        >
+          <Phone size={18} /> 41 96 96 44
+        </a>
       </div>
 
       {/* Auktioner — resumé (skriver "Ingen auktion" hvis tom) */}
