@@ -32,7 +32,7 @@ export const ordrerApiDict = defineDict({
   },
   en: {
     ikkeLoggetInd: 'Not logged in',
-    ingenAdgangButik: 'No access to the selected store',
+    ingenAdgangButik: 'No access to the selected shop',
     manglerDatoLinjer: 'Missing delivery date or lines',
     deadlinePasseret: 'The deadline for this date has passed ({tid})',
     tidligst: '{navn} (earliest {dato})',
@@ -59,7 +59,7 @@ export const ordrerApiDict = defineDict({
   },
   de: {
     ikkeLoggetInd: 'Nicht angemeldet',
-    ingenAdgangButik: 'Kein Zugriff auf die gewählte Filiale',
+    ingenAdgangButik: 'Kein Zugriff auf den gewählten Shop',
     manglerDatoLinjer: 'Liefertermin oder Positionen fehlen',
     deadlinePasseret: 'Der Bestellschluss für dieses Datum ist verstrichen ({tid})',
     tidligst: '{navn} (frühestens {dato})',

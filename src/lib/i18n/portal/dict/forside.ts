@@ -61,7 +61,7 @@ export const forsideDict = defineDict({
     deadline: 'Bestellschluss {dag} um {kl} Uhr',
     naesteLevering: 'Nächste Lieferung:',
     nyBestilling: 'Neue Bestellung', nyBestillingTekst: 'Artikel wählen und absenden',
-    fasteOrdrer: 'Daueraufträge', fasteOrdrerTekst: 'Wochenvorlage ansehen und ändern',
+    fasteOrdrer: 'Dauerbestellungen', fasteOrdrerTekst: 'Wochenvorlage ansehen und ändern',
     mineOrdrer: 'Meine Bestellungen', mineOrdrerTekst: 'Status und Verlauf ansehen',
     hotlineTitel: 'Brauchen Sie Hilfe? Rufen Sie Claus an',
     hotlineTekst: 'Sie können jederzeit anrufen — auch außerhalb der Öffnungszeiten. Wenn ich nicht abnehme, schicken Sie mir eine kurze SMS, und ich melde mich so schnell wie möglich.',

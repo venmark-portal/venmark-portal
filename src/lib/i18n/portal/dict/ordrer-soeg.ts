@@ -51,7 +51,7 @@ export const ordrerSoegDict = defineDict({
   en: {
     bestilInden: 'Order by {tid}',
     tilgaengelig: 'Available {dato}',
-    tilgaengeligAfgang: 'Available from departure {dato}',
+    tilgaengeligAfgang: 'Available for dispatch {dato}',
     ikkeLagerIndkoeb: 'Not in stock or on order right now',
     ingen: 'None',
     ikkeMereIdag: 'No more today',
@@ -96,7 +96,7 @@ export const ordrerSoegDict = defineDict({
   de: {
     bestilInden: 'Bestellen bis {tid}',
     tilgaengelig: 'Verfügbar {dato}',
-    tilgaengeligAfgang: 'Verfügbar ab Abgang {dato}',
+    tilgaengeligAfgang: 'Versandbereit {dato}',
     ikkeLagerIndkoeb: 'Derzeit weder auf Lager noch bestellt',
     ingen: 'Keine',
     ikkeMereIdag: 'Heute nicht mehr',

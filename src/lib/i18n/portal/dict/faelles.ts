@@ -51,7 +51,7 @@ export const faellesDict = defineDict({
     bestillerFor: 'Bestellung für:',
     migSelv: '(ich selbst)',
     skifter: 'Wechsel…',
-    valgtButikInfo: 'Preise, Lieferung und Verlauf gelten für die gewählte Filiale.',
+    valgtButikInfo: 'Preise, Lieferung und Verlauf gelten für den gewählten Shop.',
     duSerSom: 'Sie sehen das Portal als',
     aabnetAf: 'geöffnet von {admin}',
     afslut: 'Beenden',

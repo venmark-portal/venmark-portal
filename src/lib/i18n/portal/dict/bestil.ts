@@ -231,7 +231,7 @@ export const bestilDict = defineDict({
     maksPrisBemaerkning: 'You can write your max. price in the comment.',
 
     tilgaengelig: 'Available {dag}',
-    tilAfgang: 'Available for shipment {dag}',
+    tilAfgang: 'Available for dispatch {dag}',
     ikkePaaLager: 'Not in stock or on order right now',
     ingen: 'None',
     ikkeMereIDag: 'No more today',
@@ -422,7 +422,7 @@ export const bestilDict = defineDict({
     maksPrisBemaerkning: 'Geben Sie ggf. Ihren Höchstpreis in der Bemerkung an.',
 
     tilgaengelig: 'Verfügbar {dag}',
-    tilAfgang: 'Verfügbar zum Versand {dag}',
+    tilAfgang: 'Versandbereit {dag}',
     ikkePaaLager: 'Derzeit weder auf Lager noch bestellt',
     ingen: 'Keine',
     ikkeMereIDag: 'Heute nicht mehr',
@@ -437,7 +437,7 @@ export const bestilDict = defineDict({
     bestillingsfrist: 'Bestellschluss: {dag} um {hh}:00 Uhr',
     maks: 'Max. {n}',
 
-    attrFrost: 'Tiefgekühlt', attrVild: 'Wildfang', attrOpdr: 'Aquakultur', attrOeko: 'Bio',
+    attrFrost: 'Tiefgekühlt', attrVild: 'Wildfang', attrOpdr: 'Aus Aquakultur', attrOeko: 'Bio',
     attrRoeget: 'Geräuchert', attrFersk: 'Frisch',
     lagerIngen: 'Kein Bestand', lagerKnaphed: 'Knapp', lagerOk: 'Auf Lager', lagerRigeligt: 'Reichlich',
     lagerTitel: 'Bestand: {label} ({n})',
@@ -446,7 +446,7 @@ export const bestilDict = defineDict({
     luk: 'Schließen',
 
     venmarkAnbefaler: 'Venmark empfiehlt',
-    fastOrdre: 'Dauerauftrag',
+    fastOrdre: 'Dauerbestellung',
     bemaerkningTitel: 'Bemerkung: {note}',
     indsaetBemaerkning: 'Bemerkung hinzufügen',
     bemaerkning: 'Bemerkung',
@@ -540,7 +540,7 @@ export const bestilDict = defineDict({
     soegOgTilfoej: 'Artikel suchen und hinzufügen',
     stdSektion: 'STD — Artikel, die Sie immer brauchen',
     dineFavoritter: 'Ihre Favoriten',
-    fasteOrdrer: 'Daueraufträge — {dag} ({n})',
+    fasteOrdrer: 'Dauerbestellungen — {dag} ({n})',
     henterVarer: 'Artikel werden geladen…',
     visFlere: 'Weitere Artikel anzeigen',
     ingenIKategori: 'Keine Artikel in dieser Kategorie',

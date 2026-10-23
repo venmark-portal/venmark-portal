@@ -61,7 +61,7 @@ export const ordrerFastDict = defineDict({
     dublet: 'An order has already been sent for this delivery date',
   },
   de: {
-    titel: 'Daueraufträge',
+    titel: 'Dauerbestellungen',
     undertitel: 'Ihre festen wöchentlichen Bestellpositionen — von Venmark verwaltet',
     ingenLinjer: 'Noch keine festen Bestellpositionen eingerichtet',
     kontakt: 'Kontaktieren Sie Venmark, um feste Bestellpositionen einzurichten',
