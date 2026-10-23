@@ -23,8 +23,9 @@ export function localeOf(lang: Lang): string {
 /** BC-sprogkoder pr. portalsprog — første kode er den foretrukne ved varetranslationer. */
 export const BC_LANG_CODES: Record<Lang, string[]> = {
   da: ['DAN'],
-  en: ['ENU', 'ENG', 'ENA', 'ENC', 'ENI', 'ENZ'],
-  de: ['DEU', 'DEA', 'DES', 'DEC'],
+  // EN/DE: prislistemotoren (tabel 50106) kender også de korte aliaser.
+  en: ['ENU', 'ENG', 'EN', 'ENA', 'ENC', 'ENI', 'ENZ'],
+  de: ['DEU', 'DE', 'DEA', 'DES', 'DEC'],
 }
 
 /** Debitorkortets Sprogkode → portalsprog (tom/ukendt = dansk). */
