@@ -51,13 +51,13 @@ Fisk handles som dagsvarer, og prisen på især auktionsvarer kan ændre sig fre
 Ja, så længe ordren ikke er pakket. Åbn ordren under Ordrer og vælg Tilføj vare. Er ordren pakket, så ring eller skriv.
 
 **Kan jeg ændre eller annullere en ordre?**
-[TJEK: kan kunden selv rette antal eller slette en linje i portalen?] Ellers kontakt os hurtigst muligt, helst inden bestillingsfristen.
+I portalen kan du kun tilføje varer til en sendt ordre, ikke rette antal eller slette linjer. Skal noget ændres eller annulleres, så kontakt fisk@venmark.dk eller 98 94 59 65 hurtigst muligt, helst inden bestillingsfristen.
 
 **Faste ordrer**
 Faste ugentlige ordrelinjer oprettes af Venmark. Du ser dem under Faste ordrer. Ønsker du at få oprettet eller ændret en fast ordre, så kontakt os.
 
 **Favoritter**
-Varer, du plejer at købe, står øverst som favoritter. [TJEK: kan kunden selv tilføje og fjerne favoritter?]
+Varer, du plejer at købe, står øverst som favoritter. Du kan selv tilføje og fjerne favoritter med hjertet ved varen på bestillingssiden.
 
 **Bestilling på vegne af en anden butik**
 Har du adgang til flere butikker eller afdelinger, kan du skifte mellem dem i portalen. Ønsker du adgang til en ekstra butik, så kontakt os.
@@ -68,7 +68,10 @@ Har du adgang til flere butikker eller afdelinger, kan du skifte mellem dem i po
 ## Levering
 
 **Hvornår kommer min levering?**
-Det afhænger af din leveringskode. Robotten kan slå din leveringskode, dine leveringsdage og status på dine ordrer op. På leveringsdagen kan chaufføren tage et foto ved aflevering, og du kan få besked på SMS eller mail. [TJEK: hvem får leveringsbekræftelse, og hvordan tilmelder man sig?]
+Det afhænger af din leveringskode. Robotten kan slå din leveringskode, dine leveringsdage og status på dine ordrer op. Når vores egne chauffører afleverer, tager de et foto, og du kan få en leveringsbekræftelse med foto på SMS eller mail. Du vælger selv, hvem der skal have den, under Profil og Levering i portalen.
+
+**Dørkode, nøgleboks og særlige forhold ved levering**
+Skriv det under Profil og Levering i portalen. Chaufføren ser det i sin app, når han kører til dig.
 
 **Hvad betyder min leveringskode?**
 Leveringskoden er den rute eller fragtmand, din ordre kører med. Den bestemmer leveringsdage, bestillingsfrist og hvor mange dage varen er undervejs. De fleste kunder har én fast kode. Eksempler:
