@@ -27,8 +27,9 @@ Venmark Fisk A/S er fiskegrossist i Hirtshals siden 1997. Vi køber fisk dagligt
 - **Bogholderi** (faktura, betaling, kontoudtog): regnskab@venmark.dk eller 96 56 56 88. Husk, at du selv kan hente fakturaer, kreditnotaer og kontoudtog her i portalen under Fakturaer.
 - **Reklamationer**: kun gennem portalen, under Reklamation. Se afsnittet om reklamation.
 - **Beskeder i portalen**: menupunktet Beskeder. Vi svarer der.
-- Telefonen er åben [UDFYLD: hverdage kl. xx–xx, evt. lørdag].
-- København (afhentning og levering fra Bådehavnsgade): [UDFYLD: navn/telefon]
+- **Telefontider**: mandag til torsdag kl. 06.30–14.00, fredag kl. 06.30–12.00. Henvendelser, der ikke haster, helst efter kl. 13.30.
+- Alle henvendelser går gennem kontoret i Hirtshals, også om København. Giv ikke andre telefonnumre eller kontaktpersoner.
+- **Fødevaresikkerhed uden for kontortid** (fx mistanke om sygdom fra en vare): se kontakterne på venmark.dk/da/foedevaresikkerhed.
 
 ## Bestilling
 
@@ -62,9 +63,6 @@ Varer, du plejer at købe, står øverst som favoritter. Du kan selv tilføje og
 **Bestilling på vegne af en anden butik**
 Har du adgang til flere butikker eller afdelinger, kan du skifte mellem dem i portalen. Ønsker du adgang til en ekstra butik, så kontakt os.
 
-**Auktioner i portalen**
-[UDFYLD: kort forklaring, når portal-auktionen er sat i drift: hvem kan byde, hvordan afregnes det.]
-
 ## Levering
 
 **Hvornår kommer min levering?**
@@ -82,10 +80,10 @@ Leveringskoden er den rute eller fragtmand, din ordre kører med. Den bestemmer 
 Ønsker du en anden leveringskode eller en ekstra leveringsdag, så kontakt os.
 
 **Kan jeg hente selv?**
-Ja, i Hirtshals eller i København, hvis det er aftalt. [UDFYLD: afhentningstider i Hirtshals og København.]
+Ja, hvis det er aftalt med kontoret i Hirtshals på fisk@venmark.dk eller 98 94 59 65. Kontoret oplyser tid og sted.
 
 **Leverer I i weekenden og på helligdage?**
-Vi leverer mandag til fredag. Ved helligdage og lukkedage kan dage falde ud eller flytte. Portalen viser kun de dage, der kan vælges. [UDFYLD: lukkedage jul og nytår, når de er fastlagt.]
+Vi leverer mandag til fredag. Ved helligdage og lukkedage kan dage falde ud eller flytte. Portalen viser kun de dage, der kan vælges. Robotten slår lukkedage og åbne dage op i Venmarks kalender i BC; gæt aldrig på en lukkedag.
 
 **Er der fragt eller minimumsordre?**
 Der er ingen minimumsordre. Fragtgebyret afhænger af leveringsstedet. Kontakt fisk@venmark.dk eller 98 94 59 65, hvis du vil kende gebyret for din adresse.
@@ -107,10 +105,10 @@ Du kan også bruge Reklamation til at fortælle om fejl og mangler i portalen, f
 ## Faktura og betaling
 
 **Betalingsbetingelser**
-Løbende uge plus 5 dage. Ved for sen betaling påløber rente efter renteloven. [TJEK: gælder det alle kunder, eller har nogle særlige aftaler?]
+Betalingsbetingelserne står på din faktura. Oplys ikke betalingsfrister generelt; de kan variere fra kunde til kunde. Ved for sen betaling påløber rente efter renteloven.
 
-**Betaling via Betalingsservice / Leverandørservice**
-Erhvervskunder kan betale via Leverandørservice, så forfaldne beløb trækkes automatisk. Kontakt bogholderiet på regnskab@venmark.dk eller 96 56 56 88 for at tilmelde dig.
+**Betaling via Leverandørservice**
+Vi bruger Leverandørservice, så forfaldne beløb trækkes automatisk fra virksomhedens konto. Kontakt bogholderiet på regnskab@venmark.dk eller 96 56 56 88 for at tilmelde dig.
 
 **Hvor finder jeg mine fakturaer og kreditnotaer?**
 Under Fakturaer og Kreditnotaer i portalen. De seneste 12 måneder vises og kan hentes som PDF. Kontoudtog kan hentes under Fakturaer, også som fil til Excel. Fakturaer sendes også på mail, når de er bogført.
@@ -124,16 +122,16 @@ Kontakt bogholderiet på regnskab@venmark.dk eller 96 56 56 88, eller skriv unde
 ## Varer og kvalitet
 
 **Opbevaring**
-Fersk fisk opbevares ved 0–2 °C, gerne på is. Røgvarer og salater på køl ved højst 5 °C. Frostvarer ved -18 °C eller koldere. [TJEK: Venmarks egne anbefalinger og holdbarhed pr. varegruppe.]
+Alle varer sendes på køl. Stil dem på køl straks ved modtagelsen.
 
 **Holdbarhed**
-Holdbarheden står på etiketten. [UDFYLD: typisk holdbarhed for fersk fisk, varmrøget, koldrøget og salater.]
+Holdbarheden står på etiketten. Oplys ikke holdbarhed generelt.
 
-**MSC og ASC**
-Vi er certificeret til at sælge MSC- og ASC-mærkede varer. Det står på varen og på fakturaen, når en vare er certificeret. [TJEK: certifikatnumre, og om de må oplyses.]
+**MSC, ASC og ISO 22000**
+Venmark er MSC-certificeret med certifikatnummer MSC-C-56273 og ASC-certificeret med certifikatnummer ASC-C-01652. MSC dækker mange af vores vildfangede varer, ASC opdrættede. Det står på varen, når den er certificeret. Vi arbejder desuden efter fødevaresikkerhedsstandarden ISO 22000.
 
-**Allergener og næringsindhold**
-Står på etiketten. Har du brug for et produktdatablad, så kontakt os. [UDFYLD: hvem sender datablade?]
+**Allergener, næringsindhold og produktdatablade**
+Står på etiketten. Har du brug for et produktdatablad, så skriv til fisk@venmark.dk.
 
 **Sporbarhed**
 Alle varer kan spores til batch og leverandør. Ved spørgsmål om oprindelse eller fangstområde, så kontakt os med varenummer og leveringsdato.
