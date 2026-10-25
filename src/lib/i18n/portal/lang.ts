@@ -28,13 +28,16 @@ export const BC_LANG_CODES: Record<Lang, string[]> = {
   de: ['DEU', 'DE', 'DEA', 'DES', 'DEC'],
 }
 
-/** Debitorkortets Sprogkode → portalsprog (tom/ukendt = dansk). */
+/**
+ * Debitorkortets Sprogkode → portalsprog. Tom/dansk = dansk, tysk = tysk, ALT andet engelsk:
+ * debitorerne har korte koder (EN, DE, GB, SE, FR, ES, NL — 2026-10-25), og en fransk eller
+ * hollandsk kunde læser engelsk bedre end dansk.
+ */
 export function bcLangToPortal(code: string | null | undefined): Lang {
   const c = (code ?? '').trim().toUpperCase()
-  if (!c) return 'da'
-  if (BC_LANG_CODES.de.includes(c) || c.startsWith('DE')) return 'de'
-  if (BC_LANG_CODES.en.includes(c) || c.startsWith('EN')) return 'en'
-  return 'da'
+  if (!c || ['DAN', 'DA', 'DK', 'DANSK'].includes(c)) return 'da'
+  if (BC_LANG_CODES.de.includes(c) || c.startsWith('DE') || c === 'TYSK') return 'de'
+  return 'en'
 }
 
 // ── Ordbøger ────────────────────────────────────────────────────────────────
