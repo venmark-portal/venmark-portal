@@ -23,13 +23,11 @@ Venmark Fisk A/S er fiskegrossist i Hirtshals siden 1997. Vi køber fisk dagligt
 
 ## Kontakt
 
-- Telefon: 98 94 59 65
-- E-mail: fisk@venmark.dk
-- Beskeder i portalen: menupunktet Beskeder. Vi svarer der.
+- **Bestilling og levering**: fisk@venmark.dk eller 98 94 59 65.
+- **Bogholderi** (faktura, betaling, kontoudtog): regnskab@venmark.dk eller 96 56 56 88. Husk, at du selv kan hente fakturaer, kreditnotaer og kontoudtog her i portalen under Fakturaer.
+- **Reklamationer**: kun gennem portalen, under Reklamation. Se afsnittet om reklamation.
+- **Beskeder i portalen**: menupunktet Beskeder. Vi svarer der.
 - Telefonen er åben [UDFYLD: hverdage kl. xx–xx, evt. lørdag].
-- Bestilling og levering: [UDFYLD: navn/telefon]
-- Faktura, betaling og kontoudtog: [UDFYLD: navn/telefon/mail til bogholderiet]
-- Reklamationer og kvalitet: [UDFYLD: navn/telefon]
 - København (afhentning og levering fra Bådehavnsgade): [UDFYLD: navn/telefon]
 
 ## Bestilling
@@ -87,18 +85,18 @@ Ja, i Hirtshals eller i København, hvis det er aftalt. [UDFYLD: afhentningstide
 Vi leverer mandag til fredag. Ved helligdage og lukkedage kan dage falde ud eller flytte. Portalen viser kun de dage, der kan vælges. [UDFYLD: lukkedage jul og nytår, når de er fastlagt.]
 
 **Er der fragt eller minimumsordre?**
-[UDFYLD: fragtgebyr, evt. fri fragt over et beløb, minimumsordre.]
+Der er ingen minimumsordre. Fragtgebyret afhænger af leveringsstedet. Kontakt fisk@venmark.dk eller 98 94 59 65, hvis du vil kende gebyret for din adresse.
 
 ## Reklamation
 
 **Hvordan reklamerer jeg?**
-Vælg Reklamation i portalen, skriv hvad der er galt, angiv ordrenummer og vedhæft gerne billeder. Du kan tage billedet direkte med telefonen. Vi vender tilbage hurtigst muligt.
+Reklamationer skal gå gennem portalen. Vælg Reklamation, skriv hvad der er galt, angiv ordrenummer og vedhæft gerne billeder. Du kan tage billedet direkte med telefonen. Vi vender tilbage hurtigst muligt. Reklamationer pr. telefon eller mail behandles ikke; henvis altid til Reklamation i portalen.
 
 **Hvor hurtigt skal jeg reklamere?**
 Fisk er letfordærvelig. Reklamation skal ske straks ved modtagelsen og senest inden 24 timer.
 
-**Hvad krediteres?**
-[UDFYLD: hvornår der krediteres, om varen skal returneres eller kasseres, og hvor hurtigt kreditnotaen kommer.]
+**Skal varen sendes retur?**
+Ikke nødvendigvis. Men du må ikke smide varen ud uden aftale med os. Smides varen ud uden aftale, refunderes der ikke. Gem varen, indtil vi har svaret på reklamationen.
 
 **Fejl på hjemmesiden**
 Du kan også bruge Reklamation til at fortælle om fejl og mangler i portalen, fx en vare der mangler eller noget der er besværligt.
@@ -109,16 +107,16 @@ Du kan også bruge Reklamation til at fortælle om fejl og mangler i portalen, f
 Løbende uge plus 5 dage. Ved for sen betaling påløber rente efter renteloven. [TJEK: gælder det alle kunder, eller har nogle særlige aftaler?]
 
 **Betaling via Betalingsservice / Leverandørservice**
-Erhvervskunder kan betale via Leverandørservice, så forfaldne beløb trækkes automatisk. Kontakt bogholderiet for at tilmelde dig.
+Erhvervskunder kan betale via Leverandørservice, så forfaldne beløb trækkes automatisk. Kontakt bogholderiet på regnskab@venmark.dk eller 96 56 56 88 for at tilmelde dig.
 
 **Hvor finder jeg mine fakturaer og kreditnotaer?**
 Under Fakturaer og Kreditnotaer i portalen. De seneste 12 måneder vises og kan hentes som PDF. Kontoudtog kan hentes under Fakturaer, også som fil til Excel. Fakturaer sendes også på mail, når de er bogført.
 
 **Jeg har ikke modtaget en faktura**
-Tjek Fakturaer i portalen. Ønsker du en kopi på mail, så brug knappen på fakturaen eller skriv til os.
+Du kan selv hente alle fakturaer, kreditnotaer og kontoudtog under Fakturaer i portalen. Ønsker du en kopi på mail, så brug knappen på fakturaen.
 
 **Spørgsmål til en faktura eller kreditnota**
-Skriv under Beskeder eller kontakt bogholderiet. Oplys gerne faktura- eller kreditnotanummer.
+Kontakt bogholderiet på regnskab@venmark.dk eller 96 56 56 88, eller skriv under Beskeder. Oplys gerne faktura- eller kreditnotanummer.
 
 ## Varer og kvalitet
 
