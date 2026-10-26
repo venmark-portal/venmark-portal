@@ -354,6 +354,7 @@ function getItemAvailStatus(
   avail: BCItemAvailability | undefined,
   deliveryDate: Date | undefined,
   t: BT,
+  effectiveDate?: Date,   // afsendelses-/pakkedag (leveringsdato − transit); udeladt = leveringsdato
 ): ItemAvailStatus {
   const none: ItemAvailStatus = { blocked: false, blockLabel: '', disponibeltLabel: null, disponibeltColor: null, aabnTilLabel: null }
   if (!avail || !deliveryDate) return none
@@ -383,7 +384,10 @@ function getItemAvailStatus(
     // leveringsdato er PÅ ELLER EFTER afgangsdatoen. Så er en "streng vare" tilgængelig,
     // selv om det nuværende lager (disponibelt) er 0 — fx torsdags-afgang → fredags-levering.
     // (Samme >=-tærskel som tilgaengeligFra ovenfor; før blev leveringsdatoen slet ikke brugt her.)
-    const coveredByAfgang = !!avail.naesteLevering && deliveryStr >= avail.naesteLevering
+    // naesteLevering = dagen varen er HJEMME → sammenlign med AFSENDELSESdagen, ikke leveringsdatoen
+    // (levering tirs med transit 1 afsendes man; en afgang tirs når den ikke — W0000117, 26/10-2026).
+    const afsendStr = effectiveDate ? localYmd(effectiveDate) : deliveryStr
+    const coveredByAfgang = !!avail.naesteLevering && afsendStr >= avail.naesteLevering
     if (disp <= 0 && !coveredByAfgang) {
       const dateLabel = avail.naesteLevering
         ? t('tilAfgang', { dag: formatAfgangDag(avail.naesteLevering, t) })
@@ -1512,7 +1516,7 @@ export default function OrderList({
 
   function rowAvailStatus(itemNo: string): ItemAvailStatus {
     const avail = itemAvailabilities[itemNo]
-    const s = getItemAvailStatus(avail, deliveryDate, t)
+    const s = getItemAvailStatus(avail, deliveryDate, t, effectiveDate)
     if (s.blocked && s.blockLabel) s.blockLabel = fristBlockLabel(itemNo, s.blockLabel)
     // "Bestil inden 09:00" → tilføj DAGEN (i dag / i morgen / dato) OG anvend LAVESTE FÆLLESNÆVNER:
     // den reelle sidste bestillingstid for DENNE vare til den valgte leveringsdag er den TIDLIGSTE af

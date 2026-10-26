@@ -115,7 +115,13 @@ export async function POST(req: NextRequest) {
         cmpDate.setHours(0, 0, 0, 0)
       }
       const floorForward   = floor ? cmpDate >= floor : false
-      const coveredByAfgang = !!a.naesteLevering && dStr >= a.naesteLevering
+      // Afsendelses-/pakkedagen (leveringsdato − transit, evt. pak-dagen-før). BC's naesteLevering
+      // er den dag varen er HJEMME, så den skal sammenlignes med afsendelsesdagen — ikke
+      // leveringsdatoen. Før: levering tirs 27/10 (afgang man 26/10) blev regnet "dækket" af en
+      // afgang 27/10 → Kulmule filet 3 (streng, lager 0) solgt kl. 9.38 til Storms Fisk (W0000117).
+      const afsendDag   = method ? getEffectiveDateForMethodDelivery(deliveryDate, method, holidaySet) : deliveryDate
+      const afsendStr   = afsendDag.toLocaleDateString('en-CA')
+      const coveredByAfgang = !!a.naesteLevering && afsendStr >= a.naesteLevering
       const isForward = floorForward || coveredByAfgang
 
       // 1. Frist-vare til for tidlig dato UDEN lager OG uden afgang der dækker → afvis.
@@ -135,8 +141,6 @@ export async function POST(req: NextRequest) {
       // har tilladt. "Priser opdateret i dag" betyder at DAGENS fangst er købt og prissat,
       // og så gælder lageret. Men det siger intet om en senere dags auktion: afsendes der
       // i fremtiden, har vi den auktion til gode, og varen er fri.
-      const afsendDag   = method ? getEffectiveDateForMethodDelivery(deliveryDate, method, holidaySet) : deliveryDate
-      const afsendStr   = afsendDag.toLocaleDateString('en-CA')
       const prisDato    = a.priserOpdateret
         ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date(a.priserOpdateret))
         : ''
@@ -147,6 +151,12 @@ export async function POST(req: NextRequest) {
       const handelsdag  = afsendWd !== 0 && afsendWd !== 6 && !holidaySet.has(afsendStr)
       const auctionFree = a.auktionsKategori && handelsdag
         && (afsendStr > todayStr || prisDato !== todayStr)
+      // Streng vare uden lager og uden afgang der når afsendelsesdagen → kan ikke leveres.
+      // Afvises HER, uden at afhænge af BC-coverage-kaldet (som fail-open'er ved fejl/timeout).
+      if (a.strengtLager && disp <= 0 && !coveredByAfgang && !floorForward && !auctionFree) {
+        tooEarly.push(t('ikkeDaekket', { navn: l.itemName || l.bcItemNumber }))
+        continue
+      }
       if (!auctionFree && !isForward && disp > 0 && l.quantity > disp) {
         overCap.push(t('maks', { navn: l.itemName || l.bcItemNumber, n: Math.round(disp * 10) / 10 }))
         lofter.push({ itemNo: l.bcItemNumber, navn: l.itemName || l.bcItemNumber, maks: Math.round(disp * 10) / 10 })
@@ -171,7 +181,11 @@ export async function POST(req: NextRequest) {
             lofter.push({ itemNo: ln.itemNo, navn: ln.name, maks: Math.round(row.maxQty * 10) / 10 })
           }
         }
-      } catch { /* fail open */ }
+      } catch (e) {
+        // Fail open (UI gater primært) — men LOG det: en tavs fejl her lod W0000117 igennem uden spor.
+        console.error(`[ordre] coverage-loft fejlede for ${activeCustomerNo} ${dStr} (${afgangLines.map(x => x.itemNo).join(',')}):`,
+          e instanceof Error ? e.message : e)
+      }
     }
     if (tooEarly.length) {
       return NextResponse.json(
