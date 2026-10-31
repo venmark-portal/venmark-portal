@@ -2055,6 +2055,25 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
   } catch { return [] }
 }
 
+/**
+ * Skriv PIN og/eller standardbil tilbage til BC's Portal Driver — begge styres fra både BC og
+ * portalen, og "Sync fra BC" overskriver portalens værdier med BC's. Kaster ved fejl.
+ */
+export async function updatePortalDriver(code: string, patch: { pinCode?: string; defaultVehicle?: number }): Promise<void> {
+  const token = await getAccessToken()
+  const res = await fetch(`${bcPortalBaseUrl()}/portalDrivers('${encodeURIComponent(code.replace(/'/g, "''"))}')`, {
+    method:  'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json', 'If-Match': '*' },
+    body:    JSON.stringify(patch),
+    cache:   'no-store',
+  })
+  if (!res.ok) {
+    const body = (await res.text().catch(() => '')).slice(0, 300)
+    console.error(`[chauffoer] BC-opdatering af ${code} → ${res.status}: ${body}`)
+    throw new Error(`BC afviste ændringen (${res.status})`)
+  }
+}
+
 // ─── Hent varetilgængelighed fra BC (Portal Item Avail API, page 50373) ──────
 
 export interface BCItemAvailability {
