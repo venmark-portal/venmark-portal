@@ -26,12 +26,55 @@ function langDato(locale: string, date: Date): string {
   return date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+/** Kvitteringsboks for KBH-levering: hvad kommer fra København, og hvad blev delt. */
+function KbhBoks({ k, t, locale }: { k: KbhKvit; t: BT; locale: string }) {
+  const [y, m, d] = k.levering.split('-').map(Number)
+  const dato = y > 1 ? langDato(locale, new Date(y, m - 1, d)) : ''
+  const tal  = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 })
+  return (
+    <div className="mx-auto mt-3 max-w-md rounded-xl bg-sky-50 px-4 py-3 text-left text-sm text-sky-950 ring-1 ring-sky-200">
+      {k.hovedSlettet ? (
+        <p>{t('kbhAlt', { nr: k.xvenOrdre, dato })}</p>
+      ) : (
+        <>
+          <p className="font-semibold">{t('kbhDelt2Titel')}</p>
+          <p className="mt-1">
+            {t(k.flyttet.length === 1 ? 'kbhFraKbh1' : 'kbhFraKbhN', { n: k.flyttet.length, nr: k.xvenOrdre })}
+            {t('kbhResten', { dato })}
+          </p>
+        </>
+      )}
+      {k.delt.length > 0 && (
+        <div className="mt-2 border-t border-sky-200 pt-2">
+          <p className="font-semibold">{t('kbhDeltTitel')}</p>
+          <ul className="mt-1 space-y-1">
+            {k.delt.map(dl => (
+              <li key={dl.itemNo}>
+                {t('kbhDeltLinje', { navn: dl.navn, bestilt: tal(dl.bestilt), enhed: dl.enhed, kbh: tal(dl.kbh), rest: tal(dl.hirtshals) })}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Det danske varenavn (navnDa sættes server-side før oversættelse) — sendes til ordre/favorit. */
 function daNavn(it: EnrichedItem): string {
   return ((it as { navnDa?: string }).navnDa) || it.displayName
 }
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
+
+/** KBH-levering-kvittering fra ordre-API'et (se src/lib/kbhLevering.ts). */
+type KbhKvit = {
+  xvenOrdre:    string
+  levering:     string
+  hovedSlettet: boolean
+  flyttet: { itemNo: string; navn: string; antal: number; enhed: string }[]
+  delt:    { itemNo: string; navn: string; bestilt: number; kbh: number; hirtshals: number; enhed: string }[]
+}
 
 export type EnrichedItem = BCItem & {
   unitPrice:   number
@@ -1807,6 +1850,8 @@ export default function OrderList({
   const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
   /** Sat når serveren lagde varerne på en eksisterende ordre i stedet for at oprette en ny. */
   const [lagtPaa, setLagtPaa] = useState<{ ordreNummer: string; antal: number; ialt: number } | null>(null)
+  // KBH-levering: serveren har flyttet varer på lager i København til kundens XVEN-ordre.
+  const [kbhKvit, setKbhKvit] = useState<KbhKvit | null>(null)
   /** Tilføj-tilstand: målordren var slettet hos Venmark (nummeret), og varerne gik via checkout. null = nej. */
   const [ordreVaek, setOrdreVaek] = useState<string | null>(null)
   /** Bestillingen gik IKKE igennem. Vises som dialog — en rød linje over knappen var for nem at overse. */
@@ -2098,11 +2143,12 @@ export default function OrderList({
 
   // Add-mode: efter varer er lagt på ordren → tilbage til ordreoversigten.
   useEffect(() => {
-    if (submitted && addToOrderId) {
+    // Med KBH-kvittering bliver kunden stående, så beskeden om de 2 ordrer kan læses.
+    if (submitted && addToOrderId && !kbhKvit) {
       const t = setTimeout(() => { window.location.href = '/portal/ordrer' }, 1500)
       return () => clearTimeout(t)
     }
-  }, [submitted, addToOrderId])
+  }, [submitted, addToOrderId, kbhKvit])
 
   // ── Indsend ordre ────────────────────────────────────────────────────────────
   async function handleSubmit() {
@@ -2192,6 +2238,16 @@ export default function OrderList({
       // ordre i telefonen siden, så svaret her er det eneste der kan stoles på.
       try {
         const svar = await res.clone().json()
+        if (svar?.kbh?.xvenOrdre) {
+          // Kundens egne (evt. oversatte) varenavne — serveren kender kun de danske.
+          const vist = new Map(Array.from(lines.values()).map(l => [l.item.number, l.item.displayName]))
+          const k = svar.kbh as KbhKvit
+          setKbhKvit({
+            ...k,
+            flyttet: k.flyttet.map(f => ({ ...f, navn: vist.get(f.itemNo) ?? f.navn })),
+            delt:    k.delt.map(d => ({ ...d, navn: vist.get(d.itemNo) ?? d.navn })),
+          })
+        }
         if (svar?.tilfoejet) {
           setLagtPaa({
             ordreNummer: String(svar.ordreNummer ?? ''),
@@ -2501,7 +2557,8 @@ export default function OrderList({
               </p>
             </>
           )}
-          <p className="mt-0.5 text-sm text-gray-400">{t('senderTilbage')}</p>
+          {kbhKvit && <KbhBoks k={kbhKvit} t={t} locale={locale} />}
+          {!kbhKvit && <p className="mt-0.5 text-sm text-gray-400">{t('senderTilbage')}</p>}
         </div>
         <a href="/portal/ordrer" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
           {t('tilbageTilBestillinger')}
@@ -2530,6 +2587,7 @@ export default function OrderList({
           ) : (
             <p className="mt-1 text-sm text-gray-500">{t('leveringDato', { dato: langDato(locale, deliveryDate) })}</p>
           )}
+          {kbhKvit && <KbhBoks k={kbhKvit} t={t} locale={locale} />}
           <p className="mt-0.5 text-sm text-gray-400">{t('viBekraefter')}</p>
         </div>
         <div className="flex gap-3 mt-2">

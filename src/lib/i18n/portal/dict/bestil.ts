@@ -107,6 +107,14 @@ export const bestilDict = defineDict({
     ordrenHarNuN: ' Ordren har nu {n} varer.',
     leveringDato: 'Levering: {dato}',
     viBekraefter: 'Vi bekræfter snarest muligt',
+    // KBH-levering (varer på lager i København → egen ordre fra København)
+    kbhDelt2Titel: 'Din bestilling er delt i 2 ordrer',
+    kbhFraKbh1: '{n} vare leveres direkte fra vores lager i København (ordre #{nr}).',
+    kbhFraKbhN: '{n} varer leveres direkte fra vores lager i København (ordre #{nr}).',
+    kbhResten: ' Resten kommer fra Hirtshals. Begge leveres {dato}.',
+    kbhAlt: 'Hele bestillingen leveres direkte fra vores lager i København (ordre #{nr}), {dato}.',
+    kbhDeltTitel: 'Ikke det fulde antal på lager i København:',
+    kbhDeltLinje: '{navn}: bestilt {bestilt} {enhed} — {kbh} fra København og {rest} fra Hirtshals. Venmark tjekker op.',
     tilbageOversigt: 'Tilbage til oversigt',
 
     // Bannere
@@ -302,6 +310,13 @@ export const bestilDict = defineDict({
     ordrenHarNuN: ' The order now has {n} items.',
     leveringDato: 'Delivery: {dato}',
     viBekraefter: 'We will confirm as soon as possible',
+    kbhDelt2Titel: 'Your order has been split into 2 orders',
+    kbhFraKbh1: '{n} item is delivered directly from our Copenhagen warehouse (order #{nr}).',
+    kbhFraKbhN: '{n} items are delivered directly from our Copenhagen warehouse (order #{nr}).',
+    kbhResten: ' The rest comes from Hirtshals. Both are delivered on {dato}.',
+    kbhAlt: 'Your whole order is delivered directly from our Copenhagen warehouse (order #{nr}) on {dato}.',
+    kbhDeltTitel: 'Not fully in stock in Copenhagen:',
+    kbhDeltLinje: '{navn}: ordered {bestilt} {enhed} — {kbh} from Copenhagen and {rest} from Hirtshals. Venmark will follow up.',
     tilbageOversigt: 'Back to overview',
 
     sidenAaben: 'This page has been open for a while.',
@@ -493,6 +508,13 @@ export const bestilDict = defineDict({
     ordrenHarNuN: ' Die Bestellung hat jetzt {n} Artikel.',
     leveringDato: 'Lieferung: {dato}',
     viBekraefter: 'Wir bestätigen so schnell wie möglich',
+    kbhDelt2Titel: 'Ihre Bestellung wurde in 2 Aufträge aufgeteilt',
+    kbhFraKbh1: '{n} Artikel wird direkt aus unserem Lager in Kopenhagen geliefert (Auftrag #{nr}).',
+    kbhFraKbhN: '{n} Artikel werden direkt aus unserem Lager in Kopenhagen geliefert (Auftrag #{nr}).',
+    kbhResten: ' Der Rest kommt aus Hirtshals. Beide werden am {dato} geliefert.',
+    kbhAlt: 'Ihre gesamte Bestellung wird am {dato} direkt aus unserem Lager in Kopenhagen geliefert (Auftrag #{nr}).',
+    kbhDeltTitel: 'Nicht vollständig in Kopenhagen auf Lager:',
+    kbhDeltLinje: '{navn}: bestellt {bestilt} {enhed} — {kbh} aus Kopenhagen und {rest} aus Hirtshals. Venmark prüft das nach.',
     tilbageOversigt: 'Zurück zur Übersicht',
 
     sidenAaben: 'Diese Seite ist schon länger geöffnet.',

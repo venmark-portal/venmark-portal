@@ -1519,6 +1519,56 @@ export async function addLinesToBCOrder(
   return { success, errors }
 }
 
+// ─── KBH-levering: flyt varer på lager i København til kundens XVEN-ordre ────
+
+export interface BCKbhSplit {
+  xvenCustomerNo:   string
+  xvenOrderNo:      string
+  deliveryDate:     string   // YYYY-MM-DD ('0001-01-01' = ingen)
+  movedLines:       number
+  partialLines:     number
+  mainOrderDeleted: boolean
+  /** Alle linjer (helt eller delvist) der kom på XVEN-ordren. */
+  moved:   { itemNo: string; qty: number; uom: string }[]
+  /** Linjer KBH kun havde en del af: kbhQty fra København, restQty bliver på Hirtshals. */
+  partial: { itemNo: string; kbhQty: number; restQty: number; uom: string }[]
+  errorText: string
+}
+
+/**
+ * Kører BC's KBH-opsplitning (cu 50476 via API-siden kbhSplits) på en salgsordre: varer der er
+ * disponible på XVEN-KØB flyttes til debitorens XVEN-ordre med samme leveringsdag. Kun linjer
+ * portal-appen selv har oprettet og som ikke er vurderet før, røres. Debitorer uden XVEN-konto
+ * får et tomt svar (movedLines 0). Kaster ved HTTP-fejl — så er intet ændret i BC.
+ */
+export async function splitKbhOrder(orderNo: string, allowDeleteEmptyMain: boolean): Promise<BCKbhSplit> {
+  const token = await getAccessToken()
+  const res = await fetchBcDeadlockRetry(`${bcPortalBaseUrl()}/kbhSplits`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body:    JSON.stringify({ orderNo, allowDeleteEmptyMain }),
+    cache:   'no-store',
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`kbhSplits ${orderNo} → ${res.status}: ${body.slice(0, 500)}`)
+  }
+  const j = await res.json()
+  const num = (s: string) => Number(s) || 0
+  const parts = (s: string) => String(s ?? '').split('|').filter(Boolean).map(p => p.split(';'))
+  return {
+    xvenCustomerNo:   j.xvenCustomerNo ?? '',
+    xvenOrderNo:      j.xvenOrderNo ?? '',
+    deliveryDate:     j.deliveryDate ?? '',
+    movedLines:       Number(j.movedLines ?? 0),
+    partialLines:     Number(j.partialLines ?? 0),
+    mainOrderDeleted: !!j.mainOrderDeleted,
+    moved:   parts(j.movedItems).map(([itemNo, qty, uom]) => ({ itemNo, qty: num(qty), uom: uom ?? '' })),
+    partial: parts(j.partialItems).map(([itemNo, kbh, rest, uom]) => ({ itemNo, kbhQty: num(kbh), restQty: num(rest), uom: uom ?? '' })),
+    errorText: j.errorText ?? '',
+  }
+}
+
 // ─── Hent linjestatus fra Sales-warehouse-facade API ─────────────────────────
 
 // ─── Åbne salgsordrer pr. kunde (til "Mine ordrer" — inkl. BC-oprettede) ─────

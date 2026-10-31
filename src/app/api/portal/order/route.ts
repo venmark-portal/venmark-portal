@@ -6,6 +6,7 @@ import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getEffectiveDateF
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
 import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage, addLinesToBCOrder } from '@/lib/businesscentral'
 import { findAabenOrdre } from '@/lib/aabenOrdre'
+import { kbhOpsplit } from '@/lib/kbhLevering'
 import { revalidatePath } from 'next/cache'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
 import { getPortalLang } from '@/lib/i18n/portal/server'
@@ -234,6 +235,12 @@ export async function POST(req: NextRequest) {
         )
       }
       if (!ordreForsvandt) {
+        // KBH-levering: varer på lager i København → kundens XVEN-ordre (eksisterende ordre slettes aldrig).
+        const kbh = await kbhOpsplit({
+          ordreNr: eksisterende.bcOrderNumber, sletTomHoved: false, navne: varenavne(lines),
+          portalKunde: await prisma.customer.findUnique({ where: { id: userId }, select: { id: true, name: true, bcCustomerNumber: true } }) ?? undefined,
+          kundeNr: activeCustomerNo,
+        })
         revalidatePath('/portal/ordrer')
         return NextResponse.json({
           tilfoejet:   true,
@@ -241,6 +248,7 @@ export async function POST(req: NextRequest) {
           antal:       lines.length,
           ialt:        eksisterende.antalLinjer + lines.length,
           fraPortal:   eksisterende.fraPortal,
+          kbh,
         }, { status: 200 })
       }
     }
@@ -325,13 +333,20 @@ export async function POST(req: NextRequest) {
         shipmentMethodCode ?? undefined,   // kundens VALGTE leveringskode → BC (transit/afsendelse)
       )
 
+      // KBH-levering: varer på lager i København → kundens XVEN-ordre. Kom ALT derfra, er
+      // Hirtshals-ordren slettet, og portalens ordre peger så på XVEN-ordren i stedet.
+      const kbh = await kbhOpsplit({
+        ordreNr: bc.number, sletTomHoved: true, navne: varenavne(lines),
+        portalKunde: customer, kundeNr: activeCustomerNo,
+      })
+
       // Opdater til SENT_TO_BC med BC-referencer
       await prisma.order.update({
         where: { id: order.id },
         data:  {
           status:       'SENT_TO_BC',
-          bcOrderNumber: bc.number,
-          bcOrderId:    bc.id,
+          bcOrderNumber: kbh?.hovedSlettet ? kbh.xvenOrdre : bc.number,
+          bcOrderId:    kbh?.hovedSlettet ? null : bc.id,
           approvedAt:   new Date(),
         },
       })
@@ -356,7 +371,7 @@ export async function POST(req: NextRequest) {
         lines: order.lines,
       }).catch((e) => console.warn('Email-notifikation fejlede:', e.message))
 
-      return NextResponse.json({ orderId: order.id, bcOrderNumber: bc.number }, { status: 201 })
+      return NextResponse.json({ orderId: order.id, bcOrderNumber: kbh?.hovedSlettet ? kbh.xvenOrdre : bc.number, kbh }, { status: 201 })
 
     } catch (bcErr: any) {
       // BC fejlede — behold SUBMITTED så admin kan gensende manuelt
@@ -376,4 +391,11 @@ export async function POST(req: NextRequest) {
     console.error('Ordre-fejl:', e)
     return NextResponse.json({ error: t('serverfejl') }, { status: 500 })
   }
+}
+
+/** Varenr → dansk navn fra kurven (til Venmarks KBH-besked). */
+function varenavne(lines: any[]): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const l of lines ?? []) if (l?.bcItemNumber) m.set(l.bcItemNumber, l.itemName || l.bcItemNumber)
+  return m
 }
