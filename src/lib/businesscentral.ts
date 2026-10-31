@@ -2035,9 +2035,13 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
 
     const res = await fetch(`${base}/portalDrivers?$top=200`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 300 },
+      // "Sync fra BC" skal se BC NU — en 5-min. cache gav synk på gamle data.
+      cache: 'no-store',
     })
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.error(`[chauffoer] portalDrivers ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`)
+      return []
+    }
     const data = await res.json()
     return (data.value ?? []).map((d: any) => ({
       code:                      d.code                      ?? '',

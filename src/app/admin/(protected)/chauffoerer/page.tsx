@@ -97,7 +97,12 @@ export default function ChauffoererPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: pin || undefined, isDefault, defaultVehicleLabel: vLabel }),
       })
-      if (!res.ok) throw new Error('Gem fejlede')
+      if (!res.ok) {
+        const tekst = (await res.text().catch(() => '')).slice(0, 200)
+        throw new Error(res.status === 401
+          ? 'Gem fejlede: du er ikke logget ind som admin (log ind igen)'
+          : `Gem fejlede (${res.status})${tekst ? `: ${tekst}` : ''}`)
+      }
       await load()
       setModal(null)
     } catch (e: any) {

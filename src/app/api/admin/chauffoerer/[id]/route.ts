@@ -20,8 +20,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const now    = new Date().toISOString()
   const vLabel = defaultVehicleLabel || 'Bil 1'
 
+  try {
   if (pin && pin.length >= 4) {
-    const pinHash = await bcrypt.hash(pin, 10)
+    const pinHash = await bcrypt.hash(String(pin), 10)
     await prisma.$executeRaw`
       UPDATE "DriverUser"
       SET "pinHash"             = ${pinHash},
@@ -38,6 +39,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
           "updatedAt"           = ${now}::timestamp
       WHERE "id" = ${params.id}
     `
+  }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[chauffoer] gem ${params.id} fejlede:`, msg)
+    return new NextResponse(msg.slice(0, 200), { status: 500 })
   }
 
   return NextResponse.json({ ok: true })
