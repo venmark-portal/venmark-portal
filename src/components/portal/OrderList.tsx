@@ -499,7 +499,10 @@ export function resolvePrice(
   if (!tiers.length) return fallback
   const today = new Date().toISOString().split('T')[0]
 
-  const isBaseUnit = !uomCode || uomCode === baseUomCode || qtyPerUom <= 1
+  // En anden enhed end basis er IKKE basis, selv om dens faktor står til 1 i BC — fx "2 KG/SP"
+  // med Antal pr. enhed = 1 (07-11-2026). Før blev den regnet som basis, fandt ingen prislinje
+  // og faldt tilbage til varekortets 999-pris i kurven.
+  const isBaseUnit = !uomCode || uomCode === baseUomCode
 
   // Alle gyldige tiers for varen (uafhængigt af qty) — bruges som vis-pris-pulje
   // når qty=0 eller under mindste tier-minimum.
@@ -525,19 +528,37 @@ export function resolvePrice(
   }
 
   // ── 3. Fallback: base-enhedspriser × konverteringsfaktor ───────────────────
-  if (!isBaseUnit && qtyPerUom > 1) {
-    const effectiveBaseQty = Math.max(qty, 1) * qtyPerUom
-    const baseTiers = tiers.filter(t =>
+  // Samme regel som BC's salgslinje: kg-pris (efter kg-mængde) × Antal pr. enhed.
+  if (!isBaseUnit) {
+    const factor = qtyPerUom > 0 ? qtyPerUom : 1
+    const effectiveBaseQty = Math.max(qty, 1) * factor
+    const allBaseTiers = tiers.filter(t =>
       t.itemNo === itemNo &&
-      t.minimumQuantity <= effectiveBaseQty &&
       (!t.unitOfMeasure || t.unitOfMeasure === baseUomCode) &&
       (!t.startingDate || t.startingDate <= today) &&
       (!t.endingDate   || t.endingDate.startsWith('0001') || t.endingDate   >= today),
     )
-    if (baseTiers.length) return pickBySource(baseTiers) * qtyPerUom
+    const baseTiers = allBaseTiers.filter(t => t.minimumQuantity <= effectiveBaseQty)
+    if (baseTiers.length) return pickBySource(baseTiers) * factor
+    // Under mindste trappe-minimum (fx priser fra 2 kg): vis fra-prisen, ikke 999.
+    if (allBaseTiers.length) {
+      const lowestMin = Math.min(...allBaseTiers.map(t => t.minimumQuantity))
+      return pickBySource(allBaseTiers.filter(t => t.minimumQuantity === lowestMin)) * factor
+    }
   }
 
   return isBaseUnit ? fallback : fallback * qtyPerUom
+}
+
+/**
+ * Den enhed linjen skal bruge: kundens gemte valg, men KUN hvis varen stadig har enheden.
+ * Valget huskes i browseren pr. vare; er enheden siden slettet/omdøbt i BC (fx "2KG/KS" på
+ * 50399, 07-11-2026), viste rækken KG mens kurven regnede og sendte den døde enhed.
+ */
+export function validUom(item: { baseUnitOfMeasureCode: string; uoms?: { code: string }[] }, wanted?: string | null): string {
+  if (!wanted) return item.baseUnitOfMeasureCode
+  if (!item.uoms?.length) return wanted          // enhederne ikke hentet: kan ikke afvise
+  return item.uoms.some(u => u.code === wanted) ? wanted : item.baseUnitOfMeasureCode
 }
 
 /**
@@ -823,7 +844,7 @@ export function OrderRow({
   const attrs  = item.attributes ?? []
   const uoms   = item.uoms ?? []
 
-  const activeUomCode  = selectedUom ?? item.baseUnitOfMeasureCode
+  const activeUomCode  = validUom(item, selectedUom)
   const activeUomObj   = uoms.find(u => u.code === activeUomCode)
   const qtyPerUom      = activeUomObj?.qtyPerUnitOfMeasure ?? 1
   const baseUomCode    = uoms.find(u => u.baseUnitOfMeasure)?.code ?? item.baseUnitOfMeasureCode
@@ -2157,7 +2178,7 @@ export default function OrderList({
     setError('')
 
     const orderLines = Array.from(lines.values()).map(l => {
-      const uomCode     = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+      const uomCode     = validUom(l.item, lineUoms.get(l.item.number))
       const uomObj      = l.item.uoms?.find(u => u.code === uomCode)
       const qtyPerUom   = uomObj?.qtyPerUnitOfMeasure ?? 1
       const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
@@ -2282,7 +2303,7 @@ export default function OrderList({
   const activeLines = Array.from(lines.values())
   const totalLines  = activeLines.length
   const totalAmount = activeLines.reduce((s, l) => {
-    const uomCode    = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+    const uomCode    = validUom(l.item, lineUoms.get(l.item.number))
     const uomObj     = l.item.uoms?.find(u => u.code === uomCode)
     const qtyPerUom  = uomObj?.qtyPerUnitOfMeasure ?? 1
     const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
@@ -3295,7 +3316,7 @@ export default function OrderList({
           {/* Ordrelinjer */}
           <div className="divide-y divide-blue-100">
             {Array.from(lines.values()).map(l => {
-              const uomCode    = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+              const uomCode    = validUom(l.item, lineUoms.get(l.item.number))
               const uomObj     = l.item.uoms?.find(u => u.code === uomCode)
               const qtyPerUom  = uomObj?.qtyPerUnitOfMeasure ?? 1
               const baseUom    = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
