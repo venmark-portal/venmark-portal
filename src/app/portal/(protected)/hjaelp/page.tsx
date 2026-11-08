@@ -6,6 +6,10 @@
 // forslag inden for Venmarks egen kanal, så der ikke dukker konkurrenter op
 // når videoen slutter.
 
+// Siden hedder "Support og vejledning" i menuen (Claus 08-11-2026), og Claus' direkte nummer
+// står øverst her i stedet for på forsiden.
+
+import { Phone } from 'lucide-react'
 import { getT } from '@/lib/i18n/portal/server'
 import { hjaelpDict } from '@/lib/i18n/portal/dict/hjaelp'
 
@@ -20,7 +24,28 @@ export default async function HjaelpPage() {
   const t = await getT(hjaelpDict)
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
-      <h1 className="text-xl font-bold text-gray-900">{t('titel')}</h1>
+      <h1 className="text-xl font-bold text-gray-900">{t('sideTitel')}</h1>
+
+      {/* Hotline — Claus' direkte nummer (Claus 22-10-2026). tel:-link så mobilkunder ringer med ét tryk. */}
+      <div className="mt-4 flex flex-col gap-3 rounded-xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-700">
+            <Phone size={22} />
+          </span>
+          <div>
+            <div className="font-semibold text-gray-900">{t('hotlineTitel')}</div>
+            <div className="text-sm text-gray-500">{t('hotlineTekst')}</div>
+          </div>
+        </div>
+        <a
+          href="tel:+4541969644"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700 sm:ml-auto"
+        >
+          <Phone size={18} /> {t('hotlineNummer')}
+        </a>
+      </div>
+
+      <h2 className="mt-8 text-lg font-bold text-gray-900">{t('titel')}</h2>
       <p className="mt-1 text-sm text-gray-500">
         {t('intro')}
       </p>
