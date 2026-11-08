@@ -1029,7 +1029,8 @@ export function OrderRow({
             >
               {uoms.map(u => (
                 <option key={u.code} value={u.code}>
-                  {u.code}{u.qtyPerUnitOfMeasure > 1 ? ` ×${u.qtyPerUnitOfMeasure}` : ''}
+                  {/* "×5" kun når navnet ikke selv siger mængden ("KASSE ×5", ikke "2 KG/SP ×2") */}
+                  {u.code}{u.qtyPerUnitOfMeasure > 1 && !/\d/.test(u.code) ? ` ×${u.qtyPerUnitOfMeasure}` : ''}
                 </option>
               ))}
             </select>
