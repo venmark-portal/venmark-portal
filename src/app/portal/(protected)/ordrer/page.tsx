@@ -320,6 +320,8 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline, t,
                 quantity={line.quantity}
                 uom={line.unitOfMeasureCode}
                 unitPrice={line.unitPrice}
+                qtyPerUom={line.qtyPerUom}
+                baseUom={line.baseUom}
                 portalLineStatus={line.portalLineStatus ?? null}
                 portalCustomerNote={line.portalCustomerNote ?? null}
                 packedBy={line.packedBy ?? ''}

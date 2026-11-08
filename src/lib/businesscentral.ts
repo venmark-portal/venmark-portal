@@ -1639,7 +1639,9 @@ export interface BCPortalLine {
   description:        string
   quantity:           number
   unitOfMeasureCode:  string
-  unitPrice:          number
+  unitPrice:          number   // pr. linjeenhed (kasse/spand …)
+  qtyPerUom:          number   // Antal pr. enhed; 1 = basisenhed
+  baseUom:            string   // varens basisenhed (KG/STK); tom på basis-linjer
   portalLineStatus:   'Afventer' | 'Godkendt' | 'Afvist'
   portalCustomerNote: string
   packedBy:           string   // initialer; tom = ikke pakket
@@ -1687,6 +1689,8 @@ export async function getPortalLineStatuses(
       quantity:           l.quantity ?? 0,
       unitOfMeasureCode:  l.unitOfMeasureCode ?? '',
       unitPrice:          l.unitPrice ?? 0,
+      qtyPerUom:          Number(l.qtyPerUnitOfMeasure ?? 1) || 1,
+      baseUom:            (l.baseUnitOfMeasure ?? '').trim(),
       portalLineStatus:   l.portalLineStatus ?? 'Afventer',
       portalCustomerNote: l.portalKundebemærkning ?? l.portalCustomerNote ?? '',
       packedBy:           (l.packedBy ?? '').trim(),

@@ -19,6 +19,8 @@ interface Props {
   quantity:           number
   uom:                string
   unitPrice:          number
+  qtyPerUom?:         number   // Antal pr. enhed; > 1 = kolli-linje → vis også kg-/stk-pris
+  baseUom?:           string
   portalLineStatus:   'Afventer' | 'Godkendt' | 'Afvist' | null
   portalCustomerNote: string | null
   packedBy?:          string
@@ -34,7 +36,7 @@ const LINE_STATUS = {
 } as const
 
 export default function OrderLineStatus({
-  itemNumber, itemName, quantity, uom, unitPrice, portalLineStatus, portalCustomerNote,
+  itemNumber, itemName, quantity, uom, unitPrice, qtyPerUom = 1, baseUom = '', portalLineStatus, portalCustomerNote,
   packedBy = '', packedQty = 0, gearType = '', catchArea = '',
 }: Props) {
   const t      = useT(ordrerDict)
@@ -85,7 +87,12 @@ export default function OrderLineStatus({
         <span className="text-right tabular-nums text-gray-700">{qtyFmt.format(quantity)} {uom}</span>
 
         {/* Pris pr. enhed (uden à/kr) */}
-        <span className="text-right tabular-nums text-gray-500">{unitPrice > 0 ? num.format(unitPrice) : ''}</span>
+        <span className="text-right tabular-nums text-gray-500 leading-tight">
+          {unitPrice > 0 ? num.format(unitPrice) : ''}
+          {unitPrice > 0 && qtyPerUom > 1 && baseUom && uom !== baseUom && (
+            <span className="block text-[10px] text-gray-400">{num.format(unitPrice / qtyPerUom)}/{baseUom}</span>
+          )}
+        </span>
 
         {/* Beløb */}
         <span className="text-right tabular-nums font-medium text-gray-700">{unitPrice > 0 ? num.format(quantity * unitPrice) : ''}</span>

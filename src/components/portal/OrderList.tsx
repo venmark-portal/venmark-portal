@@ -3335,6 +3335,7 @@ export default function OrderList({
                     </p>
                     <p className="text-[11px] text-gray-400 font-mono">
                       {l.item.number}{price > 0 ? ` · ${fmt.format(price)}/${uomCode}` : ''}
+                      {price > 0 && uomCode !== baseUom && qtyPerUom > 1 ? ` (${fmt.format(price / qtyPerUom)}/${baseUom})` : ''}
                     </p>
                     {total > 0 && <p className="text-[11px] text-gray-500 sm:hidden">{fmt.format(total)}</p>}
                   </div>
