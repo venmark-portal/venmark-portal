@@ -1766,6 +1766,7 @@ export interface BCItemUoM {
   displayName:         string
   qtyPerUnitOfMeasure: number
   baseUnitOfMeasure:   boolean
+  salesUnit?:          boolean  // varekortets Salgsenhed i BC — forvalgt når kunden ikke selv har valgt
 }
 
 /**
@@ -1826,6 +1827,7 @@ export async function getItemsUoMs(
         displayName:         row.code ?? '',
         qtyPerUnitOfMeasure: typeof row.qtyPerUnitOfMeasure === 'number' ? row.qtyPerUnitOfMeasure : 1,
         baseUnitOfMeasure:   false, // sættes korrekt i uomByCode-merge i page.tsx
+        salesUnit:           row.isSalesUnit === true,
       })
     }
 

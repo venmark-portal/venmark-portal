@@ -10,6 +10,7 @@ import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesF
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
+import { defaultUom } from '@/lib/uom'
 import type { TFunc } from '@/lib/i18n/portal/lang'
 import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
 
@@ -555,10 +556,13 @@ export function resolvePrice(
  * Valget huskes i browseren pr. vare; er enheden siden slettet/omdøbt i BC (fx "2KG/KS" på
  * 50399, 07-11-2026), viste rækken KG mens kurven regnede og sendte den døde enhed.
  */
-export function validUom(item: { baseUnitOfMeasureCode: string; uoms?: { code: string }[] }, wanted?: string | null): string {
-  if (!wanted) return item.baseUnitOfMeasureCode
+export function validUom(
+  item: { baseUnitOfMeasureCode: string; uoms?: { code: string; qtyPerUnitOfMeasure?: number; salesUnit?: boolean }[] },
+  wanted?: string | null,
+): string {
+  if (!wanted) return defaultUom(item)            // intet valg → varens salgsenhed (BC)
   if (!item.uoms?.length) return wanted          // enhederne ikke hentet: kan ikke afvise
-  return item.uoms.some(u => u.code === wanted) ? wanted : item.baseUnitOfMeasureCode
+  return item.uoms.some(u => u.code === wanted) ? wanted : defaultUom(item)
 }
 
 /**

@@ -7,6 +7,7 @@ import { useT, useLocale, useLang } from '@/lib/i18n/portal/LangProvider'
 import { makeT, type TFunc } from '@/lib/i18n/portal/lang'
 import { ordrerSoegDict } from '@/lib/i18n/portal/dict/ordrer-soeg'
 import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
+import { defaultUom } from '@/lib/uom'
 
 type SoegT = TFunc<keyof typeof ordrerSoegDict.da>
 
@@ -299,15 +300,15 @@ export default function ItemSearchModal({
     onClose()
   }
 
-  // Den enhed rækken står på: valgt her → kundens hidtidige valg → basis. Kun enheder
-  // varen faktisk har; en gemt enhed der er slettet i BC falder tilbage til basis.
+  // Den enhed rækken står på: valgt her → kundens hidtidige valg → varens salgsenhed → basis.
+  // Kun enheder varen faktisk har; en gemt enhed der er slettet i BC falder tilbage.
   function aktivEnhed(item: EnrichedItem): string {
     const har = (c?: string) => !!c && (item.uoms ?? []).some(u => u.code === c)
     const valgt = uomValg.get(item.number)
     if (valgt && har(valgt)) return valgt
     const tidl = getUom?.(item.number)
     if (tidl && har(tidl)) return tidl
-    return item.baseUnitOfMeasureCode
+    return defaultUom(item)
   }
 
   // ── Spærrede varer nederst ────────────────────────────────────────────────
