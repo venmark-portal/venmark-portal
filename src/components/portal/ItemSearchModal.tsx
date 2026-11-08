@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { Search, X, ShoppingCart, Tag, Filter, Heart, Minus, Plus, ChevronLeft, ChevronRight, Check, Clock } from 'lucide-react'
-import type { BCItem, BCItemCategory, BCItemAvailability } from '@/lib/businesscentral'
+import type { BCItem, BCItemCategory, BCItemAvailability, BCItemUoM } from '@/lib/businesscentral'
 import { useT, useLocale, useLang } from '@/lib/i18n/portal/LangProvider'
 import { makeT, type TFunc } from '@/lib/i18n/portal/lang'
 import { ordrerSoegDict } from '@/lib/i18n/portal/dict/ordrer-soeg'
@@ -10,7 +10,7 @@ import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
 
 type SoegT = TFunc<keyof typeof ordrerSoegDict.da>
 
-type EnrichedItem = BCItem & { unitPrice: number }
+type EnrichedItem = BCItem & { unitPrice: number; uoms?: BCItemUoM[] }
 
 // ── Hjælper: parser BC OData Time "PT10H30M00S" eller "10:30:00" ────────────
 function parseAabnTil(s: string): { hh: number; mm: number } | null {
@@ -99,7 +99,7 @@ const PAGE_SIZE = 100
 
 interface Props {
   /** Multi-item mode med antal — bruges i bestillingslisten */
-  onAddItems?:     (items: { item: EnrichedItem; quantity: number }[]) => void
+  onAddItems?:     (items: { item: EnrichedItem; quantity: number; uom?: string }[]) => void
   /** Enkelt-valg mode — klik på vare → vælges straks */
   onSelect?:       (item: EnrichedItem) => void
   /** Favorit-vælger mode — checkboxes + paginering, tilføj mange på én gang */
@@ -129,13 +129,15 @@ interface Props {
   getRowStatus?:   (itemNo: string) => RowStatus
   /** Forudfyldt søgetekst — fra det faste søgefelt på bestillingssiden. */
   initialQuery?:   string
+  /** Kundens hidtidige enhedsvalg for varen (samme som varelisten). Uden: basisenheden. */
+  getUom?:         (itemNo: string) => string | undefined
 }
 
 export default function ItemSearchModal({
   onAddItems, onSelect, onAddFavorites, onClose,
   favNos, onToggleFav, existingNos = new Set(),
   itemAvailabilities, deliveryDate, getFristLabel, getBlockLabel, onResults, getDisplayPrice, getMaxQty,
-  getRowStatus, initialQuery = '',
+  getRowStatus, initialQuery = '', getUom,
 }: Props) {
   const t      = useT(ordrerSoegDict)
   const locale = useLocale()
@@ -156,6 +158,8 @@ export default function ItemSearchModal({
   const [selCat,     setSelCat]     = useState<string | null>(null)
   const [showCats,   setShowCats]   = useState(false)
   const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
+  // Enhed valgt i søgningen pr. vare (kasse, spand …). Tom = kundens hidtidige valg / basis.
+  const [uomValg,    setUomValg]    = useState<Map<string, string>>(new Map())
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
   const [page,       setPage]       = useState(0)
   const [hasMore,    setHasMore]    = useState(false)
@@ -266,10 +270,10 @@ export default function ItemSearchModal({
   function handleAdd() {
     if (!onAddItems) return
     // Tag fra ALLE sete varer, ikke kun det aktuelle søgeresultat.
-    const toAdd: { item: EnrichedItem; quantity: number }[] = []
+    const toAdd: { item: EnrichedItem; quantity: number; uom?: string }[] = []
     quantities.forEach((qty, nr) => {
       const vare = seteVarer.current.get(nr)
-      if (vare && qty > 0) toAdd.push({ item: vare, quantity: qty })
+      if (vare && qty > 0) toAdd.push({ item: vare, quantity: qty, uom: aktivEnhed(vare) })
     })
     if (toAdd.length === 0) return
     onAddItems(toAdd)
@@ -293,6 +297,17 @@ export default function ItemSearchModal({
     if (toAdd.length === 0) return
     onAddFavorites(toAdd)
     onClose()
+  }
+
+  // Den enhed rækken står på: valgt her → kundens hidtidige valg → basis. Kun enheder
+  // varen faktisk har; en gemt enhed der er slettet i BC falder tilbage til basis.
+  function aktivEnhed(item: EnrichedItem): string {
+    const har = (c?: string) => !!c && (item.uoms ?? []).some(u => u.code === c)
+    const valgt = uomValg.get(item.number)
+    if (valgt && har(valgt)) return valgt
+    const tidl = getUom?.(item.number)
+    if (tidl && har(tidl)) return tidl
+    return item.baseUnitOfMeasureCode
   }
 
   // ── Spærrede varer nederst ────────────────────────────────────────────────
@@ -611,6 +626,19 @@ export default function ItemSearchModal({
                 {/* Antal-knapper — kun i multi-mode (order list) */}
                 {!singleMode && !favMode && (
                   <div className="flex items-center gap-1 justify-end mt-1.5">
+                    {(item.uoms?.length ?? 0) > 1 && (
+                      <select
+                        value={aktivEnhed(item)}
+                        onChange={e => { const v = e.target.value; setUomValg(prev => new Map(prev).set(item.number, v)) }}
+                        disabled={status.blocked}
+                        aria-label={t('enhed')}
+                        className="mr-1 max-w-[7.5rem] rounded border border-gray-200 bg-white py-1 pl-1.5 pr-6 text-xs text-gray-700 focus:border-blue-400 focus:outline-none disabled:opacity-40"
+                      >
+                        {item.uoms!.map(u => (
+                          <option key={u.code} value={u.code}>{u.code}</option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       onClick={() => setQty(item.number, Math.max(0, qty - 1))}
                       disabled={qty === 0 || status.blocked}

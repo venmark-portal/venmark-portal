@@ -2141,7 +2141,7 @@ export default function OrderList({
   }
 
   // ── Tilføj via søgning ──────────────────────────────────────────────────────
-  function addSearchedItems(items: { item: EnrichedItem; quantity: number }[]) {
+  function addSearchedItems(items: { item: EnrichedItem; quantity: number; uom?: string }[]) {
     setLines(prev => {
       const next = new Map(prev)
       for (const { item, quantity } of items) {
@@ -2159,6 +2159,10 @@ export default function OrderList({
       }
       return next
     })
+    // Enheden valgt i søgningen følger med (og huskes som kundens valg, som i varelisten).
+    for (const { item, uom } of items) {
+      if (uom && uom !== validUom(item, lineUoms.get(item.number))) setLineUom(item, uom)
+    }
     setShowSearch(false)
   }
 
@@ -3471,6 +3475,7 @@ export default function OrderList({
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}
           getRowStatus={rowAvailStatus}
+          getUom={no => lineUoms.get(no)}
         />
       )}
 
