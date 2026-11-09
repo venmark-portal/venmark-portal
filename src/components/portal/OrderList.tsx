@@ -3461,6 +3461,11 @@ export default function OrderList({
                   ? t('laegPaaOrdre', { varer: varerTekst, nr: dagensOrdre.bcOrderNumber })
                   : t('sendBestilling', { linjer: linjerTekst })}
             </button>
+            {/* Afsendelsen kan tage op til et halvt minut (BC opretter ordre + linjer én
+                ad gangen). Uden besked troede kunderne at siden var gået i stå. */}
+            {submitting && (
+              <p className="text-center text-sm text-gray-500" role="status">{t('taalmodighed')}</p>
+            )}
           </div>
         </div>
       )}
