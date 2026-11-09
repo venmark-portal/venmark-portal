@@ -1344,6 +1344,19 @@ export default function OrderList({
   const [coverageDiag, setCoverageDiag]       = useState('')   // ?debug=1: synlig coverage-status
   // STD-pin overstyringer (itemNo → er STD) sat af stjerne-knappen; overlejrer serverens flag.
   const [stdOverrides, setStdOverrides]       = useState<Map<string, boolean>>(new Map())
+  // Kurv-linjens sticky top = topbarens FAKTISKE højde. Topbaren ombrydes på mellemstore
+  // skærme (navn/"Log ud" på to linjer) og blev højere end en fast 65px → kurven gemte sig under.
+  const [kurvTop, setKurvTop] = useState<number | null>(null)
+  useEffect(() => {
+    const bars = Array.from(document.querySelectorAll<HTMLElement>('[data-portal-topbar]'))
+    if (bars.length === 0) return
+    const maal = () => setKurvTop(Math.max(0, ...bars.map(b => b.offsetHeight)))
+    maal()
+    const ro = new ResizeObserver(maal)
+    bars.forEach(b => ro.observe(b))
+    window.addEventListener('resize', maal)
+    return () => { ro.disconnect(); window.removeEventListener('resize', maal) }
+  }, [])
   useEffect(() => {
     if (!zeroPriceNos.length) return
     let cancelled = false
@@ -2669,7 +2682,7 @@ export default function OrderList({
       {/* Kurven følger med ned ad siden, så man altid kan se hvad der er valgt og
           komme videre uden at scrolle til bunden. top-offset = højden på portalens
           egen sticky topbar (mobil ~52px, desktop ~65px). */}
-      <div className="sticky top-[52px] z-20 md:top-[65px]">
+      <div className="sticky top-[52px] z-20 md:top-[65px]" style={kurvTop != null ? { top: kurvTop } : undefined}>
         <button
           onClick={() => { setShowReview(true); setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
           disabled={totalLines === 0}

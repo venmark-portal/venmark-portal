@@ -88,7 +88,7 @@ export default async function PortalLayout({
         )}
 
         {/* Desktop-topbar */}
-        <header className="hidden border-b border-white/60 bg-white/80 backdrop-blur-sm md:block sticky top-0 z-30 shadow-sm">
+        <header data-portal-topbar className="hidden border-b border-white/60 bg-white/80 backdrop-blur-sm md:block sticky top-0 z-30 shadow-sm">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
             <span className="text-xl font-bold">
               <span className="text-gray-900">Venmark</span>
@@ -118,7 +118,7 @@ export default async function PortalLayout({
         </header>
 
         {/* Mobil-header */}
-        <header className="border-b border-white/60 bg-white/80 backdrop-blur-sm md:hidden sticky top-0 z-30 shadow-sm">
+        <header data-portal-topbar className="border-b border-white/60 bg-white/80 backdrop-blur-sm md:hidden sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-lg font-bold">
               <span className="text-gray-900">Venmark</span>
