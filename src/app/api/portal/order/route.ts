@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
     if (eksisterende && !eksisterende.pakket) {
       const { errors } = await addLinesToBCOrder(
         eksisterende.bcOrderId,
-        lines.map((l: any) => ({ itemNumber: l.bcItemNumber, quantity: l.quantity, uomCode: l.uom })),
+        lines.map((l: any) => ({ itemNumber: l.bcItemNumber, quantity: l.quantity, uomCode: l.uom, note: typeof l?.note === 'string' ? l.note : undefined })),
       )
       tid('bcLinjer')
       // Slettes ordren i BC i sekundet mellem opslaget og linjerne (kontoret rydder op), afviser

@@ -1390,6 +1390,7 @@ export async function createBCSalesOrder(
   //     falder trygt tilbage til linje-for-linje nedenfor (fx før Force Sync af .504).
   //     Netværksfejl/timeout: BC kan have gemt linjerne → tjek før vi evt. sender dem igen.
   let bulkOk = false
+  let bulkInserted: number | null = null
   const tBulk = Date.now()
   const linesJson = JSON.stringify(lines.map(l => ({
     itemNumber: l.itemNumber, quantity: l.quantity, uomCode: l.uomCode || '', note: l.note?.trim().slice(0, 30) || '',
@@ -1404,6 +1405,7 @@ export async function createBCSalesOrder(
       const svar = JSON.parse((await bulkRes.json())?.value ?? '{}')
       for (const e of (svar.errors ?? []) as string[]) lineErrors.push(`Vare ${e}`)
       bulkOk = true
+      if (typeof svar.inserted === 'number') bulkInserted = svar.inserted
       tider.push(`samlet ${Date.now() - tBulk}ms (${svar.inserted ?? '?'} ok, ${lineErrors.length} fejl)`)
     } else {
       tider.push(`samlet afvist ${bulkRes.status} ${Date.now() - tBulk}ms → linje-for-linje`)
@@ -1475,7 +1477,14 @@ export async function createBCSalesOrder(
   let verified = false
   let verifyError: string | undefined
   let bcLineCount: number | undefined
-  try {
+  // Samlet kald: BC's eget svar ER verifikationen — linjerne blev indsat i samme transaktion
+  // som svaret, så et ekstra GET (v2.0 beregner alle felter pr. linje, ~3,5 s) spares.
+  if (bulkInserted !== null) {
+    bcLineCount = bulkInserted
+    const expected = lines.length - lineErrors.length
+    if (bulkInserted < expected) verifyError = `Forventede ${expected} linje(r) i BC, BC meldte ${bulkInserted}`
+    else verified = true
+  } else try {
     const verifyRes = await fetch(
       `${stdBase}/salesOrders(${orderId})/salesOrderLines?$select=id&$top=500`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
@@ -1525,12 +1534,39 @@ export async function createBCSalesOrder(
  */
 export async function addLinesToBCOrder(
   bcOrderId: string,
-  lines: Array<{ itemNumber: string; quantity: number; uomCode: string }>,
+  lines: Array<{ itemNumber: string; quantity: number; uomCode: string; note?: string }>,
 ): Promise<{ success: number; errors: string[] }> {
   const token  = await getAccessToken()
   const base   = bcBaseUrl()
   let success  = 0
   const errors: string[] = []
+
+  // Hurtig vej: alle linjer i ÉT kald (samme BC-action som ny ordre, cu 50477). 7 linjer
+  // tog 28 s linje-for-linje. Afviser BC (fx ordren er slettet → 404), er intet gemt, og
+  // vi falder tilbage til linje-for-linje nedenfor — som også giver den fejltekst kalderen
+  // genkender ("No document with the specified ID exists") og så opretter en ny ordre.
+  const t0 = Date.now()
+  try {
+    const bulkRes = await fetchBcDeadlockRetry(`${bcPortalBaseUrl()}/portalSalesOrders(${bcOrderId})/Microsoft.NAV.addLines`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body:    JSON.stringify({ linesJson: JSON.stringify(lines.map(l => ({
+        itemNumber: l.itemNumber, quantity: l.quantity, uomCode: l.uomCode || '', note: l.note?.trim().slice(0, 30) || '',
+      }))) }),
+    })
+    if (bulkRes.ok) {
+      const svar = JSON.parse((await bulkRes.json())?.value ?? '{}')
+      for (const e of (svar.errors ?? []) as string[]) errors.push(`Vare ${e}`)
+      success = typeof svar.inserted === 'number' ? svar.inserted : lines.length - errors.length
+      console.log(`[ordre-tid-bc] læg-på ${bcOrderId} samlet ${Date.now() - t0}ms (${success} ok, ${errors.length} fejl)`)
+      return { success, errors }
+    }
+    console.warn(`[ordre-tid-bc] læg-på addLines ${bulkRes.status} → linje-for-linje: ${(await bulkRes.text()).slice(0, 200)}`)
+  } catch (e: any) {
+    // Netværksfejl: BC kan have gemt linjerne — send dem ikke igen (dubletter). Meld fejl.
+    console.error('[ordre-tid-bc] læg-på addLines kastede:', e?.message ?? e)
+    return { success: 0, errors: [`Forbindelsen til BC fejlede (${e?.message ?? e}) — tjek ordren i BC`] }
+  }
 
   for (const line of lines) {
     const lineRes = await fetchBcDeadlockRetry(`${base}/salesOrderLines`, {
