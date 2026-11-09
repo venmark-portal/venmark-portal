@@ -290,23 +290,23 @@ function PrintVersion({
 }) {
   return (
     <div className="hidden print:block">
-      <style>{'@page { size: A4 portrait; margin: 10mm 10mm; }'}</style>
-      <div className="mb-3 flex items-end justify-between border-b-2 border-black pb-1">
-        <div className="text-[18pt] font-bold">Salgsliste — afsendelse {datoTekst}</div>
+      <style>{'@page { size: A4 portrait; margin: 8mm 8mm; }'}</style>
+      <div className="mb-1 flex items-end justify-between border-b-2 border-black pb-1">
+        <div className="text-[14pt] font-bold">Salgsliste — afsendelse {datoTekst}</div>
         <div className="text-[10pt]" suppressHydrationWarning>
           Venmark Fisk A/S · Varenr. {fra}..{til} · udskrevet {new Date().toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' })}
         </div>
       </div>
-      <table className="w-full table-fixed border-collapse text-[11pt]">
+      <table className="w-full table-fixed border-collapse text-[9pt] leading-tight">
         <thead className="table-header-group">
-          <tr className="border-b border-black text-left text-[10pt] font-bold">
-            <th className="w-16 py-1 pr-2">Varenr.</th>
-            <th className="py-1 pr-2">Beskrivelse</th>
-            <th className="w-20 py-1 pr-2 text-right">Salg</th>
-            <th className="w-12 py-1 pr-2">Enhed</th>
-            <th className="w-20 py-1 pr-2 text-right">Lager</th>
-            <th className="w-20 py-1 pr-2 text-right">I prod.</th>
-            <th className="w-20 py-1 text-right">I køb</th>
+          <tr className="border-b border-black text-left text-[8pt] font-bold">
+            <th className="w-16 py-px pr-2">Varenr.</th>
+            <th className="py-px pr-2">Beskrivelse</th>
+            <th className="w-20 py-px pr-2 text-right">Salg</th>
+            <th className="w-12 py-px pr-2">Enhed</th>
+            <th className="w-20 py-px pr-2 text-right">Lager</th>
+            <th className="w-20 py-px pr-2 text-right">I prod.</th>
+            <th className="w-20 py-px text-right">I køb</th>
           </tr>
         </thead>
         <tbody>
@@ -319,20 +319,20 @@ function PrintVersion({
             const noter = r.customers.filter(hasNote)
             return (
               <tr key={`${r.itemNo}|${r.uom}`} className="break-inside-avoid border-b border-gray-400 align-top">
-                <td className="py-1 pr-2 font-semibold">{r.itemNo}</td>
-                <td className="py-1 pr-2">
-                  {r.description}
+                <td className="py-px pr-2 font-semibold">{r.itemNo}</td>
+                <td className="py-px pr-2">
+                  <div className="truncate">{r.description}</div>
                   {noter.map(c => (
-                    <div key={c.customerNo} className="truncate text-[9pt] font-bold" style={{ color: '#d40000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
+                    <div key={c.customerNo} className="truncate text-[8pt] font-bold" style={{ color: '#d40000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
                       {c.customerName} {fmt(c.qty)} {r.uom}: {noteLine(c)}
                     </div>
                   ))}
                 </td>
-                <td className="py-1 pr-2 text-right font-bold">{blank(r.salg)}</td>
-                <td className="py-1 pr-2">{r.uom}</td>
-                <td className="py-1 pr-2 text-right">{blank(r.lager)}</td>
-                <td className="py-1 pr-2 text-right">{blank(r.iProduktion)}</td>
-                <td className="py-1 text-right">{blank(r.iKoeb)}</td>
+                <td className="py-px pr-2 text-right font-bold">{blank(r.salg)}</td>
+                <td className="py-px pr-2">{r.uom}</td>
+                <td className="py-px pr-2 text-right">{blank(r.lager)}</td>
+                <td className="py-px pr-2 text-right">{blank(r.iProduktion)}</td>
+                <td className="py-px text-right">{blank(r.iKoeb)}</td>
               </tr>
             )
           })}
