@@ -1361,6 +1361,7 @@ export async function createBCSalesOrder(
     orderBody.shipmentMethodCode = shipmentMethodCode.trim()
   }
 
+  const tHoved   = Date.now()
   const orderRes = await fetchBcDeadlockRetry(`${portalBase}/portalSalesOrders`, {
     method:  'POST',
     headers: {
@@ -1378,10 +1379,14 @@ export async function createBCSalesOrder(
 
   const order    = await orderRes.json()
   const orderId  = order.id as string
+  // Tidsmåling pr. kald → pm2-log [ordre-tid-bc]; finder hvilke varer/trin BC er langsom på.
+  const tStart   = Date.now()
+  const tider: string[] = [`hoved ${tStart - tHoved}ms`]
 
   // 2. Opret linjer via standard v2.0 API — fejl samles og returneres
   const lineErrors: string[] = []
   for (const line of lines) {
+    const tLinje = Date.now()
     const lineRes = await fetchBcDeadlockRetry(`${stdBase}/salesOrderLines`, {
       method:  'POST',
       headers: {
@@ -1426,7 +1431,9 @@ export async function createBCSalesOrder(
         }
       } catch { /* bemærkning er best-effort */ }
     }
+    tider.push(`${line.itemNumber}/${line.uomCode || '-'} ${Date.now() - tLinje}ms`)
   }
+  console.log(`[ordre-tid-bc] ${order.number ?? orderId} linjer ${Date.now() - tStart}ms · ${tider.join(' · ')}`)
 
   // 3. Verifikation: GET ordren tilbage fra BC og taeller linjer der faktisk er der.
   //    Bekraefter at POST'erne ikke bare returnerede 201 uden at gemme i databasen.
