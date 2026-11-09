@@ -2198,6 +2198,10 @@ export default function OrderList({
     if (lines.size === 0 || !deliveryDate) return
     setSubmitting(true)
     setError('')
+    // Kvitteringen fra FORRIGE bestilling skal væk — ellers viste en ny ordre "lagt på
+    // W0000193 … har nu 17 varer" fra bestillingen før (09-11-2026).
+    setLagtPaa(null)
+    setKbhKvit(null)
 
     const orderLines = Array.from(lines.values()).map(l => {
       const uomCode     = validUom(l.item, lineUoms.get(l.item.number))
@@ -2638,7 +2642,7 @@ export default function OrderList({
             {t('tilbageOversigt')}
           </a>
           <button
-            onClick={() => { setSubmitted(false); setLines(new Map()); setNotes('') }}
+            onClick={() => { setSubmitted(false); setLagtPaa(null); setKbhKvit(null); setLines(new Map()); setNotes('') }}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             {t('nyBestilling')}
