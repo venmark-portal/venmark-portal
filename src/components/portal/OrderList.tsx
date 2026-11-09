@@ -3477,7 +3477,7 @@ export default function OrderList({
             {/* Afsendelsen kan tage op til et halvt minut (BC opretter ordre + linjer én
                 ad gangen). Uden besked troede kunderne at siden var gået i stå. */}
             {submitting && (
-              <p className="text-center text-sm text-gray-500" role="status">{t('taalmodighed')}</p>
+              <p className="text-center text-base font-bold text-gray-800" role="status">{t('taalmodighed')}</p>
             )}
           </div>
         </div>
