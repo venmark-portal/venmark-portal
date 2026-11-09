@@ -1383,9 +1383,44 @@ export async function createBCSalesOrder(
   const tStart   = Date.now()
   const tider: string[] = [`hoved ${tStart - tHoved}ms`]
 
-  // 2. Opret linjer via standard v2.0 API — fejl samles og returneres
   const lineErrors: string[] = []
-  for (const line of lines) {
+
+  // 2a. HURTIG VEJ: alle linjer i ÉT kald (BC cu 50477 via bound action addLines, v.504+).
+  //     Hele kaldet er én BC-transaktion: svarer BC med en fejlstatus, er intet gemt, og vi
+  //     falder trygt tilbage til linje-for-linje nedenfor (fx før Force Sync af .504).
+  //     Netværksfejl/timeout: BC kan have gemt linjerne → tjek før vi evt. sender dem igen.
+  let bulkOk = false
+  const tBulk = Date.now()
+  const linesJson = JSON.stringify(lines.map(l => ({
+    itemNumber: l.itemNumber, quantity: l.quantity, uomCode: l.uomCode || '', note: l.note?.trim().slice(0, 30) || '',
+  })))
+  try {
+    const bulkRes = await fetchBcDeadlockRetry(`${portalBase}/portalSalesOrders(${orderId})/Microsoft.NAV.addLines`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body:    JSON.stringify({ linesJson }),
+    })
+    if (bulkRes.ok) {
+      const svar = JSON.parse((await bulkRes.json())?.value ?? '{}')
+      for (const e of (svar.errors ?? []) as string[]) lineErrors.push(`Vare ${e}`)
+      bulkOk = true
+      tider.push(`samlet ${Date.now() - tBulk}ms (${svar.inserted ?? '?'} ok, ${lineErrors.length} fejl)`)
+    } else {
+      tider.push(`samlet afvist ${bulkRes.status} ${Date.now() - tBulk}ms → linje-for-linje`)
+      console.warn(`[ordre-tid-bc] addLines ${bulkRes.status}: ${(await bulkRes.text()).slice(0, 300)}`)
+    }
+  } catch (e: any) {
+    try {
+      const chk = await fetch(`${stdBase}/salesOrders(${orderId})/salesOrderLines?$select=id`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' })
+      const n = chk.ok ? ((await chk.json()).value?.length ?? 0) : 0
+      if (n > 0) bulkOk = true   // BC nåede at gemme — send ikke linjerne igen (dubletter)
+      tider.push(`samlet kastede (${e?.message ?? e}) — ${n} linjer fundet`)
+    } catch { /* tjek fejlede → linje-for-linje */ }
+  }
+
+  // 2b. Reserve: opret linjer én ad gangen via standard v2.0 API — fejl samles og returneres
+  for (const line of (bulkOk ? [] : lines)) {
     const tLinje = Date.now()
     const lineRes = await fetchBcDeadlockRetry(`${stdBase}/salesOrderLines`, {
       method:  'POST',
