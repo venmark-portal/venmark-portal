@@ -30,7 +30,7 @@ export default async function AdminLayout({
   return (
     <SessionProvider session={session}>
       <div className="min-h-screen bg-gray-50">
-        <header className="border-b border-gray-200 bg-white">
+        <header className="border-b border-gray-200 bg-white print:hidden">
           <div className="mx-auto max-w-7xl px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex items-center gap-3 shrink-0">
@@ -85,7 +85,7 @@ export default async function AdminLayout({
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-4 py-8 md:px-6">
+        <main className="mx-auto max-w-6xl px-4 py-8 md:px-6 print:max-w-none print:p-0">
           {children}
         </main>
       </div>
