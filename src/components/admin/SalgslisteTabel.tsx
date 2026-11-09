@@ -247,26 +247,21 @@ function FragmentRow({
           <td colSpan={7} className="px-3 py-2">
             <div className="ml-4 rounded-md border border-gray-200 bg-white">
               <table className="w-full table-fixed text-sm">
-                <thead>
-                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    <th className="px-3 py-1.5">Kunde</th>
-                    <th className="w-32 px-3 py-1.5">Debitornr.</th>
-                    <th className="w-24 px-3 py-1.5 text-right">Antal</th>
-                  </tr>
-                </thead>
                 <tbody>
-                  {customers.map(c => {
+                  {customers.map((c, i) => {
                     const note = noteLine(c)
                     return (
-                      <tr key={c.customerNo} className="border-t border-gray-100 align-top">
+                      <tr key={c.customerNo} className={`${i > 0 ? 'border-t border-gray-100' : ''} align-top`}>
+                        {/* Kunde + bemærkning på SAMME linje — hele teksten ved mouse-over */}
                         <td className="px-3 py-1.5 text-gray-800">
-                          {c.customerName}
-                          {/* Bemærkning på ÉN linje — hele teksten ved mouse-over */}
-                          {note && (
-                            <div className="mt-0.5 truncate text-xs text-amber-800" title={note}>
-                              <span className="font-semibold">Bemærkning:</span> {note}
-                            </div>
-                          )}
+                          <div className="flex min-w-0 gap-3">
+                            <span className="shrink-0">{c.customerName}</span>
+                            {note && (
+                              <span className="truncate font-bold text-red-600" title={note}>
+                                {note}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-1.5 text-gray-500">{c.customerNo}</td>
                         <td className="px-3 py-1.5 text-right text-gray-800">{fmt(c.qty)}</td>
@@ -328,8 +323,8 @@ function PrintVersion({
                 <td className="py-1 pr-2">
                   {r.description}
                   {noter.map(c => (
-                    <div key={c.customerNo} className="truncate text-[10pt] italic">
-                      {c.customerName} ({fmt(c.qty)}): {noteLine(c)}
+                    <div key={c.customerNo} className="truncate font-bold text-red-600 [print-color-adjust:exact]">
+                      {c.customerName} {fmt(c.qty)} {r.uom}: {noteLine(c)}
                     </div>
                   ))}
                 </td>
