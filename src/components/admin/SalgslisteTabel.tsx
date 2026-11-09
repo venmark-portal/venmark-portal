@@ -7,6 +7,11 @@ function fmt(n: number): string {
   return n.toLocaleString('da-DK', { maximumFractionDigits: 2 })
 }
 
+// 0 vises som tom celle — så de tal der ER der, springer i øjnene.
+function blank(n: number): string {
+  return n ? fmt(n) : ''
+}
+
 // Alle kundens bemærkninger på varen samlet til ÉN linje (portal + intern).
 function noteLine(c: SalgslisteCustomer): string {
   return [...c.portalNotes, ...c.comments].join(' · ')
@@ -230,11 +235,11 @@ function FragmentRow({
           )}
         </td>
         <td className="px-3 py-2 text-right font-semibold text-gray-900">
-          {row.salg ? fmt(row.salg) : '—'}
+          {blank(row.salg)}
         </td>
-        <td className="px-3 py-2 text-right text-gray-700">{fmt(row.lager)}</td>
-        <td className="px-3 py-2 text-right text-gray-700">{fmt(row.iProduktion)}</td>
-        <td className="px-3 py-2 text-right text-gray-700">{fmt(row.iKoeb)}</td>
+        <td className="px-3 py-2 text-right text-gray-700">{blank(row.lager)}</td>
+        <td className="px-3 py-2 text-right text-gray-700">{blank(row.iProduktion)}</td>
+        <td className="px-3 py-2 text-right text-gray-700">{blank(row.iKoeb)}</td>
         <td className="px-3 py-2 text-gray-500">{row.uom}</td>
       </tr>
       {isOpen && customers.length > 0 && (
@@ -328,11 +333,11 @@ function PrintVersion({
                     </div>
                   ))}
                 </td>
-                <td className="py-1 pr-2 text-right font-bold">{r.salg ? fmt(r.salg) : '—'}</td>
+                <td className="py-1 pr-2 text-right font-bold">{blank(r.salg)}</td>
                 <td className="py-1 pr-2">{r.uom}</td>
-                <td className="py-1 pr-2 text-right">{fmt(r.lager)}</td>
-                <td className="py-1 pr-2 text-right">{fmt(r.iProduktion)}</td>
-                <td className="py-1 text-right">{fmt(r.iKoeb)}</td>
+                <td className="py-1 pr-2 text-right">{blank(r.lager)}</td>
+                <td className="py-1 pr-2 text-right">{blank(r.iProduktion)}</td>
+                <td className="py-1 text-right">{blank(r.iKoeb)}</td>
               </tr>
             )
           })}
