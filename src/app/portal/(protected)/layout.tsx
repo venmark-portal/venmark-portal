@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import PortalNav from '@/components/portal/PortalNav'
 import VersionVagt from '@/components/portal/VersionVagt'
+import AktivitetsMaaler from '@/components/portal/AktivitetsMaaler'
 import SomKundeBaand from '@/components/portal/SomKundeBaand'
 import SessionProvider from '@/components/portal/SessionProvider'
 import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
@@ -78,6 +79,9 @@ export default async function PortalLayout({
     <SessionProvider session={session}>
     <LangProvider lang={lang}>
       <div lang={lang} className="flex min-h-screen flex-col" style={{ backgroundColor: settings.bgColor }}>
+
+        {/* Portal-brug (admin/admin-som-kunde logges ikke) — se src/lib/aktivitet.ts */}
+        {!(session.user as any)?.impersonatedBy && (session.user as any)?.role === 'customer' && <AktivitetsMaaler />}
 
         {/* Admin kigger med som kunden — skal kunne ses på HVER side. */}
         {(session.user as any)?.impersonatedBy && (
