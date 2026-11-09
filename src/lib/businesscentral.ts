@@ -1673,12 +1673,21 @@ export interface BCCustomerOrder {
  * OPRETTE ordrer, og læse/skrive må ikke entangles. Bogførte/leverede ordrer forsvinder
  * fra Sales Header og vises i stedet under Fakturaer.
  */
-export async function getCustomerOrders(customerNo: string): Promise<BCCustomerOrder[]> {
+/**
+ * kunDato (YYYY-MM-DD): kun ordrer med DEN ønskede leveringsdato eller ingen (BC-tastede).
+ * Målt 09-11-2026: customerNumber-filteret alene tog 9-10 s (v2.0 salesOrders er en buffer-
+ * side) selv med 3 ordrer; med datofilteret 1,7 s. Bruges af bestillingens åben-ordre-opslag.
+ */
+export async function getCustomerOrders(customerNo: string, kunDato?: string): Promise<BCCustomerOrder[]> {
   if (!customerNo) return []
   try {
     const token  = await getAccessToken()
     const base   = bcBaseUrl()
-    const filter = encodeURIComponent(`customerNumber eq '${customerNo}'`)
+    const filter = encodeURIComponent(
+      /^\d{4}-\d{2}-\d{2}$/.test(kunDato ?? '')
+        ? `customerNumber eq '${customerNo}' and (requestedDeliveryDate eq ${kunDato} or requestedDeliveryDate eq 0001-01-01)`
+        : `customerNumber eq '${customerNo}'`,
+    )
     const select = encodeURIComponent(
       'id,number,customerNumber,customerName,requestedDeliveryDate,orderDate,status,totalAmountIncludingTax,externalDocumentNumber',
     )

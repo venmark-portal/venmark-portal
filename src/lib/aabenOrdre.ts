@@ -51,7 +51,7 @@ export async function aabneOrdrerPrDato(
   const kort = new Map<string, AabenOrdre>()
   if (!customerNo) return kort
 
-  const ordrer = await getCustomerOrders(customerNo).catch(() => [] as BCCustomerOrder[])
+  const ordrer = await getCustomerOrders(customerNo, kunDato).catch(() => [] as BCCustomerOrder[])
   // Leveringsformen skal matche. Tom kode på ordren kan vi ikke henføre, og den
   // springes over frem for at blive gættet på plads.
   const relevante = ordrer.filter(o => (o.shipmentMethodCode || '') === (shipmentMethodCode || ''))
