@@ -278,7 +278,7 @@ function FragmentRow({
   )
 }
 
-// A4-udskrift i samme stil som BC's lageropgørelse: liggende A4, store læsbare rækker,
+// A4-udskrift i samme stil som BC's lageropgørelse: stående A4, store læsbare rækker,
 // totaler pr. vare og kun de kunder der har en bemærkning (én linje under varen).
 function PrintVersion({
   rows, datoTekst, fra, til,
@@ -290,23 +290,23 @@ function PrintVersion({
 }) {
   return (
     <div className="hidden print:block">
-      <style>{'@page { size: A4 landscape; margin: 10mm 12mm; }'}</style>
+      <style>{'@page { size: A4 portrait; margin: 10mm 10mm; }'}</style>
       <div className="mb-3 flex items-end justify-between border-b-2 border-black pb-1">
         <div className="text-[18pt] font-bold">Salgsliste — afsendelse {datoTekst}</div>
         <div className="text-[10pt]" suppressHydrationWarning>
           Venmark Fisk A/S · Varenr. {fra}..{til} · udskrevet {new Date().toLocaleString('da-DK', { dateStyle: 'short', timeStyle: 'short' })}
         </div>
       </div>
-      <table className="w-full table-fixed border-collapse text-[12pt]">
+      <table className="w-full table-fixed border-collapse text-[11pt]">
         <thead className="table-header-group">
           <tr className="border-b border-black text-left text-[10pt] font-bold">
-            <th className="w-28 py-1 pr-2">Varenr.</th>
+            <th className="w-16 py-1 pr-2">Varenr.</th>
             <th className="py-1 pr-2">Beskrivelse</th>
-            <th className="w-24 py-1 pr-2 text-right">Salg</th>
-            <th className="w-16 py-1 pr-2">Enhed</th>
-            <th className="w-24 py-1 pr-2 text-right">Lager</th>
-            <th className="w-24 py-1 pr-2 text-right">I prod.</th>
-            <th className="w-24 py-1 text-right">I køb</th>
+            <th className="w-20 py-1 pr-2 text-right">Salg</th>
+            <th className="w-12 py-1 pr-2">Enhed</th>
+            <th className="w-20 py-1 pr-2 text-right">Lager</th>
+            <th className="w-20 py-1 pr-2 text-right">I prod.</th>
+            <th className="w-20 py-1 text-right">I køb</th>
           </tr>
         </thead>
         <tbody>
@@ -323,7 +323,7 @@ function PrintVersion({
                 <td className="py-1 pr-2">
                   {r.description}
                   {noter.map(c => (
-                    <div key={c.customerNo} className="truncate font-bold text-red-600 [print-color-adjust:exact]">
+                    <div key={c.customerNo} className="truncate text-[9pt] font-bold" style={{ color: '#d40000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
                       {c.customerName} {fmt(c.qty)} {r.uom}: {noteLine(c)}
                     </div>
                   ))}
