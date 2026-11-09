@@ -64,6 +64,10 @@ export async function POST(req: NextRequest) {
     // kurvens varer — før blev hele kataloget (4200+ varer, beregnet pr. vare i BC) hentet ved
     // hver bestilling, og det var hovedparten af ventetiden efter "Sender…" (09-11-2026).
     const kurvVarer = Array.from(new Set((lines as any[]).map(l => l?.bcItemNumber).filter(Boolean))) as string[]
+    // Åben ordre samme dag (én ordre pr. leverance, se nedenfor) slås op SAMTIDIG med resten —
+    // den afhænger kun af kunde/dato/leveringsform og tog 2-8 s for sig selv.
+    const aabenOrdreP = findAabenOrdre(activeCustomerNo, new Date(deliveryDateStr).toISOString().split('T')[0], shipmentMethodCode || '')
+      .catch(() => null)
     const [allMethods, calendarDays, itemCutoffs, custLoc] = await Promise.all([
       getPortalShipmentMethods().catch(() => []),
       getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => []),
@@ -227,8 +231,7 @@ export async function POST(req: NextRequest) {
     // Tjekket ligger her og ikke kun i browseren: en fane der har stået åben
     // siden i morges ved ikke at kontoret har taget en ordre i telefonen siden.
     // Er ordren pakket, kan den ikke nå at få mere med, og en ny er det rigtige.
-    const eksisterende = await findAabenOrdre(activeCustomerNo, dStr, shipmentMethodCode || '')
-      .catch(() => null)
+    const eksisterende = await aabenOrdreP
     tid('aabenOrdre')
 
     if (eksisterende && !eksisterende.pakket) {
