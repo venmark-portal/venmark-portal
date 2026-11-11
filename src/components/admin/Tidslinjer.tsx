@@ -16,6 +16,8 @@ import { useMemo, useState } from 'react'
 // Skrevet af frem for importeret fra src/lib/telefoni: dén fil trækker prisma med,
 // og den hører ikke hjemme i browserens bundt. Holdes i sync med IKKE_FORDELT dér.
 const IKKE_FORDELT = 'Ikke fordelt'
+// Samme for UDEN_SAELGER i src/lib/tidslinjer.
+const UDEN_SAELGER = 'Ingen sælger'
 
 // ─── Palet (valideret kategorisk rækkefølge, lys baggrund) ──────────────────
 const SERIE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
@@ -57,7 +59,7 @@ interface TelefonDag {
 interface TelefonNummer {
   nummer: string; opkald: number; ind: number; ud: number
   minutter: number; sidst: string; fuldt: boolean
-  kunde?: string; kundeNr?: string
+  kunde?: string; kundeNr?: string; kontakt?: string; leverandoer?: boolean
 }
 interface TelefonData {
   dage: TelefonDag[]; personer: string[]
@@ -65,11 +67,16 @@ interface TelefonData {
   mangler?: string; fejl?: string
 }
 
+interface SaelgerDag { kode: string; linjer: number; hurtig: number }
+interface SalgDag { dato: string; ugedag: number; linjer: number; saelgere: SaelgerDag[] }
+interface SalgData { dage: SalgDag[]; saelgere: string[]; mangler?: string; fejl?: string }
+
 export interface TidslinjeSvar {
   fra: string; til: string
   finans: FinansData
   pakkeri: PakkeriData
   telefon: TelefonData
+  salg?: SalgData
 }
 
 // ─── Formatering ─────────────────────────────────────────────────────────────
@@ -484,6 +491,43 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
     return (n: string) => kort.get(n) ?? SERIE[0]
   }, [telefon.personer])
 
+  // ── Salg pr. sælger ──
+  // Egen farveskala igen: sælgerkoder er en tredje gruppe. "Ingen sælger" er grå.
+  const salg = data.salg ?? { dage: [], saelgere: [] }
+  const sFarveAf = useMemo(() => {
+    const kort = new Map<string, string>()
+    let i = 0
+    salg.saelgere?.forEach(n => {
+      if (n === UDEN_SAELGER) kort.set(n, DAEMPET)
+      else kort.set(n, SERIE[i++ % SERIE.length])
+    })
+    return (n: string) => kort.get(n) ?? SERIE[0]
+  }, [salg.saelgere])
+  const sDatoer = salg.dage?.map(d => d.dato) ?? []
+  const sAntalSerier = (salg.saelgere ?? []).map(kode => ({
+    navn: kode,
+    vaerdier: salg.dage.map(d => d.saelgere.find(s => s.kode === kode)?.linjer ?? 0),
+  }))
+  // Andel af DAGENS linjer — så en stille dag og en travl dag kan sammenlignes.
+  const sPctSerier = (salg.saelgere ?? []).map(kode => ({
+    navn: kode,
+    vaerdier: salg.dage.map(d => {
+      const n = d.saelgere.find(s => s.kode === kode)?.linjer ?? 0
+      return d.linjer > 0 ? Math.round((n / d.linjer) * 1000) / 10 : 0
+    }),
+  }))
+  const sLinjerIAlt = salg.dage?.reduce((s, d) => s + d.linjer, 0) ?? 0
+  const sSaelgerSum = (salg.saelgere ?? []).map(kode => {
+    let linjer = 0, hurtig = 0, dage = 0
+    for (const d of salg.dage ?? []) {
+      const s = d.saelgere.find(x => x.kode === kode)
+      if (!s) continue
+      linjer += s.linjer; hurtig += s.hurtig; dage++
+    }
+    return { kode, linjer, hurtig, dage }
+  }).sort((a, b) => b.linjer - a.linjer)
+  const sPortal = sSaelgerSum.find(s => s.kode.toUpperCase() === 'PORTAL')?.linjer ?? 0
+
   const tDatoer = telefon.dage?.map(d => d.dato) ?? []
   // Antal og taletid er to forskellige enheder og får derfor hver sin figur —
   // aldrig to y-akser i samme diagram.
@@ -712,7 +756,58 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
         </>
       )}
 
-      {/* ── Pakkeri ── */}
+      {/* ── Salg pr. sælger ── */}
+      <h2 className="pt-2 text-base font-bold text-gray-900">Salgslinjer pr. sælger</h2>
+
+      {salg.fejl || salg.mangler ? (
+        <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+          {salg.fejl ?? salg.mangler}
+        </div>
+      ) : sDatoer.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-gray-500 ring-1 ring-gray-200">
+          Ingen salgslinjer i perioden. Loggen skriver først fra 14-09-2026.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Noegletal titel="Linjer i alt" vaerdi={kr.format(sLinjerIAlt)} />
+            <Noegletal titel="Linjer pr. dag" vaerdi={kr.format(Math.round(sLinjerIAlt / sDatoer.length))} />
+            <Noegletal titel="Sælgere" vaerdi={kr.format(sSaelgerSum.filter(s => s.kode !== UDEN_SAELGER && s.kode.toUpperCase() !== 'PORTAL').length)} />
+            <Noegletal titel="Andel fra portalen"
+                       vaerdi={sLinjerIAlt ? `${en1.format((sPortal / sLinjerIAlt) * 100)} %` : '—'} />
+          </div>
+
+          <Ramme
+            titel="Salgslinjer pr. dag"
+            undertitel="Oprettede ordrelinjer, stablet pr. sælgerkode. Dagen er den dag linjen blev tastet — ikke afsendelsesdagen. Linjer der blev slettet igen tæller ikke. Portal = kundernes egne webordrer. Hold musen over en dag for fordelingen."
+          >
+            <StakketSoejler datoer={sDatoer} serier={sAntalSerier} farve={sFarveAf} format={v => kr.format(v)} />
+            <Forklaring navne={salg.saelgere} farve={sFarveAf} />
+          </Ramme>
+
+          <Ramme
+            titel="Andel af dagens linjer pr. sælger"
+            undertitel="Hver søjle er 100 % = alle dagens linjer. Viser fordelingen uafhængigt af om dagen var travl eller stille."
+          >
+            <StakketSoejler datoer={sDatoer} serier={sPctSerier} farve={sFarveAf} format={v => `${en1.format(v)} %`} />
+            <Forklaring navne={salg.saelgere} farve={sFarveAf} />
+          </Ramme>
+
+          <Tabel
+            titel="Sælgere i perioden"
+            hoveder={['Sælger', 'Linjer', 'Andel', 'Dage med salg', 'Linjer pr. dag', 'Hurtig indtastning']}
+            raekker={sSaelgerSum.map(s => [
+              s.kode,
+              kr.format(s.linjer),
+              sLinjerIAlt ? `${en1.format((s.linjer / sLinjerIAlt) * 100)} %` : '—',
+              kr.format(s.dage),
+              s.dage ? en1.format(s.linjer / s.dage) : '—',
+              s.linjer ? `${Math.round((s.hurtig / s.linjer) * 100)} %` : '—',
+            ])}
+          />
+        </>
+      )}
+
       {/* ── Telefon ── */}
       <h2 className="pt-2 text-base font-bold text-gray-900">Telefon</h2>
 
@@ -758,11 +853,12 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           {(telefon.numre?.length ?? 0) > 0 && (
             <Tabel
               titel={`Numre vi taler mest med${telefon.udenNummer ? ` — ${kr.format(telefon.udenNummer)} opkald i perioden har intet nummer gemt` : ''}`}
-              hoveder={['Kunde', 'Debitornr.', 'Nummer', 'Opkald', 'Ind', 'Ud', 'Minutter', 'Seneste']}
+              hoveder={['Kunde', 'Kontaktperson', 'Konto', 'Nummer', 'Opkald', 'Ind', 'Ud', 'Minutter', 'Seneste']}
               raekker={(telefon.numre ?? []).map(n => [
-                // Tom kunde = nummeret står ikke på nogen debitor i BC. Det er ikke
-                // en fejl — det kan være en leverandør, en chauffør eller en privat.
-                n.kunde || '—',
+                // Tom kunde = nummeret står hverken på en debitor, kontakt, leveringsadresse
+                // eller leverandør i BC — typisk en chauffør eller en privat.
+                n.kunde ? (n.leverandoer ? `${n.kunde} (leverandør)` : n.kunde) : '—',
+                n.kontakt || '',
                 n.kundeNr || '—',
                 // Et nummer med stjerner er Microsofts maskering: de sidste cifre
                 // kunne ikke hentes, typisk fordi opkaldet er ældre end 30 dage.
@@ -872,6 +968,21 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
                     // frem for et tal der ville se rigtigt ud.
                     p.timer ? kr.format(Math.round(p.linjer / p.timer)) : '—',
                   ]
+                }),
+              ])}
+            />
+          )}
+          {sDatoer.length > 0 && (
+            <Tabel
+              titel="Salgslinjer dag for dag"
+              hoveder={['Dato', 'Ugedag', 'Linjer', ...salg.saelgere.flatMap(k => [k, `${k} %`])]}
+              raekker={salg.dage.map(d => [
+                kortDato(d.dato), ugedagNavn(d.ugedag), kr.format(d.linjer),
+                ...salg.saelgere.flatMap(k => {
+                  const s = d.saelgere.find(x => x.kode === k)
+                  return s
+                    ? [kr.format(s.linjer), `${Math.round((s.linjer / d.linjer) * 100)} %`]
+                    : ['—', '—']
                 }),
               ])}
             />

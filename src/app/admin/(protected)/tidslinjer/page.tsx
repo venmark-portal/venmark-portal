@@ -1,4 +1,4 @@
-import { finansTidslinje, pakkeriTidslinje } from '@/lib/tidslinjer'
+import { finansTidslinje, pakkeriTidslinje, salgTidslinje } from '@/lib/tidslinjer'
 import { telefonTidslinje } from '@/lib/telefoni'
 import Tidslinjer, { type TidslinjeSvar } from '@/components/admin/Tidslinjer'
 
@@ -32,7 +32,7 @@ export default async function TidslinjerPage({
   const jobNr = /^\d+$/.test(searchParams.job ?? '') ? searchParams.job! : '16'
 
   // Hentes uafhængigt: BC kan svare dårligt på den ene uden at tage de andre med.
-  const [finans, pakkeri, telefon] = await Promise.all([
+  const [finans, pakkeri, telefon, salg] = await Promise.all([
     finansTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
     pakkeriTidslinje(fra, til, jobNr).catch(e => ({
       dage: [], pakkere: [], starter: null,
@@ -42,9 +42,13 @@ export default async function TidslinjerPage({
       dage: [], personer: [],
       fejl: e instanceof Error ? e.message : String(e),
     })),
+    salgTidslinje(fra, til).catch(e => ({
+      dage: [], saelgere: [],
+      fejl: e instanceof Error ? e.message : String(e),
+    })),
   ])
 
-  const data = { fra, til, finans, pakkeri, telefon } as TidslinjeSvar
+  const data = { fra, til, finans, pakkeri, telefon, salg } as TidslinjeSvar
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">

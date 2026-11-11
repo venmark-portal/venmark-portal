@@ -254,6 +254,75 @@ export async function finansTidslinje(fra: string, til: string): Promise<FinansD
   return ud
 }
 
+// ─── Salg pr. sælger ─────────────────────────────────────────────────────────
+
+export interface SaelgerDag {
+  kode:   string
+  linjer: number
+  /** Linjer via Hurtig ordreindtastning (portalen tæller altid her). */
+  hurtig: number
+}
+
+export interface SalgDagPrSaelger {
+  dato:     string
+  ugedag:   number
+  linjer:   number
+  saelgere: SaelgerDag[]
+}
+
+export interface SalgTidslinje {
+  dage:     SalgDagPrSaelger[]
+  /** Alfabetisk — farven følger koden hen over perioder. */
+  saelgere: string[]
+  mangler?: string
+}
+
+/** Navnet på linjer uden sælgerkode. Holdes i sync med Tidslinjer.tsx. */
+export const UDEN_SAELGER = 'Ingen sælger'
+
+/**
+ * Oprettede salgslinjer pr. dag pr. sælgerkode, fra salgslinje-loggen.
+ *
+ * Dagen er OPRETTELSESdagen (hvornår salget blev taget), ikke afsendelsesdagen —
+ * det er sælgerens arbejdsdag der skal måles. Linjer der er slettet igen af en
+ * bruger tæller ikke; bogførte linjer gør (de er jo netop solgt). Portalens linjer
+ * står under koden "Portal" (sat af cu 50431), så webordrer er deres egen søjle.
+ */
+export async function salgTidslinje(fra: string, til: string): Promise<SalgTidslinje> {
+  const filter = encodeURIComponent(`createdDate ge ${fra} and createdDate le ${til} and deleted eq false`)
+  const log = await hentAlle(`salesEntries?$filter=${filter}&$select=createdDate,salespersonCode,quickEntry`)
+  if (log === null) return { dage: [], saelgere: [], mangler: 'BC-appen mangler salesEntries (side 50451)' }
+
+  const pr = new Map<string, { linjer: number; s: Map<string, SaelgerDag> }>()
+  const alle = new Set<string>()
+  for (const r of log) {
+    const d = dagAf(r.createdDate)
+    if (!d) continue
+    const kode = String(r.salespersonCode ?? '').trim() || UDEN_SAELGER
+    alle.add(kode)
+    const a = pr.get(d) ?? { linjer: 0, s: new Map<string, SaelgerDag>() }
+    a.linjer++
+    const s = a.s.get(kode) ?? { kode, linjer: 0, hurtig: 0 }
+    s.linjer++
+    if (r.quickEntry === true) s.hurtig++
+    a.s.set(kode, s)
+    pr.set(d, a)
+  }
+
+  const dage = Array.from(pr.entries())
+    .map(([dato, a]) => ({
+      dato, ugedag: ugedagAf(dato), linjer: a.linjer,
+      saelgere: Array.from(a.s.values()).sort((x, y) => y.linjer - x.linjer),
+    }))
+    .sort((a, b) => a.dato.localeCompare(b.dato))
+
+  // "Ingen sælger" sidst: den er ikke en person og skal ikke stå mellem koderne.
+  const saelgere = Array.from(alle).sort((a, b) =>
+    a === UDEN_SAELGER ? 1 : b === UDEN_SAELGER ? -1 : a.localeCompare(b, 'da'))
+
+  return { dage, saelgere }
+}
+
 // ─── Pakkeri-tidslinje ───────────────────────────────────────────────────────
 
 export interface PakkerDag {
