@@ -65,11 +65,21 @@ export async function POST(req: NextRequest) {
     // hver bestilling, og det var hovedparten af ventetiden efter "Sender…" (09-11-2026).
     const kurvVarer = Array.from(new Set((lines as any[]).map(l => l?.bcItemNumber).filter(Boolean))) as string[]
     // Åben ordre samme dag (én ordre pr. leverance, se nedenfor) slås op SAMTIDIG med resten —
-    // den afhænger kun af kunde/dato/leveringsform og tog 2-8 s for sig selv.
-    const aabenOrdreP = findAabenOrdre(activeCustomerNo, new Date(deliveryDateStr).toISOString().split('T')[0], shipmentMethodCode || '')
+    // den afhænger kun af kunde/dato/leveringsform og tog 2-8 s for sig selv. Den skal dog
+    // kende leveringsformens transitdage for at kunne regne kundens leveringsdato om til den
+    // AFSENDELSESdag ordrerne er nøglet på, så den hægtes på metode-opslaget frem for at vente
+    // på hele Promise.all'en.
+    const methodsP = getPortalShipmentMethods().catch(() => [])
+    const aabenOrdreP = methodsP
+      .then(ms => findAabenOrdre(
+        activeCustomerNo,
+        new Date(deliveryDateStr).toISOString().split('T')[0],
+        shipmentMethodCode || '',
+        shipmentMethodCode ? ms.find(m => m.code === shipmentMethodCode) : undefined,
+      ))
       .catch(() => null)
     const [allMethods, calendarDays, itemCutoffs, custLoc] = await Promise.all([
-      getPortalShipmentMethods().catch(() => []),
+      methodsP,
       getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => []),
       getItemCutoffs().catch(() => new Map()),
       getCustomerLocationCode(activeCustomerNo).catch(() => ''),

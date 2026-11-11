@@ -1,9 +1,9 @@
 // Én ordre pr. leverance.
 //
-// Bestiller kunden to gange til samme dag på samme leveringsform, skal den anden
-// bestilling LÆGGES PÅ den første frem for at blive en ordre mere. Ellers ender
-// pakkeriet med to sedler til samme bil, og kunden med to fakturaer. Vi har set
-// en kunde med elleve åbne ordrer til samme dag.
+// Bestiller kunden to gange til samme leverance, skal den anden bestilling LÆGGES
+// PÅ den første frem for at blive en ordre mere. Ellers ender pakkeriet med to
+// sedler til samme bil, og kunden med to fakturaer. Vi har set en kunde med elleve
+// åbne ordrer til samme dag.
 //
 // Undtagelsen er en ordre der allerede er PAKKET (Packed By sat på salgshovedet) —
 // den kan ikke nå at få mere med, og så er en ny ordre det rigtige.
@@ -11,13 +11,15 @@
 // Forskellig leveringsform samme dag er IKKE en dublet: enkelte kunder får to
 // leveringer om dagen, tidlig og sen, og de skal holdes adskilt.
 
-import { getCustomerOrders, getPortalLineStatuses, type BCCustomerOrder } from '@/lib/businesscentral'
+import { getCustomerOrders, getPortalLineStatuses } from '@/lib/businesscentral'
+import type { BCCustomerOrder, BCShipmentMethod } from '@/lib/businesscentral'
+import { getDispatchDateForMethodDelivery } from '@/lib/dateUtils'
 
 export interface AabenOrdre {
   bcOrderId:     string
   bcOrderNumber: string
-  /** Leveringsdato som YYYY-MM-DD. */
-  dato:          string
+  /** AFSENDELSESdagen som YYYY-MM-DD — den dag ordren forlader Hirtshals. */
+  afsendelsesdag: string
   antalLinjer:   number
   beloeb:        number
   /** Pakket = kan ikke udvides; kalderen skal oprette en ny ordre. */
@@ -26,32 +28,75 @@ export interface AabenOrdre {
   fraPortal:     boolean
 }
 
-/**
- * Leveringsdatoen på en ordre. BC-tastede ordrer udfylder IKKE "ønsket leveringsdato"
- * — 88 af 113 åbne ordrer stod uden — så dér er linjernes afsendelsesdato den eneste
- * kilde. Matcher vi kun på ønsket leveringsdato, opdager portalen ikke en ordre
- * kontoret har taget i telefonen samme formiddag, og så får kunden ordre nummer to
- * alligevel.
- */
-function datoFor(o: BCCustomerOrder, linjeDatoer: string[]): string {
-  if (o.requestedDeliveryDate) return o.requestedDeliveryDate
-  return linjeDatoer.filter(Boolean).sort()[0] ?? ''
+/** YYYY-MM-DD i lokal tid — toISOString ville give dagen før i UTC+2. */
+export function ymdLokal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /**
- * Alle åbne ordrer for kunden på ÉN leveringsform, slået op pr. leveringsdato.
- * Er der flere på samme dato (fra før denne regel), vinder den ældste — det er
+ * Afsendelsesdagen for en leveringsdato — samme regnestykke som når ordren
+ * oprettes (leveringsdato − transitdage). Eksporteret, fordi kalderne slår op på
+ * den dato kunden VÆLGER, mens nøglen i BC er den dag varerne køres ud.
+ */
+export function afsendelsesdagForLevering(
+  leveringsdato: string | Date,
+  method: BCShipmentMethod | null | undefined,
+): string {
+  const d = typeof leveringsdato === 'string'
+    ? new Date(`${leveringsdato}T00:00:00`)
+    : leveringsdato
+  if (Number.isNaN(d.getTime())) return typeof leveringsdato === 'string' ? leveringsdato : ''
+  // Uden leveringsform kan vi ikke regne transitdage; så er leveringsdatoen det
+  // bedste bud (gælder kun kunder uden leveringskode).
+  if (!method) return ymdLokal(d)
+  return ymdLokal(getDispatchDateForMethodDelivery(d, method))
+}
+
+/**
+ * Ordrens AFSENDELSESDAG — den eneste dato BC faktisk har på en ordre, nemlig
+ * salgslinjens "Afsendelsesdato". Leveringsdatoen er afledt (afsendelse +
+ * transitdage) og står KUN på portal-oprettede ordrer; 88 af 113 åbne ordrer stod
+ * uden "ønsket leveringsdato", fordi kontoret ikke udfylder den.
+ *
+ * DERFOR matcher vi på afsendelsesdagen og ikke på leveringsdatoen. Den modsatte
+ * vej — ordrens afsendelsesdato regnet om til en leveringsdato — er flertydig:
+ * en fredagsafsendelse med én transitdag dækker både lørdag og mandag.
+ *
+ * Det kostede en dublet 11-11-2026: kunden lagde 8 linjer på telefonordre 285602
+ * kl. 09.35 (den stod dengang tilfældigvis med 12-11 i afsendelsesfeltet, så
+ * datoerne passede), kontoret rettede den til den rigtige afsendelsesdag 11-11, og
+ * kl. 11.10 kunne portalen ikke længere genkende ordren. Kunden fik W0000217 —
+ * til nøjagtig samme bil.
+ */
+function afsendelsesdagFor(
+  o: BCCustomerOrder,
+  linjeDatoer: string[],
+  method: BCShipmentMethod | null | undefined,
+): string {
+  // Linjernes egen afsendelsesdato er BC's facit — ingen omregning, intet gæt.
+  const fraLinjer = linjeDatoer.filter(Boolean).sort()[0]
+  if (fraLinjer) return fraLinjer
+  // Tom ordre (ingen linjer endnu): regn ud fra ønsket leveringsdato, samme vej
+  // som BC selv gjorde da ordren blev oprettet.
+  if (o.requestedDeliveryDate) return afsendelsesdagForLevering(o.requestedDeliveryDate, method)
+  return ''
+}
+
+/**
+ * Alle åbne ordrer for kunden på ÉN leveringsform, slået op pr. AFSENDELSESDAG.
+ * Er der flere på samme dag (fra før denne regel), vinder den ældste — det er
  * den pakkeriet kender.
  */
-export async function aabneOrdrerPrDato(
+export async function aabneOrdrerPrAfsendelsesdag(
   customerNo: string,
   shipmentMethodCode: string,
-  kunDato?: string,
+  method: BCShipmentMethod | null | undefined,
+  kunLeveringsdato?: string,
 ): Promise<Map<string, AabenOrdre>> {
   const kort = new Map<string, AabenOrdre>()
   if (!customerNo) return kort
 
-  const ordrer = await getCustomerOrders(customerNo, kunDato).catch(() => [] as BCCustomerOrder[])
+  const ordrer = await getCustomerOrders(customerNo, kunLeveringsdato).catch(() => [] as BCCustomerOrder[])
   // Leveringsformen skal matche. Tom kode på ordren kan vi ikke henføre, og den
   // springes over frem for at blive gættet på plads.
   const relevante = ordrer.filter(o => (o.shipmentMethodCode || '') === (shipmentMethodCode || ''))
@@ -60,44 +105,45 @@ export async function aabneOrdrerPrDato(
   await Promise.all(relevante.map(async (o) => {
     if (!o.number) return
     // Søges der kun én dato (bestilling), kan en ordre med en ANDEN ønsket leveringsdato
-    // aldrig matche (datoFor bruger den først) → spring linje-opslaget over. Kun ordrer
-    // UDEN ønsket leveringsdato (BC-tastede) skal have linjerne hentet. Sparede 4-7 s pr.
-    // bestilling hos kunder med mange åbne ordrer.
-    if (kunDato && o.requestedDeliveryDate && o.requestedDeliveryDate !== kunDato) return
+    // aldrig matche → spring linje-opslaget over. Kun ordrer UDEN ønsket leveringsdato
+    // (BC-tastede) skal have linjerne hentet. Sparede 4-7 s pr. bestilling hos kunder
+    // med mange åbne ordrer.
+    if (kunLeveringsdato && o.requestedDeliveryDate && o.requestedDeliveryDate !== kunLeveringsdato) return
     const linjer = await getPortalLineStatuses(o.number).catch(() => null)
     const lns = linjer ?? []
-    const dato = datoFor(o, lns.map(l => l.shipmentDate))
-    if (!dato) return
+    const afsendelsesdag = afsendelsesdagFor(o, lns.map(l => l.shipmentDate), method)
+    if (!afsendelsesdag) return
 
     const kandidat: AabenOrdre = {
       bcOrderId:     o.id,
       bcOrderNumber: o.number,
-      dato,
+      afsendelsesdag,
       antalLinjer:   lns.filter(l => (l.lineObjectNumber ?? '').trim() !== '').length,
       beloeb:        o.amountIncludingTax ?? 0,
       pakket:        lns.some(l => (l.headerPackedBy ?? '').trim() !== ''),
       fraPortal:     o.number.startsWith('W'),
     }
 
-    const findes = kort.get(dato)
+    const findes = kort.get(afsendelsesdag)
     // Ældste vinder — men en UPAKKET slår en pakket, for det er den der kan udvides.
     if (!findes
         || (findes.pakket && !kandidat.pakket)
         || (findes.pakket === kandidat.pakket && kandidat.bcOrderNumber < findes.bcOrderNumber)) {
-      kort.set(dato, kandidat)
+      kort.set(afsendelsesdag, kandidat)
     }
   }))
 
   return kort
 }
 
-/** Den åbne ordre for én bestemt dato, eller null. */
+/** Den åbne ordre for én bestemt LEVERINGSdato, eller null. */
 export async function findAabenOrdre(
   customerNo: string,
-  dato: string,
+  leveringsdato: string,
   shipmentMethodCode: string,
+  method: BCShipmentMethod | null | undefined,
 ): Promise<AabenOrdre | null> {
-  if (!dato) return null
-  const kort = await aabneOrdrerPrDato(customerNo, shipmentMethodCode, dato)
-  return kort.get(dato) ?? null
+  if (!leveringsdato) return null
+  const kort = await aabneOrdrerPrAfsendelsesdag(customerNo, shipmentMethodCode, method, leveringsdato)
+  return kort.get(afsendelsesdagForLevering(leveringsdato, method)) ?? null
 }
