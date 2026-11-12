@@ -14,7 +14,7 @@ import {
   type BCShipmentMethod,
   type BCCalendarDay,
 } from '@/lib/businesscentral'
-import { getDeadlineForMethodDelivery, getDeadlineForDelivery } from '@/lib/dateUtils'
+import { getDeadlineForMethodDelivery, getDeadlineForDelivery, getDeliveryDateForMethodDispatch } from '@/lib/dateUtils'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
 
@@ -167,11 +167,16 @@ export default async function MyOrdersPage() {
         <div className="space-y-8">
           {groups.map(({ customer, orders }) => {
             const storeTotal = orders.reduce((s, o) => s + (o.amountIncludingTax || 0), 0)
-            // Leveringsdato = ordrens Requested Delivery Date, ellers TIDLIGSTE linje-afsendelsesdato
-            // (fanger BC-tastede ordrer der ikke har header-leveringsdato → ikke "Ingen leveringsdato").
-            const deliveryOf = (o: BCCustomerOrder) =>
-              o.requestedDeliveryDate ||
-              ((lineMap.get(o.number) ?? []).map(l => l.shipmentDate).filter(Boolean).sort()[0] ?? '')
+            // Leveringsdato = ordrens Requested Delivery Date. BC-tastede ordrer har den ikke —
+            // kun linjernes AFSENDELSESdato; den regnes om til levering (+ transitdage, frem til
+            // en dag leveringsformen kører). Før blev afsendelsesdagen vist som "Levering".
+            const deliveryOf = (o: BCCustomerOrder) => {
+              if (o.requestedDeliveryDate) return o.requestedDeliveryDate
+              const afs = (lineMap.get(o.number) ?? []).map(l => l.shipmentDate).filter(Boolean).sort()[0] ?? ''
+              const m = shipMethods.find(x => x.code === o.shipmentMethodCode)
+              if (!afs || !m) return afs
+              return ymdLokal(getDeliveryDateForMethodDispatch(new Date(`${afs}T00:00:00`), m))
+            }
             // Nærmeste levering ØVERST (i dag først, sen september nederst); udaterede nederst.
             const sortedOrders = orders.slice().sort((a, b) => {
               const da = deliveryOf(a), db = deliveryOf(b)
