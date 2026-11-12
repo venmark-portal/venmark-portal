@@ -14,7 +14,8 @@ import {
   type BCShipmentMethod,
   type BCCalendarDay,
 } from '@/lib/businesscentral'
-import { getDeadlineForMethodDelivery, getDeadlineForDelivery, getDeliveryDateForMethodDispatch } from '@/lib/dateUtils'
+import { getDeadlineForMethodDelivery, getDeadlineForDelivery } from '@/lib/dateUtils'
+import { bcOrdreLevering } from '@/lib/tilfoejOrdre'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
 
@@ -125,9 +126,14 @@ export default async function MyOrdersPage() {
     getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[]),
     getPortalCalendarDays(ymdLokal(new Date()), ymdLokal(om90)).catch(() => [] as BCCalendarDay[]),
   ])
+  // Leveringsdato: ønsket leveringsdato, ellers linjernes afsendelsesdato + transitdage
+  // (samme funktion som tilføj-siden, så knap og side er enige).
+  const deliveryOf = (o: BCCustomerOrder) =>
+    bcOrdreLevering(o, (lineMap.get(o.number) ?? []).map(l => l.shipmentDate), shipMethods)
   function bcFrist(o: BCCustomerOrder): Date | null {
-    if (!o.requestedDeliveryDate) return null
-    const lev = new Date(`${o.requestedDeliveryDate}T00:00:00`)
+    const levDato = deliveryOf(o)
+    if (!levDato) return null
+    const lev = new Date(`${levDato}T00:00:00`)
     const m = shipMethods.find(x => x.code === o.shipmentMethodCode)
     return m ? getDeadlineForMethodDelivery(lev, m, calDays) : getDeadlineForDelivery(lev)
   }
@@ -167,16 +173,6 @@ export default async function MyOrdersPage() {
         <div className="space-y-8">
           {groups.map(({ customer, orders }) => {
             const storeTotal = orders.reduce((s, o) => s + (o.amountIncludingTax || 0), 0)
-            // Leveringsdato = ordrens Requested Delivery Date. BC-tastede ordrer har den ikke —
-            // kun linjernes AFSENDELSESdato; den regnes om til levering (+ transitdage, frem til
-            // en dag leveringsformen kører). Før blev afsendelsesdagen vist som "Levering".
-            const deliveryOf = (o: BCCustomerOrder) => {
-              if (o.requestedDeliveryDate) return o.requestedDeliveryDate
-              const afs = (lineMap.get(o.number) ?? []).map(l => l.shipmentDate).filter(Boolean).sort()[0] ?? ''
-              const m = shipMethods.find(x => x.code === o.shipmentMethodCode)
-              if (!afs || !m) return afs
-              return ymdLokal(getDeliveryDateForMethodDispatch(new Date(`${afs}T00:00:00`), m))
-            }
             // Nærmeste levering ØVERST (i dag først, sen september nederst); udaterede nederst.
             const sortedOrders = orders.slice().sort((a, b) => {
               const da = deliveryOf(a), db = deliveryOf(b)

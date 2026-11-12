@@ -12,8 +12,10 @@
 import { prisma } from '@/lib/prisma'
 import {
   getCustomerOrders, getPortalOrderAccesses, getPortalShipmentMethods, getPortalCalendarDays,
+  getPortalLineStatuses,
 } from '@/lib/businesscentral'
-import { getDeadlineForMethodDelivery, getDeadlineForDelivery } from '@/lib/dateUtils'
+import type { BCCustomerOrder, BCShipmentMethod } from '@/lib/businesscentral'
+import { getDeadlineForMethodDelivery, getDeadlineForDelivery, getDeliveryDateForMethodDispatch } from '@/lib/dateUtils'
 
 export interface TilfoejMaal {
   /** BC's salgsordre-id (GUID) — det linjerne skal hænges på. */
@@ -57,6 +59,25 @@ async function beregnFrist(levering: Date, shipmentMethodCode: string): Promise<
   return metode
     ? getDeadlineForMethodDelivery(levering, metode, kalender)
     : getDeadlineForDelivery(levering)
+}
+
+/**
+ * Leveringsdatoen for en BC-ordre (YYYY-MM-DD). Ønsket leveringsdato når den er sat; ellers
+ * regnet fra linjernes AFSENDELSESdato — den eneste dato kontoret udfylder på en tlf-ordre —
+ * plus leveringsformens transitdage. Fristen regnes så tilbage fra leveringsdagen af
+ * getDeadlineForMethodDelivery og lander på afsendelsesdagen kl. leveringsformens frist —
+ * præcis som på en portalordre. Ordreoversigten og tilføj-siden bruger begge denne.
+ */
+export function bcOrdreLevering(
+  o: BCCustomerOrder,
+  linjeAfsendelser: (string | null | undefined)[],
+  metoder: BCShipmentMethod[],
+): string {
+  if (o.requestedDeliveryDate) return o.requestedDeliveryDate
+  const afs = linjeAfsendelser.filter((d): d is string => !!d).sort()[0] ?? ''
+  const m = metoder.find(x => x.code === o.shipmentMethodCode)
+  if (!afs || !m) return afs
+  return ymd(getDeliveryDateForMethodDispatch(new Date(`${afs}T00:00:00`), m))
 }
 
 export async function findTilfoejMaal(
@@ -122,9 +143,20 @@ export async function findTilfoejMaal(
     const match = ordrer.find(o => o.id === id)
     if (match) { fundet = match; break }
   }
-  if (!fundet || !fundet.requestedDeliveryDate) return null
+  if (!fundet) return null
 
-  const levering = new Date(`${fundet.requestedDeliveryDate}T00:00:00`)
+  // Tlf-ordrer har sjældent ønsket leveringsdato → regnes fra linjernes afsendelsesdato.
+  let levDato = fundet.requestedDeliveryDate ?? ''
+  if (!levDato) {
+    const [linjer, metoder] = await Promise.all([
+      getPortalLineStatuses(fundet.number).catch(() => null),
+      getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[]),
+    ])
+    levDato = bcOrdreLevering(fundet, (linjer ?? []).map(l => l.shipmentDate), metoder)
+  }
+  if (!levDato) return null
+
+  const levering = new Date(`${levDato}T00:00:00`)
   const deadline = await beregnFrist(levering, fundet.shipmentMethodCode ?? '')
 
   return {
