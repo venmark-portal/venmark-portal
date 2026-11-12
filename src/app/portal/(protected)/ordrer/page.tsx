@@ -8,21 +8,14 @@ import {
   getPortalLineStatuses,
   getPortalOrderAccesses,
   getPortalShipmentMethods,
-  getPortalCalendarDays,
   BCPortalLine,
   BCCustomerOrder,
   type BCShipmentMethod,
-  type BCCalendarDay,
 } from '@/lib/businesscentral'
-import { getDeadlineForMethodDelivery, getDeadlineForDelivery } from '@/lib/dateUtils'
-import { bcOrdreLevering } from '@/lib/tilfoejOrdre'
+import { bcOrdreLevering, bcOrdreFrist } from '@/lib/tilfoejOrdre'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
 
-/** Lokal YYYY-MM-DD — ikke toISOString, der skifter dato ved midnat. */
-function ymdLokal(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 import OrderLineStatus, { LINE_COLS, LINE_GRID_CLS } from '@/components/portal/OrderLineStatus'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT, localeOf, type Lang, type TFunc } from '@/lib/i18n/portal/lang'
@@ -119,24 +112,17 @@ export default async function MyOrdersPage() {
   const portalOrigin = new Set(portalRows.map(r => r.bcOrderNumber).filter(Boolean) as string[])
 
   // Ordrer tastet i BC (tlf/mail) har ingen portalrække og dermed ingen gemt frist.
-  // Den regnes her af leveringsformen — ellers kunne kunden ikke tilføje til en ordre
-  // hun selv har ringet ind, hvilket set fra hendes side er samme ordre.
-  const om90 = new Date(); om90.setDate(om90.getDate() + 90)
-  const [shipMethods, calDays] = await Promise.all([
-    getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[]),
-    getPortalCalendarDays(ymdLokal(new Date()), ymdLokal(om90)).catch(() => [] as BCCalendarDay[]),
-  ])
+  // Den regnes her — ellers kunne kunden ikke tilføje til en ordre hun selv har ringet
+  // ind, hvilket set fra hendes side er samme ordre.
+  const shipMethods = await getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[])
   // Leveringsdato: ønsket leveringsdato, ellers linjernes afsendelsesdato + transitdage
   // (samme funktion som tilføj-siden, så knap og side er enige).
   const deliveryOf = (o: BCCustomerOrder) =>
     bcOrdreLevering(o, (lineMap.get(o.number) ?? []).map(l => l.shipmentDate), shipMethods)
-  function bcFrist(o: BCCustomerOrder): Date | null {
-    const levDato = deliveryOf(o)
-    if (!levDato) return null
-    const lev = new Date(`${levDato}T00:00:00`)
-    const m = shipMethods.find(x => x.code === o.shipmentMethodCode)
-    return m ? getDeadlineForMethodDelivery(lev, m, calDays) : getDeadlineForDelivery(lev)
-  }
+  // Frist på en BC-tastet ordre = hele afsendelsesdagen (kontoret overrider klokkeslættet i
+  // telefonen) — samme funktion som tilføj-siden.
+  const bcFrist = (o: BCCustomerOrder): Date | null =>
+    bcOrdreFrist(o, (lineMap.get(o.number) ?? []).map(l => l.shipmentDate), shipMethods)
 
   // Kun grupper med ordrer; login-kunden først, derefter butikker alfabetisk
   const groups = perCustomer
