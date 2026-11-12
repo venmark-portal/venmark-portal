@@ -772,14 +772,14 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Noegletal titel="Linjer i alt" vaerdi={kr.format(sLinjerIAlt)} />
             <Noegletal titel="Linjer pr. dag" vaerdi={kr.format(Math.round(sLinjerIAlt / sDatoer.length))} />
-            <Noegletal titel="Sælgere" vaerdi={kr.format(sSaelgerSum.filter(s => s.kode !== UDEN_SAELGER && s.kode.toUpperCase() !== 'PORTAL').length)} />
+            <Noegletal titel="Sælgere" vaerdi={kr.format(sSaelgerSum.filter(s => s.kode !== UDEN_SAELGER && !['PORTAL', 'NETFISK'].includes(s.kode.toUpperCase())).length)} />
             <Noegletal titel="Andel fra portalen"
                        vaerdi={sLinjerIAlt ? `${en1.format((sPortal / sLinjerIAlt) * 100)} %` : '—'} />
           </div>
 
           <Ramme
             titel="Salgslinjer pr. dag"
-            undertitel="Oprettede ordrelinjer, stablet pr. sælgerkode. Dagen er den dag linjen blev tastet — ikke afsendelsesdagen. Linjer der blev slettet igen tæller ikke. Portal = kundernes egne webordrer. Hold musen over en dag for fordelingen."
+            undertitel="Oprettede ordrelinjer, stablet pr. sælgerkode. Dagen er den dag linjen blev tastet — ikke afsendelsesdagen. Linjer der blev slettet igen tæller ikke. Portal = kundernes egne webordrer, Netfisk = webshoppen (før stod de som debitorens faste sælger). Hold musen over en dag for fordelingen."
           >
             <StakketSoejler datoer={sDatoer} serier={sAntalSerier} farve={sFarveAf} format={v => kr.format(v)} />
             <Forklaring navne={salg.saelgere} farve={sFarveAf} />

@@ -14,6 +14,7 @@
 import { prisma } from '@/lib/prisma'
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
 import { timerPrJob, pakkerTimerPrDag } from '@/lib/dantime'
+import { saelgerAf } from '@/lib/saelgere'
 
 // ─── Skema ───────────────────────────────────────────────────────────────────
 
@@ -290,7 +291,7 @@ export const UDEN_SAELGER = 'Ingen sælger'
  */
 export async function salgTidslinje(fra: string, til: string): Promise<SalgTidslinje> {
   const filter = encodeURIComponent(`createdDate ge ${fra} and createdDate le ${til} and deleted eq false`)
-  const log = await hentAlle(`salesEntries?$filter=${filter}&$select=createdDate,salespersonCode,quickEntry`)
+  const log = await hentAlle(`salesEntries?$filter=${filter}&$select=createdDate,salespersonCode,quickEntry,customerNo,documentNo`)
   if (log === null) return { dage: [], saelgere: [], mangler: 'BC-appen mangler salesEntries (side 50451)' }
 
   const pr = new Map<string, { linjer: number; s: Map<string, SaelgerDag> }>()
@@ -298,7 +299,8 @@ export async function salgTidslinje(fra: string, til: string): Promise<SalgTidsl
   for (const r of log) {
     const d = dagAf(r.createdDate)
     if (!d) continue
-    const kode = String(r.salespersonCode ?? '').trim() || UDEN_SAELGER
+    // Netfisk-ordrer tæller som webshoppens eget salg, ikke debitorens faste sælger.
+    const kode = saelgerAf({ salespersonCode: r.salespersonCode, customerNo: r.customerNo, documentNo: r.documentNo }) || UDEN_SAELGER
     alle.add(kode)
     const a = pr.get(d) ?? { linjer: 0, s: new Map<string, SaelgerDag>() }
     a.linjer++

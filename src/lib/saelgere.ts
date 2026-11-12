@@ -14,6 +14,21 @@
 
 import { getAccessToken, bcPortalBaseUrl } from '@/lib/businesscentral'
 
+/**
+ * Sælgeren en logrække skal tælle på.
+ *
+ * Netfisk-webshoppens ordrer ligger på den fælles debitor NETFISK.DK og arvede dens
+ * faste sælger — 731 linjer i okt./nov. 2026 stod som CLAUS' salg. Fra BC v.508
+ * skriver loggen selv "Netfisk"; her rettes de ældre rækker, så historikken passer.
+ * NF-nummerserien fanger det samme, hvis debitornummeret skulle skifte.
+ */
+export function saelgerAf(r: { salespersonCode?: string; userId?: string; customerNo?: string; documentNo?: string }): string {
+  const kunde = String(r.customerNo ?? '').trim().toUpperCase()
+  const dok   = String(r.documentNo ?? '').trim().toUpperCase()
+  if (kunde === 'NETFISK.DK' || /^NF\d/.test(dok)) return 'Netfisk'
+  return String(r.salespersonCode || r.userId || '').trim()
+}
+
 export interface SaelgerRaekke {
   saelger: string
   linjer:  number
@@ -49,7 +64,7 @@ export async function saelgerStat(): Promise<SaelgerStat> {
   const filter = encodeURIComponent(`createdDate eq ${dato} and deleted eq false`)
   // Intet $top — BC svarer med præcis det antal man beder om og INGEN nextLink,
   // så et loft ville afkorte tavst. Vi følger nextLink i stedet.
-  let url: string | null = `${bcPortalBaseUrl()}/salesEntries?$filter=${filter}&$select=userId,salespersonCode,quickEntry,createdDateTime`
+  let url: string | null = `${bcPortalBaseUrl()}/salesEntries?$filter=${filter}&$select=userId,salespersonCode,quickEntry,createdDateTime,customerNo,documentNo`
 
   const raekker: any[] = []
   let sider = 0
@@ -71,7 +86,7 @@ export async function saelgerStat(): Promise<SaelgerStat> {
   const pr = new Map<string, SaelgerRaekke>()
   for (const r of raekker) {
     // Sælgerkoden er det folk kender hinanden på; brugernavnet er nødløsningen.
-    const navn = String(r.salespersonCode || r.userId || '').trim() || 'ukendt'
+    const navn = saelgerAf(r) || 'ukendt'
     const s = pr.get(navn) ?? { saelger: navn, linjer: 0, hurtige: 0 }
     s.linjer++
     if (r.quickEntry === true) s.hurtige++
