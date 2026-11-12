@@ -109,7 +109,8 @@ export async function aabneOrdrerPrAfsendelsesdag(
     // (BC-tastede) skal have linjerne hentet. Sparede 4-7 s pr. bestilling hos kunder
     // med mange åbne ordrer.
     if (kunLeveringsdato && o.requestedDeliveryDate && o.requestedDeliveryDate !== kunLeveringsdato) return
-    const linjer = await getPortalLineStatuses(o.number).catch(() => null)
+    // Frisk: et cachet (evt. timer gammelt) linjebillede gav W0000224 ved siden af 285776.
+    const linjer = await getPortalLineStatuses(o.number, { frisk: true }).catch(() => null)
     const lns = linjer ?? []
     const afsendelsesdag = afsendelsesdagFor(o, lns.map(l => l.shipmentDate), method)
     if (!afsendelsesdag) return
@@ -145,5 +146,13 @@ export async function findAabenOrdre(
 ): Promise<AabenOrdre | null> {
   if (!leveringsdato) return null
   const kort = await aabneOrdrerPrAfsendelsesdag(customerNo, shipmentMethodCode, method, leveringsdato)
-  return kort.get(afsendelsesdagForLevering(leveringsdato, method)) ?? null
+  const noegle = afsendelsesdagForLevering(leveringsdato, method)
+  const fundet = kort.get(noegle) ?? null
+  // Spor når der ER åbne ordrer på leveringsformen, men ingen på dagen — så kan en "hvorfor
+  // blev de ikke slået sammen?" besvares fra pm2-loggen i stedet for ved gætteri.
+  if (!fundet && kort.size > 0) {
+    console.log(`[aaben-ordre] ${customerNo} lev ${leveringsdato} [${shipmentMethodCode}] → afsendelse ${noegle}: intet match blandt`,
+      Array.from(kort.values()).map(o => `${o.bcOrderNumber}@${o.afsendelsesdag}`).join(', '))
+  }
+  return fundet
 }

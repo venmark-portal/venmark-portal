@@ -172,7 +172,7 @@ export async function findTilfoejMaal(
   // Tlf-ordrer har sjældent ønsket leveringsdato → regnes fra linjernes afsendelsesdato.
   // Fristen er hele afsendelsesdagen, ikke leveringsformens klokkeslæt (se bcOrdreFrist).
   const [linjer, metoder] = await Promise.all([
-    getPortalLineStatuses(fundet.number).catch(() => null),
+    getPortalLineStatuses(fundet.number, { frisk: true }).catch(() => null),
     getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[]),
   ])
   const afsendelser = (linjer ?? []).map(l => l.shipmentDate)

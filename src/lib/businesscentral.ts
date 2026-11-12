@@ -1746,6 +1746,13 @@ export interface BCPortalLine {
  */
 export async function getPortalLineStatuses(
   bcOrderNumber: string,
+  /**
+   * Frisk = uden Next's datacache. Cachen er stale-while-revalidate: er svaret udløbet,
+   * leveres det GAMLE én gang til (uanset alder) og opdateres først bagefter. Fint til
+   * visning, men ikke når der skal TRÆFFES en beslutning — "læg på åben ordre" fik et
+   * gammelt billede af telefonordre 285776 og oprettede W0000224 til samme bil (12-11-2026).
+   */
+  opts?: { frisk?: boolean },
 ): Promise<BCPortalLine[] | null> {
   try {
     const token = await getAccessToken()
@@ -1761,7 +1768,7 @@ export async function getPortalLineStatuses(
         Authorization: `Bearer ${token}`,
         Accept:        'application/json',
       },
-      next: { revalidate: 30 },   // cache 30 sekunder
+      ...(opts?.frisk ? { cache: 'no-store' as const } : { next: { revalidate: 30 } }),   // ellers cache 30 sekunder
     })
 
     if (!res.ok) return null   // Extension ikke deployed endnu
