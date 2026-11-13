@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Intern håndbog for Venmark Fisk: Business Central, kundeportalen, pakkeri, produktion og økonomi.">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Venmark Fisk · Business Central &amp; portalen</p>
+    <h1 class="title">Venmark-håndbogen</h1>
+    <p class="lede">Sådan virker det vi selv har bygget i BC og på portalen — hvad du gør, hvad systemet tjekker for dig, og hvad du gør når en besked dukker op. Vælg et område, eller søg.</p>
+    <div class="search" role="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <label for="q" class="sr" style="position:absolute;left:-9999px">Søg i håndbogen</label>
+      <input id="q" type="search" placeholder="Søg fx “Afvist”, “udbakke”, “familie”, “Tilføj vare”…" autocomplete="off">
+    </div>
+    <div id="hits" class="hits" aria-live="polite"></div>
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:8px">
+  <div class="areas">
+    <a class="area" href="/haandbog/salg.html">
+      <span class="who">Kontor · sælgere</span>
+      <h3>Salg &amp; ordrer</h3>
+      <p>Fra ordre til faktura: godkendelse af linjer, Salgstjek, hurtig ordre, sælgerkoder, KBH og Netfisk.</p>
+      <ul><li>Godkendt/Afventer/Afvist</li><li>Salgstjek</li><li>Hurtig ordre</li><li>Bogføring</li></ul>
+    </a>
+    <a class="area" href="/haandbog/portal.html">
+      <span class="who">Kontor · sælgere</span>
+      <h3>Kundeportalen</h3>
+      <p>Hvad kunden ser og kan, frister og antals-loft, én ordre pr. leverance, Tilføj vare og admin-siderne.</p>
+      <ul><li>Bestilling</li><li>Frister</li><li>Åbne bestillinger</li><li>Admin</li></ul>
+    </a>
+    <a class="area" href="/haandbog/disponibel.html">
+      <span class="who">Disponenter · sælgere</span>
+      <h3>Lager &amp; disponibel</h3>
+      <p>Hvad “disponibelt” betyder, hvordan det regnes, og hvordan leveringsformer styrer datoerne.</p>
+      <ul><li>Disponibel-motor</li><li>Produktionstid</li><li>Leveringsformer</li></ul>
+    </a>
+    <a class="area" href="/haandbog/priser.html">
+      <span class="who">Prisansvarlige · kontor</span>
+      <h3>Priser</h3>
+      <p>Hvilken pris der vinder, AP Manuel, fragt, kg-pris og Beregn priser.</p>
+      <ul><li>Prioritet</li><li>AP Manuel</li><li>Kostpris</li></ul>
+    </a>
+    <a class="area" href="/haandbog/produktion.html">
+      <span class="who">Produktion · disponenter</span>
+      <h3>Produktion &amp; montage</h3>
+      <p>Produktionsoversigten, vejning og kasser, familieproduktion, procedureskemaer og udbytter.</p>
+      <ul><li>Vejning</li><li>Familie</li><li>Udbytte</li></ul>
+    </a>
+    <a class="area" href="/haandbog/pakkeri.html">
+      <span class="who">Pakkeri · lager</span>
+      <h3>Pakkeri &amp; scanning</h3>
+      <p>Pakning, kolli og kg, labels, scanning og fragt — og hvad du gør når scanneren driller.</p>
+      <ul><li>Pakning</li><li>Labels</li><li>Scanner</li></ul>
+    </a>
+    <a class="area" href="/haandbog/koeb.html">
+      <span class="who">Indkøb · modtagelse</span>
+      <h3>Køb &amp; modtagelse</h3>
+      <p>Hurtig købsindtastning, købsordremail, varemodtagelse med kvalitet og auktionsimport.</p>
+      <ul><li>Hurtig køb</li><li>Modtagelse</li><li>Auktion</li></ul>
+    </a>
+    <a class="area" href="/haandbog/sporbarhed.html">
+      <span class="who">Kvalitet · kontor</span>
+      <h3>Sporbarhed &amp; certificering</h3>
+      <p>Fangstredskab og område hele vejen fra køb til faktura, MSC/ASC og certifikater.</p>
+      <ul><li>Fangst</li><li>MSC/ASC</li><li>Certifikater</li></ul>
+    </a>
+    <a class="area" href="/haandbog/mails.html">
+      <span class="who">Bogholderi · kontor</span>
+      <h3>Mails, dokumenter &amp; økonomi</h3>
+      <p>Automatiske fakturamails, kontoudtog, PEPPOL, SMS — og hvad du gør når en mail ikke kom afsted.</p>
+      <ul><li>Fakturamail</li><li>Kontoudtog</li><li>Udbakke</li></ul>
+    </a>
+    <a class="area" href="/haandbog/drift.html">
+      <span class="who">Ledelse · administrator</span>
+      <h3>Drift &amp; overblik</h3>
+      <p>Venmark Opsætning, genstart af BC, jobkø, skærme, chaufførapp og statistiksiderne.</p>
+      <ul><li>Opsætning</li><li>Jobkø</li><li>Skærme</li></ul>
+    </a>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Venmark Fisk</span>
+    <span class="mono">Intern reference · opdateres i takt med systemet</span>
+  </div>
+</footer>
+
+<script>
+// Søgning: henter alle håndbogens sider første gang der tastes, og indekserer hvert afsnit
+// (section.blk) og hver underoverskrift. Intet indeks at vedligeholde — nye afsnit kommer
+// automatisk med.
+(function () {
+  var SIDER = ['salg', 'portal', 'disponibel', 'priser', 'produktion', 'pakkeri', 'koeb', 'sporbarhed', 'mails', 'drift']
+  var q = document.getElementById('q'), hitsEl = document.getElementById('hits')
+  var indeks = null, henter = null
+
+  function norm(s) { return (s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '') }
+
+  function hent() {
+    if (henter) return henter
+    henter = Promise.all(SIDER.map(function (s) {
+      return fetch('/haandbog/' + s + '.html').then(function (r) { return r.ok ? r.text() : '' }).catch(function () { return '' })
+        .then(function (html) {
+          if (!html) return []
+          var doc = new DOMParser().parseFromString(html, 'text/html')
+          var side = (doc.querySelector('h1.title') || {}).textContent || s
+          var ud = []
+          doc.querySelectorAll('section.blk').forEach(function (sec) {
+            var h2 = sec.querySelector('h2')
+            ud.push({ url: '/haandbog/' + s + '.html#' + sec.id, titel: h2 ? h2.textContent : sec.id, side: side, tekst: norm(sec.textContent), vaegt: norm(h2 ? h2.textContent : '') })
+            sec.querySelectorAll('h3[id]').forEach(function (h3) {
+              ud.push({ url: '/haandbog/' + s + '.html#' + h3.id, titel: h3.textContent, side: side + ' · ' + (h2 ? h2.textContent : ''), tekst: '', vaegt: norm(h3.textContent) })
+            })
+          })
+          return ud
+        })
+    })).then(function (lister) { indeks = [].concat.apply([], lister); return indeks })
+    return henter
+  }
+
+  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
+
+  function soeg() {
+    var ord = norm(q.value).split(/\s+/).filter(function (w) { return w.length > 1 })
+    if (!ord.length) { hitsEl.innerHTML = ''; return }
+    hent().then(function (idx) {
+      var res = idx.map(function (r) {
+        var p = 0
+        for (var i = 0; i < ord.length; i++) {
+          var w = ord[i], iT = r.vaegt.indexOf(w) >= 0, iB = r.tekst.indexOf(w) >= 0
+          if (!iT && !iB) return null
+          p += (iT ? 5 : 0) + (iB ? 1 : 0)
+        }
+        return { r: r, p: p }
+      }).filter(Boolean).sort(function (a, b) { return b.p - a.p }).slice(0, 12)
+      hitsEl.innerHTML = res.length
+        ? res.map(function (x) { return '<a class="hit" href="' + x.r.url + '"><b>' + esc(x.r.titel) + '</b><span>' + esc(x.r.side) + '</span></a>' }).join('')
+        : '<p class="empty">Ingen afsnit matcher. Prøv et andet ord — fx navnet på knappen eller beskeden du ser.</p>'
+    })
+  }
+
+  var t = null
+  q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(soeg, 120) })
+  q.addEventListener('focus', hent, { once: true })
+})()
+</script>
+</html>

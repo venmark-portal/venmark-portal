@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Mails, dokumenter &amp; økonomi · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html" aria-current="page">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Bogholderi · kontor</p>
+    <h1 class="title">Mails, dokumenter &amp; økonomi</h1>
+    <p class="lede">Hvordan fakturaer, kreditnotaer og følgesedler sendes automatisk, hvad du gør når en mail ikke kom afsted — og kontoudtog, PEPPOL, Leverandørservice, SMS og moms.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#auto">Automatiske dokumentmails</a></li>
+      <li><a href="#fejl">Mailen kom ikke afsted</a></li>
+      <li><a href="#bekraeft">Ordrebekræftelse</a></li>
+      <li><a href="#kontoudtog">Kontoudtog</a></li>
+      <li><a href="#peppol">PEPPOL / e-faktura</a></li>
+      <li><a href="#print">“Noget gik galt” ved print</a></li>
+      <li><a href="#nets">NETS Leverandørservice</a></li>
+      <li><a href="#sms">SMS &amp; masse-mail</a></li>
+      <li><a href="#moms">Moms genberegning</a></li>
+      <li><a href="#import">Import af kontaktdata</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="auto">
+      <p class="eyebrow">Ved bogføring</p>
+      <h2>Automatiske dokumentmails</h2>
+      <p>Når en salgsordre bogføres, mailer BC selv <strong>faktura</strong>, <strong>kreditnota</strong> og <strong>følgeseddel</strong> som PDF — til de modtagere der står på kunden.</p>
+      <h3 id="abonnement">Modtagere pr. kunde</h3>
+      <p>Modtagerne sættes som <strong>email-abonnementer</strong> på kunden: én række pr. mailadresse pr. dokumenttype (Ordrebekræftelse, Faktura, Kreditnota, Kontoudtog, Følgeseddel), med Til, CC eller BCC og et Aktiv-flueben.</p>
+      <div class="msg">
+        <q>Ingen email-abonnementer opsat for debitor … (faktura). Dokumentet er bogført, men ingen email sendt.</q>
+        <span class="why">Kunden har ingen aktiv modtager af fakturaer. (Manglende følgeseddel-modtagere giver ingen besked.)</span>
+        <span class="do">Opret en modtager på kunden, og send fakturaen manuelt denne gang.</span>
+      </div>
+      <p>Tekst og emne kan tilpasses pr. dokumenttype i <strong>Venmark Email Template</strong>. Hvilken mailkonto der sendes fra, styres af <strong>E-mail-scenarier</strong> (Salgsfaktura, Salgskreditnota osv.) — se næste afsnit.</p>
+    </section>
+
+    <section class="blk" id="fejl">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Mailen kom ikke afsted</h2>
+      <div class="msg">
+        <q>Kunne ikke sende email for faktura … — tjek Email Outbox.</q>
+        <span class="why">BC kunne ikke aflevere mailen til Microsoft. Mailen har <strong>ikke</strong> forladt BC — fakturaen er bogført, kun mailen mangler.</span>
+        <span class="do">Gensend fra udbakken (se nedenfor).</span>
+      </div>
+      <ol class="steps">
+        <li>Søg <strong>Udbakke for e-mail</strong> (Email Outbox).</li>
+        <li>Find mailen (fx “Faktura … fra Venmark Fisk A/S”).</li>
+        <li><span class="btn">Vis fejl</span> — fortæller hvorfor.</li>
+        <li><span class="btn">Send</span> — mailen går med den PDF der allerede er dannet.</li>
+      </ol>
+      <h3 id="fejl-hvor">Hvor ligger fejlen?</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Det ser du</th><th>Betyder</th></tr></thead>
+          <tbody>
+            <tr><td>Beskeden “Kunne ikke sende …” og mailen i <strong>Udbakke</strong> med Fejl</td><td>Problemet er hos os: BC → Microsoft (nedbrud, udløbet mailkonto, manglende rettighed).</td></tr>
+            <tr><td>Mailen står under <strong>Sendte e-mails</strong>, men kunden har ikke fået den</td><td>Afvist hos kunden (fuld postkasse, forkert adresse) — se efter en returmail i indbakken på afsender-kontoen. Eller i kundens spam.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note tip">
+        <p class="note-h">Prislister virker, men fakturaer fejler?</p>
+        <p>Prislister og de fleste andre mails sendes fra BC's <strong>standard</strong>-mailkonto. Fakturaer, kreditnotaer, kontoudtog og følgesedler har hver sit <strong>e-mail-scenarie</strong>, som kan pege på en anden konto (fx regnskab@). Tjek <strong>E-mail-scenarier</strong> → hvilken konto <em>Salgsfaktura</em> bruger, og om den konto virker (<strong>E-mail-konti</strong>).</p>
+      </div>
+    </section>
+
+    <section class="blk" id="bekraeft">
+      <p class="eyebrow">Til kunden</p>
+      <h2>Ordrebekræftelse</h2>
+      <ul class="clean">
+        <li><strong>Manuelt:</strong> fra salgsordren — mailen åbnes i editoren, så du kan rette teksten før du sender.</li>
+        <li><strong>Automatisk:</strong> har kunden <span class="k">AUTObekræft</span>, sendes den lydløst når pakkeren printer færdiglabel — med en fed tekst om at mængde og pris kan afvige fra fakturaen. Kun hvis kunden har en modtager af ordrebekræftelser.</li>
+        <li>Netfisk-kunder får bekræftelse fra webshop-importen.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="kontoudtog">
+      <p class="eyebrow">Debitorer</p>
+      <h2>Kontoudtog</h2>
+      <p><strong>Én kunde:</strong> knap på debitorkortet. Vælg periode og valg; mailen åbnes i editoren, så du kan skrive en personlig tekst. <strong>Mange kunder:</strong> rapporten <strong>Venmark Statement Batch</strong> sender direkte til hver kunde med kontoudtogs-modtagere.</p>
+      <ul class="clean">
+        <li><strong>Vis forfaldne poster</strong> — forfaldne poster opgøres til og med til-datoen.</li>
+        <li><strong>Indsæt faktura-links</strong> — tabel med forfaldne fakturaer og åbne kreditnotaer, hver med et “Hent PDF”-link. Kunden skal ikke logge ind.</li>
+        <li><strong>Alle fakturaer i perioden</strong> — alle fakturaer og kreditnotaer, betalte og åbne (til de kunder der beder om det).</li>
+        <li>Topptekst lægges øverst i mailen.</li>
+      </ul>
+      <p>Linkene kræver at <span class="k">Portal URL</span> er udfyldt i Venmark Opsætning.</p>
+    </section>
+
+    <section class="blk" id="peppol">
+      <p class="eyebrow">Offentlige kunder</p>
+      <h2>PEPPOL / e-faktura</h2>
+      <p>Kunder sat op til elektronisk faktura (EAN/GLN) får fakturaen sendt via PEPPOL automatisk ved bogføring. Mailen sendes som normalt, hvis kunden også har mail-modtagere.</p>
+    </section>
+
+    <section class="blk" id="print">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>“Noget gik galt” ved print</h2>
+      <p>Faktura- og kreditnota-print er sikret mod fejlen. Får du den på <strong>følgeseddel</strong> eller <strong>ordrebekræftelse</strong>:</p>
+      <ol class="steps">
+        <li>Åbn udskriftsdialogen igen.</li>
+        <li>Under <em>Options</em>: fjern fluebenet <span class="k">Log Interaction</span>. Valget huskes.</li>
+      </ol>
+    </section>
+
+    <section class="blk" id="nets">
+      <p class="eyebrow">Betaling</p>
+      <h2>NETS Leverandørservice</h2>
+      <p>Kunder tilmeldt Leverandørservice (kundekortet: <span class="k">Tilmeldt LS</span>) får forfaldne fakturaer trukket automatisk.</p>
+      <ol class="steps">
+        <li>Åbn <strong>NETS Runs</strong>. <span class="btn">Preview næste kørsel</span> viser hvad der kommer med.</li>
+        <li><span class="btn">New Run — Send til NETS</span>: vælg “Træk forfaldne til og med” og <strong>Hævedato</strong>. Filen downloades.</li>
+        <li>Upload filen til NETS.</li>
+        <li>Efter hævedatoen: på kørslen <span class="btn">Importér kvitteringsfil</span> (resultatfilen) og <span class="btn">Læg bekræftede i kladde</span>.</li>
+        <li>Gennemgå og bogfør finanskladden.</li>
+      </ol>
+      <ul class="clean">
+        <li>Kun åbne DKK-poster med forfald til og med datoen. Kreditnotaer nettes. Én linje pr. kunde, og beløbet skal være positivt.</li>
+        <li>Kun én aktiv kørsel pr. dag.</li>
+        <li>Fortryd: <span class="btn">Fjern fra kladde (fortryd)</span> og <span class="btn">Genåbn kørsel</span>.</li>
+      </ul>
+      <div class="msg">
+        <q>Der er ingen OPKRÆVEDE poster at bogføre for denne kørsel. Importér først kvitteringsfilen fra NETS …</q>
+        <span class="do">Importér resultatfilen — eller brug <span class="btn">Læg afsendte i kladde (optimistisk)</span> hvis du ikke vil vente.</span>
+      </div>
+      <p>Tilmelding af kunder: siden <strong>NETS Debitor Tilmelding</strong> (<span class="btn">Dan tilmeldingsfil (markerede)</span>, <span class="btn">Importér tilmeldte fra Excel</span>).</p>
+    </section>
+
+    <section class="blk" id="sms">
+      <p class="eyebrow">Kommunikation</p>
+      <h2>SMS &amp; masse-mail</h2>
+      <h3 id="masse">Til alle kunder i en liste</h3>
+      <p>På <strong>Salgstjek</strong> eller <strong>Bogførte salgslinjer</strong>: filtrér listen (fx alle der har købt en bestemt vare), og tryk <span class="btn">SMS til kontakter</span> eller <span class="btn">Mail til kontakter</span>. Modtagerne er Kontakt 1 og 2 på hver kunde i listen.</p>
+      <ul class="clean">
+        <li>SMS: maks. 160 tegn. Slet modtagere der ikke skal have den, og tryk <span class="btn">Send SMS til alle</span>.</li>
+        <li>Mail: BC's mail-editor åbner med modtagerne.</li>
+        <li>Kunder uden mobil/mail på Kontakt 1/2 springes over — du får at vide hvor mange.</li>
+      </ul>
+      <h3 id="svar">Svar fra kunderne</h3>
+      <p>Kunderne kan svare på vores SMS. Svarene lander i <strong>SMS Indbakke</strong> (og som mail til salg). Åbn SMS'en og brug <span class="btn">Send svar</span>. Ukendte numre vises som “UKENDT afsender”.</p>
+      <div class="note warn">
+        <p class="note-h">Afsender skal være et nummer</p>
+        <p>SMS-afsenderen i Venmark Opsætning skal være vores nummer (4535740061) — står der et navn, kan kunderne ikke svare.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="moms">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Moms genberegning</h2>
+      <p>Fejler bogføring med <em>“Momsberegningstype skal være lig med ‘Modtagermoms’”</em> (typisk EU-kunder), har linjerne gammel moms-opsætning.</p>
+      <ul class="clean">
+        <li>Én ordre: <span class="btn">Genberegn moms</span> på salgsordren — og bogfør igen.</li>
+        <li>Alle åbne: <span class="btn">Genberegn moms på alle åbne salgsordrer</span> i Venmark Opsætning.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="import">
+      <p class="eyebrow">Stamdata</p>
+      <h2>Import af kontaktdata (mail+ringe)</h2>
+      <p>Kundeoversigt → <span class="btn">Importér mail+ringe (master) fra Excel</span>. Arket er <strong>facit</strong>: tomme celler sletter kontaktfelterne. Rækker uden kundenr. bliver prospekt-kontakter. Ukendte kundenumre springes over og downloades som CSV.</p>
+      <div class="msg">
+        <q>DeflateStream …</q>
+        <span class="do">Kopiér data over i en ny projektmappe med Indsæt speciel → Værdier, gem og prøv igen.</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Mails, dokumenter &amp; økonomi</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

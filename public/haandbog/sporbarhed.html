@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Sporbarhed &amp; certificering · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html" aria-current="page">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Kvalitet · kontor</p>
+    <h1 class="title">Sporbarhed &amp; certificering</h1>
+    <p class="lede">Fangstredskab og fangstområde følger fisken fra købet over produktionen til fakturaen. Her er hvor felterne kommer fra, hvornår de er påkrævet — og hvordan MSC/ASC-certificeringen hænger sammen.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#kaede">Sporbarhedens vej</a></li>
+      <li><a href="#varekort">Opsætning på varen</a></li>
+      <li><a href="#koeb">Ved køb</a></li>
+      <li><a href="#salg">Ved pakning og salg</a></li>
+      <li><a href="#ret">Ret og find kilden</a></li>
+      <li><a href="#oversigt">Sporbarheds-oversigt</a></li>
+      <li><a href="#leverandoer">MSC/ASC på leverandøren</a></li>
+      <li><a href="#intertek">MSC/ASC på varen (Intertek)</a></li>
+      <li><a href="#attributter">Attributter &amp; dokumenter</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="kaede">
+      <p class="eyebrow">Overblikket</p>
+      <h2>Sporbarhedens vej</h2>
+      <ol class="steps">
+        <li><strong>Køb:</strong> fangstredskab og -område sættes på købslinjen (fra varekortet, auktionsfilen eller AI-læsning af fakturaen) og følger med til lagerposten.</li>
+        <li><strong>Produktion:</strong> montageordren henter sporbarhed fra råvaren — eller du scanner modtagelseslabelen.</li>
+        <li><strong>Pakning:</strong> salgslinjen får sporbarhed fra labelen, ellers fra dagens produktion, lager eller indkøb, ellers fra varekortets standard.</li>
+        <li><strong>Faktura:</strong> felterne står på fakturaen og på salgets lagerpost.</li>
+      </ol>
+      <p>Flere redskaber eller områder gemmes kommasepareret. I opslagene kan du markere flere rækker og trykke OK (på købslinjer vælges én ad gangen).</p>
+    </section>
+
+    <section class="blk" id="varekort">
+      <p class="eyebrow">Varekortet</p>
+      <h2>Opsætning på varen</h2>
+      <p>Varekortet → gruppen <strong>Venmark sporbarhed</strong>:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Felt</th><th>Betyder</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fld">Fangstredskab (standard)</span> / <span class="fld">Fangstområde (standard)</span></td><td>Bruges når intet andet findes.</td></tr>
+            <tr><td><span class="fld">Fangstredskab påkrævet</span> / <span class="fld">Fangstområde påkrævet</span></td><td>Blokerer start af produktion, opregulering og bogføring af salg, hvis feltet mangler.</td></tr>
+            <tr><td><span class="fld">Holdbarhed</span>, <span class="fld">Mindst holdbar til påkrævet</span>, <span class="fld">Produktionsdato påkrævet</span></td><td>Holdbarhedsberegning og krav til datoer.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Redskaber og områder vedligeholdes på <strong>Fangstredskaber</strong> og <strong>Fangstområder</strong> (<span class="btn">Synkroniser fra SIF</span>).</p>
+    </section>
+
+    <section class="blk" id="koeb">
+      <p class="eyebrow">Kilden</p>
+      <h2>Ved køb</h2>
+      <ul class="clean">
+        <li>Vælger du vare på en købslinje, kopieres varekortets standard ind i tomme felter.</li>
+        <li><span class="btn">Udtræk sporbarhed fra dokument</span> på købslinjen: upload fakturaen (JPG, PNG eller PDF), og AI læser område og redskab.</li>
+        <li>For udvalgte fersk-fisk-leverandører læser AI automatisk vedhæftede fakturaer hver halve time (kreditorkortet: <span class="k">AI sporbarhed aktiv</span>).</li>
+        <li>Auktionskøb får sporbarhed med <span class="btn">Opdater sporbarhed efter auktion</span> — se <a href="/haandbog/koeb.html#auktion">Køb</a>.</li>
+        <li>Varemodtagelsen bogfører kun linjer med den påkrævede sporbarhed udfyldt.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="salg">
+      <p class="eyebrow">Ud af huset</p>
+      <h2>Ved pakning og salg</h2>
+      <p>Når en linje pakkes, udfyldes <strong>tomme</strong> sporbarhedsfelter automatisk i denne rækkefølge: kassens label → dagens produktion → lager → indkøb med modtagelse i dag → varekortets standard.</p>
+      <div class="msg">
+        <q>Linje … (vare …): Fangstområde er påkrævet for denne vare — udfyld et gyldigt fangstområde før bogføring.</q>
+        <span class="why">Varen kræver sporbarhed, og feltet er tomt (eller indeholder kun komma/punktum).</span>
+        <span class="do">Udfyld feltet på salgslinjen — eller brug <span class="btn">Hent sporbarhed (fallback)</span> på Salgstjek.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="ret">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Ret og find kilden</h2>
+      <p>På <strong>Salgstjek</strong>:</p>
+      <ul class="clean">
+        <li><span class="btn">Hent sporbarhed (fallback)</span> — sætter sporbarhed fra produktioner og lagerposter. <strong>Obs:</strong> overskriver eksisterende værdier (scannede linjer springes over).</li>
+        <li><span class="btn">Ret forkert område (genberegn)</span> — renser områder hvor der fx står en redskabskode.</li>
+        <li><span class="btn">Hvor kommer sporbarheden fra?</span> — forklarer kilden for den valgte linje.</li>
+      </ul>
+      <p>Bogførte <strong>vareposter</strong> kan rettes direkte (fangstredskab, -område, holdbarhed, produktionsdato).</p>
+    </section>
+
+    <section class="blk" id="oversigt">
+      <p class="eyebrow">Overblik</p>
+      <h2>Sporbarheds-oversigt</h2>
+      <p>Viser sporbarhed fra indkøb, lager og åben produktion samlet — og du kan rette direkte, så det skrives tilbage til kilden.</p>
+      <ul class="clean">
+        <li><span class="btn">Vis kun manglende sporbarhed</span> finder hullerne.</li>
+        <li><span class="btn">Audit: redskab i område</span> finder områder med en redskabskode i.</li>
+        <li><span class="btn">Udfyld sporbarhed på gamle salgsposter</span> fylder tomme salgs-lagerposter fra leverancer/varekort.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="leverandoer">
+      <p class="eyebrow">Certificering</p>
+      <h2>MSC/ASC på leverandøren</h2>
+      <p>Kreditorkortet → <strong>MSC / ASC certificering</strong>: certifikatnr., udløb og flueben <span class="k">MSC godkendt</span> / <span class="k">ASC godkendt</span> (stempler hvem og hvornår).</p>
+      <ol class="steps">
+        <li>Udfyld certifikatnummeret.</li>
+        <li>MSC: <span class="btn">Verificer MSC (åbn directory)</span> og søg på nummeret. ASC: <span class="btn">Verificer ASC (hent data)</span> slår op direkte.</li>
+        <li>Er certifikatet gyldigt, sæt fluebenet.</li>
+      </ol>
+      <p>Status: <span class="pill ok">Godkendt</span> <span class="pill wait">Udløber snart</span> (≤ 30 dage) <span class="pill stop">UDLØBET</span>, eller “Ikke verificeret” / “Mangler certifikatnr.”.</p>
+      <div class="msg">
+        <q>Vare … kræver en MSC-certificeret leverandør. Kreditor … er ikke MSC-godkendt eller certifikatet er udløbet.</q>
+        <span class="why">Du prøver at købe en MSC/ASC-vare hos en leverandør uden gyldigt certifikat.</span>
+        <span class="do">Godkend leverandørens certifikat først. (Gælder manuelt tastede linjer, ikke import.)</span>
+      </div>
+      <p><strong>MSC/ASC leverandør-certificering</strong> viser alle leverandører. <span class="btn">Send påmindelse nu</span> mailer listen over udløbne og snart udløbende (standard 60 dages varsel) til modtagerne i Venmark Opsætning.</p>
+      <p>Leverandørerklæringer (egenkontrol, HACCP) håndteres via portalen — se <a href="/haandbog/portal.html#leverandoer">Portalen</a>.</p>
+    </section>
+
+    <section class="blk" id="intertek">
+      <p class="eyebrow">Certificering</p>
+      <h2>MSC/ASC på varen (Intertek)</h2>
+      <p>En vare må først markeres MSC eller ASC, når Intertek har godkendt den. BC håndhæver tre krav:</p>
+      <ol class="steps">
+        <li>Tryk <span class="btn">Send til Intertek (MSC)</span> / <span class="btn">(ASC)</span> på varekortet og <strong>send</strong> mailen.</li>
+        <li>Vent mindst <strong>16 timer</strong>.</li>
+        <li>Sæt <span class="k">Intertek OK modtaget</span>, når godkendelsen er kommet.</li>
+      </ol>
+      <p>Først derefter kan fluebenet <span class="k">MSC</span>/<span class="k">ASC</span> slås til. Øko har ingen kreditor-kontrol.</p>
+    </section>
+
+    <section class="blk" id="attributter">
+      <p class="eyebrow">Visning</p>
+      <h2>Attributter &amp; dokumenter</h2>
+      <ul class="clean">
+        <li>MSC/ASC på varen synkroniseres automatisk til portalens vareattributter.</li>
+        <li><strong>Sæt altid MSC/ASC på varekortet</strong> — ikke via attribut-griddet på varelisten. Ellers springes Intertek-tjekket over, og varekortet bliver ikke opdateret.</li>
+        <li>Venmarks egne certifikatnumre (MSC-C-56273, ASC-C-01652) står i Venmark Opsætning og trykkes på faktura og følgeseddel.</li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Sporbarhed &amp; certificering</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

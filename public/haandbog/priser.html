@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Priser · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html" aria-current="page">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Prisansvarlige · kontor</p>
+    <h1 class="title">Priser</h1>
+    <p class="lede">Hvilken pris der havner på salgslinjen, hvordan AP Manuel låser den, hvordan fragt og kostpris regnes — og hvad du gør ved 999-priser og “under kostpris”.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#prioritet">Hvilken pris vinder</a></li>
+      <li><a href="#apmanuel">AP Manuel — prislåsen</a></li>
+      <li><a href="#opdater">Opdater priser på ordrer</a></li>
+      <li><a href="#kg">Kg-pris og enheder (999)</a></li>
+      <li><a href="#fragt">Fragt</a></li>
+      <li><a href="#beregn">Beregn priser</a></li>
+      <li><a href="#kostpris">Kostpris 1</a></li>
+      <li><a href="#underkost">Under kostpris</a></li>
+      <li><a href="#lageropg">Lageropgørelse (Excel)</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="prioritet">
+      <p class="eyebrow">Prisopslaget</p>
+      <h2>Hvilken pris vinder på salgslinjen</h2>
+      <p>Alle priser ligger på <strong>Venmark Prislistelinjer</strong>. Prisen slås op på <em>sælg-til</em>-kunden, i ordrens valuta, for den bestilte mængde i kg (trappepriser) og med start-/slutdato omkring arbejdsdatoen.</p>
+      <div class="formula">
+<span class="cm">Har kundens kæde-prisgruppe en pris på varen:</span><br>
+<b>Kundens egen pris</b> <span class="op">›</span> <b>Kædens pris</b> <span class="cm">(også hvis kæden er dyrere end kundens normale gruppe)</span><br><br>
+<span class="cm">Ellers:</span><br>
+<b>Laveste</b> af kundens egen pris, prisgruppen og “Alle kunder” <span class="op">›</span> varekortets enhedspris <span class="cm">(kun DKK)</span>
+      </div>
+      <ul class="clean">
+        <li><strong>Kæde-prisgruppe</strong> sættes på debitorkortet (Fakturering). Kædens pris slår kundens normale prisgruppe og tilbudspris — men ikke kundens egen pris.</li>
+        <li>Uden kæde vinder den <strong>laveste</strong> pris. En kundepris der er dyrere end gruppeprisen, bliver altså ikke brugt.</li>
+        <li><strong>Tilbudspris</strong> bruges, når debitoren har “Tilbudspris Tilladt” og ingen kædepris.</li>
+        <li><strong>Grossisttillæg</strong> på kunden giver Kostpris 1 + tillæg.</li>
+        <li><strong>EUR-ordrer</strong> bruger kun prislinjer i EUR.</li>
+      </ul>
+      <p>Du åbner kundens priser med <span class="btn">Venmark prislistelinjer</span> fra debitorkortet eller ordrelinjerne, eller <span class="btn">Kundepriser</span> på salgsordren.</p>
+    </section>
+
+    <section class="blk" id="apmanuel">
+      <p class="eyebrow">Prislåsen</p>
+      <h2>AP Manuel — når prisen er godkendt</h2>
+      <p>Fluebenet <span class="k">AP Manuel</span> på salgslinjen betyder: <strong>denne pris er godkendt</strong>. Så rører ingen automatik den — og den er påkrævet for at <strong>fakturere</strong> linjen (levering uden faktura går fint uden).</p>
+      <div class="note warn">
+        <p class="note-h">Prisen “springer tilbage”</p>
+        <p>Når AP Manuel er sat, ruller BC <strong>enhver</strong> ændring af enhedsprisen tilbage — også din — og uden fejlbesked. Det er låsen der virker.</p>
+      </div>
+      <h3 id="ret-laast">Sådan retter du en låst pris</h3>
+      <ol class="steps">
+        <li>Fjern fluebenet i <span class="k">AP Manuel</span>.</li>
+        <li>Tast den nye pris i <strong>Enhedspris</strong> eller <strong>Pris pr. stk/kg</strong>.</li>
+        <li>AP Manuel sætter sig selv igen, når du har tastet en ny pris. Ellers sæt den.</li>
+      </ol>
+      <p>Sætter du AP Manuel <em>uden</em> at taste en pris, finder BC først den rigtige Venmark-pris og låser den.</p>
+    </section>
+
+    <section class="blk" id="opdater">
+      <p class="eyebrow">Genprissætning</p>
+      <h2>Opdater priser på åbne ordrer</h2>
+      <p>Alle knapperne springer <strong>AP Manuel-linjer</strong>, frigivne ordrer og varer uden salgspris over:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Knap</th><th>Hvor</th><th>Rammer</th></tr></thead>
+          <tbody>
+            <tr><td><span class="btn">Opdater priser (ikke-manuelle linjer)</span></td><td>Salgsordre</td><td>Denne ordre</td></tr>
+            <tr><td><span class="btn">Opdater priser (alle ikke-manuelle)</span></td><td>Salgstjek, Salgsliste (summeret)</td><td>Alle åbne linjer</td></tr>
+            <tr><td><span class="btn">Opdater priser på alle ikke-manuelle linjer</span></td><td>Venmark Opsætning</td><td>Alle åbne linjer</td></tr>
+            <tr><td><span class="btn">Genberegn standardpris-linjer (999) på åbne ordrer</span></td><td>Venmark Opsætning</td><td>Kun linjer med 0 eller varekortets standardpris</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="blk" id="kg">
+      <p class="eyebrow">Enheder</p>
+      <h2>Kg-pris er ledende — og 999-fejlen</h2>
+      <p>Priser gemmes <strong>pr. kg</strong>. En kasse-linje får enhedspris = kg-pris × “Antal pr. enhed”. Feltet <span class="k">Pris pr. stk/kg</span> på linjen viser kg-/stk-prisen og kan rettes direkte (det sætter AP Manuel).</p>
+      <div class="msg">
+        <q>Linje … (vare …): Salgsprisen er 999 — 0,- og 999,- er ikke gyldige fakturapriser. Ret prisen før fakturering.</q>
+        <span class="why">BC fandt ingen pris til enheden og faldt tilbage på varekortets standardpris (999 × antal pr. enhed).</span>
+        <span class="do">Fjern AP Manuel, kør <em>Opdater priser (ikke-manuelle linjer)</em>, og sæt AP Manuel igen. Hjælper det ikke: tjek at varen har en prislinje til kunden.</span>
+      </div>
+      <div class="msg">
+        <q>Enheden kan ikke ændres på linje … — der er allerede leveret/faktureret på linjen.</q>
+        <span class="do">Opret en ny linje, eller fortryd leveringen først.</span>
+      </div>
+      <p>Står “Antal pr. enhed” forkert på en enhed (fx 1 på en kg-kasse), rettes det på <strong>Vareenheder (alle varer)</strong> — kolonnen <span class="k">Kontrol</span> er rød ved fejl.</p>
+    </section>
+
+    <section class="blk" id="fragt">
+      <p class="eyebrow">Fragt</p>
+      <h2>Fragt ligger på både kost og pris</h2>
+      <p>Fragten er <span class="k">Fragttillæg (kr./kg)</span> på debitorprisgruppen × varens <strong>nettovægt</strong>. Den lægges på <strong>både kostprisen og salgsprisen</strong> med samme beløb — så avancen er ren. Har kunden en kæde-prisgruppe med pris, bruges kædens fragtsats.</p>
+      <p>Ændres fragttillægget, får eksisterende prislinjer først den nye fragt, når priserne beregnes igen.</p>
+    </section>
+
+    <section class="blk" id="beregn">
+      <p class="eyebrow">Prisberegning</p>
+      <h2>Beregn priser</h2>
+      <p>Knappen <span class="btn">Beregn priser</span> på Venmark Prislistelinjer åbner rapporten <strong>Beregn Venmark Priser</strong>. Den kører i trin:</p>
+      <ol class="steps">
+        <li>Kostpris 1 på styklistevarer (hvis valgt).</li>
+        <li>Prisgruppelinjer: <em>(Brutto kostpris + Fragt + Profit kr.) × (1 + Profit %)</em>, afrundet til 0,50 kr.</li>
+        <li>Kundernes egne prislinjer (standard: ja).</li>
+        <li>Åbne ordrelinjer på den valgte afsendelsesdato (ikke AP Manuel, ikke frigivne).</li>
+      </ol>
+      <ul class="clean">
+        <li><strong>Kontraktpris</strong> på en prislinje: kun brutto kostpris opdateres, salgsprisen røres ikke.</li>
+        <li>Er Kostpris 1 = 0, bliver salgsprisen 0.</li>
+        <li>På <strong>Venmark Vareliste</strong> findes også <span class="btn">Beregn priser (denne varegruppe)</span>, <span class="btn">Beregn priser (alle varer)</span> og <span class="btn">Beregn Venmark Priser (alle trin)</span>.</li>
+        <li><span class="btn">Slet udløbne</span> rydder prislinjer med passeret slutdato.</li>
+      </ul>
+      <div class="note warn">
+        <p class="note-h">Kæde-priser: sæt Kontraktpris</p>
+        <p>Beregn priser regner også kæde-prisgruppens linjer om, og fragten kan så ende med at blive lagt på to gange. Sæt <strong>Kontraktpris</strong> på kædens linjer, så de står fast.</p>
+      </div>
+      <div class="note">
+        <p class="note-h">Brug Beregn Venmark Priser</p>
+        <p>Der findes også en ældre rapport, <em>Opdater priser</em>, med en anden formel. Brug <strong>Beregn Venmark Priser</strong> — de to kan overskrive hinandens resultater.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="kostpris">
+      <p class="eyebrow">Kostpris</p>
+      <h2>Kostpris 1</h2>
+      <p><strong>Kostpris 1</strong> er grundlaget for alle beregnede priser. På producerede varer regnes den af styklisten:</p>
+      <div class="formula">
+<b>Kostpris 1</b> <span class="op">=</span> Σ(primær råvares Kostpris 1 <span class="op">×</span> antal) <span class="op">+</span> løn <span class="op">+</span> emballage <span class="op">+</span> andre omk. <span class="op">−</span> biproduktværdi
+      </div>
+      <ul class="clean">
+        <li><strong>Handelsvarer</strong> får Kostpris 1 manuelt på siden <strong>Kostpris 1 Kladde</strong> (<span class="btn">Gem Kostpris 1</span>).</li>
+        <li><strong>Råvare med kostpris 0:</strong> har færdigvaren lager eller en montageordre i dag, bevares dens Kostpris 1. Ellers bliver den 0 — og så bliver salgsprisen også 0.</li>
+        <li>Alle ændringer af Kostpris 1 logges med dato (fra november 2026) og bruges af lageropgørelsen.</li>
+        <li>Ved bogført produktion gemmes den beregnede Kostpris 1, så du på <strong>Produktionshistorik</strong> kan se afvigelsen mellem reel og beregnet kostpris (se <a href="/haandbog/produktion.html#historik">Produktion</a>).</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="underkost">
+      <p class="eyebrow">Avance-værn</p>
+      <h2>Under kostpris</h2>
+      <p>Kostprisen på salgslinjen står altid i <strong>danske kroner</strong> — på en EUR-ordre omregnes salgsprisen med ordrens kurs, før de sammenlignes.</p>
+      <div class="msg">
+        <q>Salgsprisen er UNDER kostpris på vare … Sæt enhedsprisen op til mindst … — det skal rettes før du kan gå til næste linje.</q>
+        <span class="why">Du har tastet en pris under kostprisen. Du kan ikke forlade linjen.</span>
+        <span class="do">Sæt prisen op — eller få rettet kostprisen, hvis den er forkert.</span>
+      </div>
+      <div class="msg">
+        <q>Linje … (vare …): Salgspris … (RV, ekskl. moms) er ikke højere end kostpris … (RV).</q>
+        <span class="why">Ved bogføring skal prisen være <em>højere</em> end kostprisen — lig med er ikke nok.</span>
+        <span class="do">Ret prisen på linjen.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="lageropg">
+      <p class="eyebrow">Status</p>
+      <h2>Lageropgørelse (Excel)</h2>
+      <p>Søg efter <strong>Lageropgørelse (Excel)</strong>. Vælg <span class="k">Lagerdato</span> og evt. <span class="k">Lokationsfilter</span> (tom = alle, fx <span class="k">HIRTSHALS|SKAGEN</span>).</p>
+      <ul class="clean">
+        <li>Ét faneblad pr. lokation med varenr., beskrivelse, enhed, lager, Kostpris 1 og værdi — og et faneblad “I alt”.</li>
+        <li>Kostpris 1 tages fra historikken på lagerdatoen. Kolonnen <em>Kostpris1-kilde</em> viser “Historik” eller “Aktuel” (når der ikke er historik så langt tilbage).</li>
+        <li>Lager 0 udelades. Negativt lager medtages.</li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Priser</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

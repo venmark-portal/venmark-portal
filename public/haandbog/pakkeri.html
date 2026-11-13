@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Pakkeri &amp; scanning · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html" aria-current="page">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Pakkeri · lager</p>
+    <h1 class="title">Pakkeri &amp; scanning</h1>
+    <p class="lede">Fra ordren er klar til pakning til færdiglabel er printet: scanning, kolli og kg, labels, fragt — og hvad du gør, når scanneren eller vægten driller.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#flow">Pakning trin for trin</a></li>
+      <li><a href="#scan">Pakke-scanning</a></li>
+      <li><a href="#laase">Pakkede linjer er låst</a></li>
+      <li><a href="#kolli">Kolli &amp; forventede kasser</a></li>
+      <li><a href="#dagfoer">Pak dagen før</a></li>
+      <li><a href="#labels">Labels</a></li>
+      <li><a href="#fragt">Shipmondo &amp; fragt</a></li>
+      <li><a href="#scanner">Scanner &amp; vægt driller</a></li>
+      <li><a href="#bruger">Brugeropsætning</a></li>
+      <li><a href="#kladde">Lagerkladde</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="flow">
+      <p class="eyebrow">Arbejdsgangen</p>
+      <h2>Pakning trin for trin</h2>
+      <ol class="steps">
+        <li><strong>Godkend til pakning.</strong> Knappen <span class="btn">Godkend til pakning</span> på salgsordren (gruppen Venmark). Ikke-godkendte ordrer står med <strong>rød tekst</strong> i ordrelisterne.</li>
+        <li><strong>Sæt PAKKER</strong> på salgsordren (gruppen Pakkeinformation).</li>
+        <li><strong>Scan</strong> varerne på <span class="btn">Pakke-scanning</span>.</li>
+        <li><strong>Afslut pakning.</strong> Scannede linjer får de faktiske kg og antal kasser, og <span class="k">Pakket af</span> = PAKKER.</li>
+        <li><strong>Print færdiglabel.</strong> Sætter Pakket af på resten af linjerne, markerer ordren færdigpakket og printer labelen. Har kunden <span class="k">AUTObekræft</span>, sendes ordrebekræftelsen automatisk.</li>
+        <li><strong>Sæt Packed By på ordrehovedet</strong>, når alle linjer er pakket. Først da kan ordren bogføres.</li>
+      </ol>
+      <div class="msg">
+        <q>Salgshovedet mangler “Pakker” — udfyld feltet før færdiglabel printes.</q>
+        <span class="do">Udfyld PAKKER på ordren.</span>
+      </div>
+      <div class="msg">
+        <q>Alle varelinjer skal være pakket (“Pakket af” udfyldt), før ordren kan markeres “Packed By”. … linje(r) mangler.</q>
+        <span class="do">Pak de manglende linjer (eller print færdiglabel), og sæt så Packed By.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="scan">
+      <p class="eyebrow">Scanning</p>
+      <h2>Pakke-scanning</h2>
+      <p>Scan i feltet <span class="k">Stregkode</span>. Ordrelinjerne nedenunder viser bestilt, scannet, kasser og hvad der mangler.</p>
+      <ul class="clean">
+        <li><strong>Markér en linje</strong> før du scanner, hvis samme vare står flere gange (fx både KG og KASSE) — så går scanningen til netop den linje.</li>
+        <li>Knapperne <span class="btn">-1</span> <span class="btn">+1</span> <span class="btn">+5</span> <span class="btn">+10</span> retter antallet. <span class="btn">Kopier seneste</span> gentager sidste scanning.</li>
+        <li><strong>QT-koder</strong> (fx QT005 = 5 kolli) retter antal kolli på seneste scanning.</li>
+        <li>Lukker du siden, afsluttes pakningen automatisk, hvis der er scannet noget.</li>
+      </ul>
+      <p>Scanneren forstår produktionskasser (BX…), vægtlabels (VM… og 28-EAN), lotnumre, EAN/varereferencer, modtagelsesnumre og varenumre.</p>
+      <div class="msg">
+        <q>ADVARSEL: … ikke på ordren — ny linje oprettet</q>
+        <span class="why">Varen stod ikke på ordren. Den er tilføjet som ny linje.</span>
+        <span class="do">Er det en fejlscanning, så fjern linjen igen (Nulstil scanninger eller -1).</span>
+      </div>
+      <div class="msg">
+        <q>Produktionskasser (BX) er unikke — brug scanneren til at tilføje flere kasser.</q>
+        <span class="do">Scan hver BX-kasse for sig — de kan ikke kopieres eller tælles op.</span>
+      </div>
+      <div class="note warn">
+        <p class="note-h">Der sker ingenting når jeg scanner</p>
+        <p>Står linjen som <span class="pill stop">Afvist</span> eller <span class="pill wait">Afventer</span>, bliver scanningen afvist — <strong>uden besked på skærmen</strong>. Tjek linjens status på salgsordren. Afvist: bed salg godkende linjen. Afventer: pak alle godkendte linjer for varen først.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="laase">
+      <p class="eyebrow">Beskyttelse</p>
+      <h2>Pakkede linjer er låst</h2>
+      <ul class="clean">
+        <li>Antal kan ikke ændres på en pakket linje: <em>“… den er pakket af … Ryd “Packed By” eller annullér pakningen først.”</em></li>
+        <li>Pakkede eller scannede linjer kan ikke slettes, før pakningen er annulleret.</li>
+        <li>Når Packed By står på ordrehovedet, kan der ikke tilføjes linjer.</li>
+        <li>Brugere med rollen <strong>Lager</strong> må ikke skifte vare eller ændre oprindeligt antal — bed en sælger.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="kolli">
+      <p class="eyebrow">Kasser</p>
+      <h2>Kolli &amp; forventede kasser</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Felt</th><th>Betyder</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fld">Forventet kasser</span> (Pakkeantal)</td><td>Antal ÷ kg pr. kasse. Regnes når antallet tastes.</td></tr>
+            <tr><td><span class="fld">Pakkede kasser</span> (Kolli)</td><td>Det faktiske antal scannede kasser — også på kg-linjer. Kommer med på faktura og følgeseddel.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Står <em>Forventet kasser</em> på 0, mangler varen salgsenhed eller antal pr. kolli. Tjek varekortet → <strong>Logistik / salgsenhed</strong>. Begge kolonner ses på <strong>Salgsordrelinjer – samlet oversigt</strong>.</p>
+    </section>
+
+    <section class="blk" id="dagfoer">
+      <p class="eyebrow">Hvornår pakkes der</p>
+      <h2>Pak dagen før — eller samme dag</h2>
+      <p>Henter bilen tidligt om morgenen (leveringsformens <span class="k">Hentes kl.</span> er lig med eller før <span class="k">Pak næste dag til kl.</span> i Venmark Opsætning), pakkes ordren <strong>arbejdsdagen før</strong>. Varer med fluebenet <span class="k">Pak samme dag (ankommer tidligt)</span> på varekortet pakkes alligevel på afsendelsesdagen. Netfisk pakkes altid på afsendelsesdagen.</p>
+    </section>
+
+    <section class="blk" id="labels">
+      <p class="eyebrow">Print</p>
+      <h2>Labels</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Knap på salgsordren</th><th>Gør</th></tr></thead>
+          <tbody>
+            <tr><td><span class="btn">Print færdiglabel</span></td><td>Færdiglabel med stregkode “PL”+ordrenr. Markerer ordren færdigpakket.</td></tr>
+            <tr><td><span class="btn">Print pakkelabels</span></td><td>“Antal labels” pr. linje. Springer allerede pakkede linjer og linjer med 0 labels over. Printer igen hvis du kører den igen.</td></tr>
+            <tr><td><span class="btn">Print adresselabel</span> / <span class="btn">Print leveringskode-label</span></td><td>Adresse / leveringskode (kræver at ordren har en leveringskode).</td></tr>
+            <tr><td><span class="btn">Genudskriv kopi-label (dato = nu)</span></td><td>Scan en label og få en kopi med dags dato. Siden bliver åben, så du kan scanne løbende.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note tip">
+        <p class="note-h">Stregkoden kan tastes men ikke scannes</p>
+        <p>Stregkoderne er Code39. Er den sidste “*” eller den tomme margen omkring stregkoden skåret af labelen, kan scanneren ikke læse den. Tjek label-størrelsen i printeren.</p>
+      </div>
+      <p>Kaviarlabels (Ø40 med CITES) printes fra Produktionsoversigten — se <a href="/haandbog/produktion.html#kaviar">Produktion</a>.</p>
+    </section>
+
+    <section class="blk" id="fragt">
+      <p class="eyebrow">Pakker med fragtfirma</p>
+      <h2>Shipmondo &amp; fragt</h2>
+      <p>Knapperne <span class="btn">Opret Shipmondo forsendelse</span>, <span class="btn">Shipmondo forsendelser</span> og <span class="btn">Annuller Shipmondo forsendelse</span> findes på salgsordren.</p>
+      <ul class="clean">
+        <li><strong>Xpressen kræver modtagers mobilnummer.</strong> Mangler det på ordren (eller Netfisk-ordren), fejler oprettelsen.</li>
+        <li>Vægten sendes som 10 kg pr. forsendelse.</li>
+        <li><strong>Annullering virker ikke fra BC.</strong> Annullér i app.shipmondo.com og brug så <span class="btn">Ryd Shipmondo-kobling</span>.</li>
+      </ul>
+      <p>Egne biler: ruten og leveringsbeviser ligger i chaufførappen — se <a href="/haandbog/drift.html#chauffoer">Drift</a>. Eksterne vognmænd får en fragtliste via link.</p>
+    </section>
+
+    <section class="blk" id="scanner">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Scanner &amp; vægt driller</h2>
+      <div class="msg">
+        <q>Ordre ‘226911+23995’ ikke fundet</q>
+        <span class="why">Scanneren kører med amerikansk tastatur — “-” bliver til “+”. BC retter det selv de fleste steder.</span>
+        <span class="do">Varig løsning: sæt scanneren til dansk layout med konfigurationsstregkoden fra scannerens manual.</span>
+      </div>
+      <ul class="clean">
+        <li><strong>Scanneren åbner Chrome-downloads:</strong> scannerens suffiks er Ctrl+J/LF. Skift det til CR (Enter).</li>
+        <li><strong>Scanningen virker, men ikke når vægten er tilsluttet:</strong> vægten stjæler fokus. Det er slået fra som standard — kontakt administrator, hvis det sker igen.</li>
+        <li><strong>Felterne er grå og kan ikke scannes:</strong> prøv <span class="btn">Rediger liste</span> først. Hjælper det ikke, mangler du rettigheder.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="bruger">
+      <p class="eyebrow">Opsætning</p>
+      <h2>Brugeropsætning for pakkere</h2>
+      <p>En pakker skal have to ting i <strong>Brugeropsætning</strong>:</p>
+      <ul class="clean">
+        <li><span class="k">Brugerrolle</span> = <strong>Lager</strong> (standard er Sælger).</li>
+        <li><span class="k">Salespers./Purch. Code</span> = pakkerens kode (den skal findes under Sælgere/indkøbere). Den er påkrævet for at registrere varemodtagelser.</li>
+      </ul>
+      <p>Knappen <span class="btn">Vis min brugerrolle</span> på Salgstjek viser hvad BC tror du er.</p>
+    </section>
+
+    <section class="blk" id="kladde">
+      <p class="eyebrow">Regulering</p>
+      <h2>Lagerkladde</h2>
+      <p>Varekladde og lageropgørelseskladde har felterne Fangstredskab, Fangstområde, Produktionsdato og Udløbsdato.</p>
+      <div class="msg">
+        <q>Fangstredskab er påkrævet på vare … og skal udfyldes ved opregulering.</q>
+        <span class="why">Kravet gælder kun <strong>opregulering</strong> af varer med påkrævet sporbarhed.</span>
+        <span class="do">Udfyld feltet. På lageropgørelseskladden kan <span class="btn">Hent sporbarhed (fallback)</span> udfylde det fra produktioner, lager og indkøb.</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Pakkeri &amp; scanning</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>
