@@ -99,9 +99,11 @@ export default function RobotChat() {
     try { sessionStorage.setItem(NOEGLE, JSON.stringify({ samtaleId, ture, aaben })) } catch {}
   }, [samtaleId, ture, aaben])
 
+  // Altid nederst — også når panelet først vises (efter status-kaldet ved genindlæsning, fx når
+  // robotten har lagt i kurven, eller når kunden åbner chatten). Ellers står samtalen øverst.
   useEffect(() => {
     listeRef.current?.scrollTo({ top: listeRef.current.scrollHeight })
-  }, [ture, opslag])
+  }, [ture, opslag, aktiv, aaben])
 
   const spoerg = useCallback(async (tekst: string, start = false, id = samtaleId) => {
     setSvarer(true); setOpslag('')
