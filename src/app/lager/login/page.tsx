@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Boxes, Lock, User } from 'lucide-react'
+import OmAppen from '@/components/lager/OmAppen'
 
 interface Bruger {
   id: string
@@ -99,6 +100,10 @@ export default function LagerLoginPage() {
             {travl ? 'Logger ind …' : 'Log ind'}
           </button>
         </form>
+
+        {/* Udgave og hvad enheden kan — så man kan se om telefonen sidder fast på
+            en gammel side, før man begynder at lede efter fejl i appen. */}
+        <OmAppen />
       </div>
     </div>
   )

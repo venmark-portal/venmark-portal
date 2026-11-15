@@ -89,6 +89,11 @@ export default function Bemaerkning({
           <span className={'text-xs ' + (tekst.length >= MAKS ? 'font-semibold text-amber-700' : 'text-gray-400')}>
             {tekst.length} / {MAKS} tegn
           </span>
+          {!kanTale && (
+            // iPhone og Safari har ingen talegenkendelse i browseren — men iOS' eget
+            // tastatur har en mikrofon-tast, og den virker i feltet her.
+            <span className="text-xs text-gray-400">Indtal med mikrofonen på dit tastatur</span>
+          )}
           {kanTale && (
             <button
               type="button"

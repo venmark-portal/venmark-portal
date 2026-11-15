@@ -7,6 +7,7 @@ import {
   AlertTriangle, Check, ClipboardList, CloudOff, Database, LogOut, PackageSearch, RotateCcw, Tag, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
+import OmAppen from '@/components/lager/OmAppen'
 import {
   antalVarer, hentVare, laegIUdbakke, sendUdbakke, soegVarer, synkroniserKatalog, udbakkeAntal,
   type KatalogVare,
@@ -250,6 +251,8 @@ export default function LagerForside() {
           </li>
         ))}
       </ul>
+
+      <OmAppen />
 
       {laerKode && (
         <LaerKode
