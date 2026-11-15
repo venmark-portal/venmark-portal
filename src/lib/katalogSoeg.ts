@@ -1,4 +1,4 @@
-// Robottens egen varesøgning i HELE kataloget.
+// Varesøgning i HELE kataloget — bruges af portalens søgefelt (api/products) og svar-robotten.
 //
 // BC's OData-søgning (contains) skelner mellem store og små bogstaver og søger på hele
 // sætningen. "bakka" fandt derfor ikke "Færøsk laksefilet 1700-2100 BAKKA", og "laks bakka"
@@ -41,8 +41,10 @@ async function katalog(): Promise<KatalogVare[]> {
       .then(v => { cache = { varer: v, t: Date.now() }; return v })
       .finally(() => { igang = null })
   }
-  // Fejler BC, bruges det gamle katalog hellere end ingenting.
-  return igang.catch(err => { if (cache) return cache.varer; throw err })
+  // Udløbet: søg i det kendte katalog nu og lad det nye hente i baggrunden — ellers venter
+  // én kunde hvert kvarter på hele kataloget. Kun allerførste søgning efter genstart venter.
+  if (cache) { igang.catch(err => console.error('[katalog] genindlæsning fejlede', err)); return cache.varer }
+  return igang
 }
 
 const norm = (s: string) => s.toLowerCase().normalize('NFC').replace(/[^0-9a-zæøåäöüéèáàíóúß]+/g, ' ').trim()
@@ -66,20 +68,21 @@ export async function soegKatalog(q: string, sprog: Lang, max = 60): Promise<str
     sprog === 'da' ? Promise.resolve(new Map<string, string>()) : getVarenavne(sprog).catch(() => new Map<string, string>()),
   ])
 
-  const scoret: { nr: string; n: number; laengde: number }[] = []
+  const scoret: { nr: string; n: number; laengde: number; nrTraef: boolean }[] = []
   for (const v of varer) {
     const navn = norm(`${v.navn} ${oversat.get(v.nr) ?? ''} ${v.nr}`)
     const navneOrd = navn.split(' ')
     let n = 0
-    for (const o of ord) if (v.nr.toLowerCase() === o || ordMatcher(o, navn, navneOrd)) n++
-    if (n > 0) scoret.push({ nr: v.nr, n, laengde: v.navn.length })
+    for (const o of ord) if (v.nr.toLowerCase().startsWith(o) || ordMatcher(o, navn, navneOrd)) n++
+    if (n > 0) scoret.push({ nr: v.nr, n, laengde: v.navn.length, nrTraef: ord.some(o => v.nr.toLowerCase().startsWith(o)) })
   }
   const bedst = Math.max(0, ...scoret.map(s => s.n))
   // Kræv alle ord; kun hvis ingen vare har dem alle, nøjes vi med det bedste.
   const krav = scoret.some(s => s.n === ord.length) ? ord.length : bedst
   return scoret
     .filter(s => s.n >= krav)
-    .sort((a, b) => b.n - a.n || a.laengde - b.laengde)
+    // Varenummer-træf først (som den gamle søgning), så flest ord, så korteste navn.
+    .sort((a, b) => Number(b.nrTraef) - Number(a.nrTraef) || b.n - a.n || a.laengde - b.laengde)
     .slice(0, max)
     .map(s => s.nr)
 }

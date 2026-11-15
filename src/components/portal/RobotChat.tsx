@@ -10,7 +10,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useT } from '@/lib/i18n/portal/LangProvider'
 import { robotDict } from '@/lib/i18n/portal/dict/robot'
 
-interface Tur { rolle: 'kunde' | 'robot'; tekst: string }
+interface Tur {
+  rolle: 'kunde' | 'robot'
+  tekst: string
+  id?: number              // robottens svar-id (fra 'slut') — bruges til 👍/👎
+  vurdering?: 1 | -1
+  kommentarSendt?: boolean
+}
 
 const NOEGLE = 'venmark-robot'
 const HILST  = 'venmark-robot-hilst'
@@ -36,6 +42,33 @@ function Tekst({ s }: { s: string }) {
           ? <strong key={i}>{del.slice(2, -2)}</strong>
           : <span key={i}>{del}</span>)}
     </>
+  )
+}
+
+/** 👍/👎 under et svar. Ved 👎 kan kunden skrive, hvad der var forkert (valgfrit). */
+function Vurdering({ tur, t, onVurder }: { tur: Tur; t: (k: any) => string; onVurder: (v: 1 | -1, kommentar?: string) => void }) {
+  const [tekst, setTekst] = useState('')
+  const knap = (v: 1 | -1, ikon: string, label: string) => (
+    <button type="button" onClick={() => onVurder(v)} aria-label={label} title={label} aria-pressed={tur.vurdering === v}
+      className={'rounded px-1.5 py-0.5 text-sm transition ' + (tur.vurdering === v ? 'bg-white shadow-sm' : 'opacity-50 hover:opacity-100')}>
+      {ikon}
+    </button>
+  )
+  return (
+    <div className="mt-1.5 whitespace-normal">
+      <div className="flex items-center gap-1">
+        {knap(1, '👍', t('godtSvar'))}
+        {knap(-1, '👎', t('daarligtSvar'))}
+        {tur.vurdering && <span className="ml-1 text-xs text-gray-500">{t('tak')}</span>}
+      </div>
+      {tur.vurdering === -1 && !tur.kommentarSendt && (
+        <form className="mt-1.5 flex gap-1" onSubmit={e => { e.preventDefault(); if (tekst.trim()) onVurder(-1, tekst.trim()) }}>
+          <input value={tekst} onChange={e => setTekst(e.target.value)} placeholder={t('hvadForkert')} maxLength={1000}
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1 text-base md:text-xs" />
+          <button className="rounded-lg bg-gray-700 px-2 py-1 text-xs text-white">{t('send')}</button>
+        </form>
+      )}
+    </div>
   )
 }
 
@@ -103,6 +136,14 @@ export default function RobotChat() {
             return kopi
           })
           else if (h.t === 'fejl') tilfoej(h.v ?? t('fejl'))
+          else if (h.t === 'slut' && h.v) {
+            const id = Number(h.v)
+            setTure(prev => {
+              const kopi = prev.slice()
+              kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], id }
+              return kopi
+            })
+          }
         }
       }
     } catch {
@@ -139,6 +180,16 @@ export default function RobotChat() {
     if (!tekst || svarer) return
     setInput('')
     spoerg(tekst)
+  }
+
+  const vurder = async (idx: number, vurdering: 1 | -1, kommentar?: string) => {
+    const tur = ture[idx]
+    if (!tur?.id) return
+    setTure(prev => prev.map((x, i) => i === idx ? { ...x, vurdering, kommentarSendt: x.kommentarSendt || !!kommentar } : x))
+    await fetch('/api/portal/robot/vurdering', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tur.id, vurdering, kommentar }),
+    }).catch(() => {})
   }
 
   const nySamtale = () => {
@@ -211,6 +262,9 @@ export default function RobotChat() {
                   {tur.tekst
                     ? <Tekst s={tur.tekst} />
                     : <span className="text-gray-500">{opslagTekst}</span>}
+                  {tur.rolle === 'robot' && tur.id && (
+                    <Vurdering tur={tur} t={t} onVurder={(v, k) => vurder(i, v, k)} />
+                  )}
                 </div>
               </div>
             ))}

@@ -1,21 +1,9 @@
-// Robottens instruks. Den faste del (regler + FAQ) caches hos Anthropic, så den kun
+// Robottens instruks. Den faste del (regler + Robot-viden fra /admin/robot/viden) caches hos Anthropic, så den kun
 // betales fuldt én gang hvert 5. minut; den variable del (dato, kunde) kommer bagefter.
 
-import { readFile } from 'fs/promises'
-import path from 'path'
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
 import type { RobotKunde } from './kontekst'
-
-let faqCache: { tekst: string; t: number } | null = null
-
-/** content/kundeservice-faq.md — læses fra disk, genlæses højst hvert 10. minut. */
-async function faq(): Promise<string> {
-  if (faqCache && Date.now() - faqCache.t < 10 * 60_000) return faqCache.tekst
-  const raa = await readFile(path.join(process.cwd(), 'content', 'kundeservice-faq.md'), 'utf8').catch(() => '')
-  const tekst = raa.replace(/<!--[\s\S]*?-->/g, '').trim()
-  faqCache = { tekst, t: Date.now() }
-  return tekst
-}
+import { videnTilPrompt } from './viden'
 
 const REGLER = `Du er Venmarks kundeservice-assistent i kundeportalen hos Venmark Fisk A/S, fiskegrossist i Hirtshals. Du taler med en indlogget erhvervskunde (fiskehandler, restaurant, butik, storkøkken).
 
@@ -39,7 +27,7 @@ Fakta:
 - Ved du ikke svaret, så sig det ærligt og tilbyd at sende spørgsmålet til kontoret med send_til_kontoret. Vis beskeden og få kundens ja, før du sender.
 - Svar kun på spørgsmål om Venmark, fisk og skaldyr, tilberedning/opbevaring i almindelighed og kundens handel. Afvis høfligt alt andet.
 
-Viden om Venmark (FAQ — gælder frem for din egen viden):
+Viden om Venmark (skrevet af kontoret — gælder frem for din egen viden):
 `
 
 export async function systemPrompt(k: RobotKunde): Promise<TextBlockParam[]> {
@@ -49,7 +37,7 @@ export async function systemPrompt(k: RobotKunde): Promise<TextBlockParam[]> {
   })
   const sprog = k.sprog === 'en' ? 'engelsk' : k.sprog === 'de' ? 'tysk' : 'dansk'
   return [
-    { type: 'text', text: REGLER + (await faq()), cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: REGLER + (await videnTilPrompt()), cache_control: { type: 'ephemeral' } },
     {
       type: 'text',
       text: `Nu: ${tid} (dansk tid).\nKunde: ${k.navn} (kundenr. ${k.customerNo}).\nSprog: ${sprog}.`,

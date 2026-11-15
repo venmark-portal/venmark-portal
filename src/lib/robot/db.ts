@@ -34,6 +34,14 @@ async function run(): Promise<void> {
       "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT NOW()
     )
   `
+  // Vurderinger: kunden 👍/👎 i chatten, kontoret 👍/👎 under /admin/robot. Både gode og
+  // dårlige svar gennemgås — de dårlige retter robotten, de gode lærer kontoret noget om
+  // hvad kunderne spørger om (og kan gemmes som viden, så robotten svarer ens næste gang).
+  await prisma.$executeRaw`ALTER TABLE "RobotBesked" ADD COLUMN IF NOT EXISTS "kundeVurdering" SMALLINT`
+  await prisma.$executeRaw`ALTER TABLE "RobotBesked" ADD COLUMN IF NOT EXISTS "kundeKommentar" TEXT`
+  await prisma.$executeRaw`ALTER TABLE "RobotBesked" ADD COLUMN IF NOT EXISTS "kontorVurdering" SMALLINT`
+  await prisma.$executeRaw`ALTER TABLE "RobotBesked" ADD COLUMN IF NOT EXISTS "kontorNote" TEXT`
+  await prisma.$executeRaw`ALTER TABLE "RobotBesked" ADD COLUMN IF NOT EXISTS behandlet BOOLEAN NOT NULL DEFAULT false`
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "RobotBesked_samtale" ON "RobotBesked" ("samtaleId", id)
   `
@@ -93,13 +101,37 @@ export async function hentSamtale(customerId: string, samtaleId: string, max = 3
 export async function logTur(t: {
   customerId: string; samtaleId: string; rolle: 'kunde' | 'robot' | 'fejl'; tekst: string
   vaerktoejer?: string; inputTokens?: number; outputTokens?: number; cacheTokens?: number; somAdmin?: string | null
-}): Promise<void> {
+}): Promise<number> {
   await ensureRobotSkema()
-  await prisma.$executeRaw`
+  const rows = await prisma.$queryRaw<{ id: bigint }[]>`
     INSERT INTO "RobotBesked" ("customerId", "samtaleId", rolle, tekst, vaerktoejer, "inputTokens", "outputTokens", "cacheTokens", "somAdmin")
     VALUES (${t.customerId}, ${t.samtaleId}, ${t.rolle}, ${t.tekst}, ${t.vaerktoejer ?? ''},
             ${t.inputTokens ?? 0}, ${t.outputTokens ?? 0}, ${t.cacheTokens ?? 0}, ${t.somAdmin ?? null})
+    RETURNING id
   `
+  return Number(rows[0]?.id ?? 0)
+}
+
+/** Kundens 👍/👎 på et af robottens svar — kun på kundens egne svar. */
+export async function saetKundeVurdering(customerId: string, id: number, vurdering: 1 | -1, kommentar: string | null): Promise<boolean> {
+  await ensureRobotSkema()
+  const n = await prisma.$executeRaw`
+    UPDATE "RobotBesked" SET "kundeVurdering" = ${vurdering}, "kundeKommentar" = ${kommentar}, behandlet = false
+    WHERE id = ${id} AND "customerId" = ${customerId} AND rolle = 'robot'
+  `
+  return n > 0
+}
+
+export async function saetKontorVurdering(id: number, vurdering: 1 | -1 | null, note: string | null): Promise<void> {
+  await ensureRobotSkema()
+  await prisma.$executeRaw`
+    UPDATE "RobotBesked" SET "kontorVurdering" = ${vurdering}, "kontorNote" = ${note}, behandlet = true WHERE id = ${id}
+  `
+}
+
+export async function markerBehandlet(id: number): Promise<void> {
+  await ensureRobotSkema()
+  await prisma.$executeRaw`UPDATE "RobotBesked" SET behandlet = true WHERE id = ${id}`
 }
 
 /** Kundens spørgsmål i dag (dansk tid) — til dagsloftet. */

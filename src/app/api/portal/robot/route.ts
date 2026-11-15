@@ -89,11 +89,11 @@ export async function POST(req: NextRequest) {
         })
         const svar = r.svar || 'Det kunne jeg ikke finde ud af lige nu. Prøv at spørge på en anden måde, eller skriv til os under Beskeder.'
         if (!r.svar) send('tekst', svar)
-        await logTur({
+        const svarId = await logTur({
           customerId: k.customerId, samtaleId, rolle: 'robot', tekst: svar, vaerktoejer: r.vaerktoejer.join(','),
           inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheTokens: r.cacheTokens, somAdmin: k.somAdmin,
         })
-        send('slut')
+        send('slut', String(svarId))   // id → kunden kan give 👍/👎 på netop dette svar
       } catch (err: any) {
         console.error('[robot] samtale fejlede', err)
         await logTur({ customerId: k.customerId, samtaleId, rolle: 'fejl', tekst: String(err?.message ?? err).slice(0, 1000), somAdmin: k.somAdmin }).catch(() => {})

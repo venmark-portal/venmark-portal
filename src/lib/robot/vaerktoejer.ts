@@ -22,7 +22,7 @@ import { bcOrdreLevering } from '@/lib/tilfoejOrdre'
 import { ymdLokal } from '@/lib/aabenOrdre'
 import { addBusinessDays } from '@/lib/dateUtils'
 import { RobotKontekst, prisFor, trappeFor } from './kontekst'
-import { soegKatalog } from './katalog'
+import { soegKatalog } from '@/lib/katalogSoeg'
 
 const MAX_VARER = 12
 

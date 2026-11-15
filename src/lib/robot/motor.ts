@@ -94,7 +94,10 @@ export async function koerSamtale(
       on.vaerktoej(blok.name)
       let indhold: string
       try {
-        indhold = JSON.stringify(await koerVaerktoej(blok.name, blok.input, ctx))
+        const r: any = await koerVaerktoej(blok.name, blok.input, ctx)
+        // Søgning uden træf markeres — admin viser dem som "det kunderne ikke kunne finde".
+        if (Array.isArray(r?.varer) && r.varer.length === 0) brugte[brugte.length - 1] += '→0'
+        indhold = JSON.stringify(r)
       } catch (err) {
         console.error(`[robot] værktøj ${blok.name} fejlede`, err)
         indhold = JSON.stringify({ fejl: 'Opslaget fejlede lige nu. Sig det til kunden og tilbyd at sende spørgsmålet til kontoret.' })
