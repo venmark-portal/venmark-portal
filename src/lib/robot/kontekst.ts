@@ -8,7 +8,7 @@
 import { prisma } from '@/lib/prisma'
 import {
   getPortalPrices, getWebshopVisibleItemNos, getPortalShipmentMethods, getPortalCalendarDays,
-  getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getCustomerLocationCode,
+  getCustomerShipmentMethodCode, getCustomerPortalShipmentMethods, getCustomerLocationCode, getCustomerFavorites,
   type BCPortalPrice, type BCShipmentMethod, type BCCalendarDay,
 } from '@/lib/businesscentral'
 import { getDeliveryDatesForMethod, getDeadlineForMethodDelivery, nextBusinessDays } from '@/lib/dateUtils'
@@ -69,6 +69,18 @@ export class RobotKontekst {
     const [synlige, blok] = await Promise.all([this.synlige(), this.blokerede()])
     if (blok.has(itemNo)) return false
     return synlige === null || synlige.has(itemNo)
+  }
+
+  /** Kundens favoritter: STD (varer kunden altid skal have) og øvrige aktive favoritter. */
+  favoritter(): Promise<{ std: Set<string>; fav: Set<string> }> {
+    return this.husk('fav', async () => {
+      const l = await getCustomerFavorites(this.kunde.customerNo).catch(() => [])
+      const aktive = l.filter(f => f.active !== false)
+      return {
+        std: new Set(aktive.filter(f => f.standardFavorite).map(f => f.itemNo)),
+        fav: new Set(aktive.filter(f => !f.standardFavorite).map(f => f.itemNo)),
+      }
+    })
   }
 
   metoder(): Promise<{ alle: BCShipmentMethod[]; kundens: BCShipmentMethod | undefined; tilladte: BCShipmentMethod[] }> {

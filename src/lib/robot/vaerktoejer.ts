@@ -90,7 +90,7 @@ export const VAERKTOEJER: Tool[] = [
   },
   {
     name: 'mine_favoritter',
-    description: 'Kundens favoritvarer og faste ugentlige ordrelinjer.',
+    description: 'Kundens favoritvarer (standard=true er STD-varer kunden altid skal have, de står først) og faste ugentlige ordrelinjer.',
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -155,8 +155,8 @@ async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string
   if (!valgte.length) return { varer: [] }
 
   const nos = valgte.map(i => i.number)
-  const [priser, lok, dage, { kundens }] = await Promise.all([
-    ctx.priser(), ctx.lokation(), ctx.leveringsdage(20), ctx.metoder(),
+  const [priser, lok, dage, { kundens }, { std, fav }] = await Promise.all([
+    ctx.priser(), ctx.lokation(), ctx.leveringsdage(20), ctx.metoder(), ctx.favoritter(),
   ])
   const dag = (dato && dage.find(x => x.dato === dato)) || dage[0]
   if (dato && dag?.dato !== dato) {
@@ -183,6 +183,7 @@ async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string
       return {
         varenr: i.number,
         navn:   i.displayName,
+        ...(std.has(i.number) ? { standardvare: true } : fav.has(i.number) ? { favorit: true } : {}),
         pris:   p ? `${p.pris.toFixed(2)} kr./${p.enhed || i.baseUnitOfMeasureCode}` : 'ingen fast pris — dagspris, spørg kontoret',
         basisenhed: i.baseUnitOfMeasureCode,
         kanLeveres:
@@ -202,11 +203,15 @@ async function soegVarer(q: string, dato: string, ctx: RobotKontekst) {
   q = q.trim()
   if (q.length < 2) return { fejl: 'Søgeordet er for kort.' }
   const fundne = await soegKatalog(q, ctx.kunde.sprog)
-  // Kun varer kunden må se — og dem med en pris til kunden først (de er i kundens sortiment).
-  const [priser, synlige] = await Promise.all([ctx.priser(), Promise.all(fundne.map(n => ctx.maaSe(n)))])
+  // Kun varer kunden må se. Rækkefølge som bestillingssiden: kundens STD-varer, så øvrige
+  // favoritter, så varer med en pris til kunden (i kundens sortiment), så resten.
+  const [priser, synlige, { std, fav }] = await Promise.all([
+    ctx.priser(), Promise.all(fundne.map(n => ctx.maaSe(n))), ctx.favoritter(),
+  ])
   const harPris = new Set(priser.map(p => p.itemNo))
+  const rang = (n: string) => std.has(n) ? 0 : fav.has(n) ? 1 : harPris.has(n) ? 2 : 3
   const tilladte = fundne.filter((_, i) => synlige[i])
-  const sorteret = [...tilladte.filter(n => harPris.has(n)), ...tilladte.filter(n => !harPris.has(n))]
+  const sorteret = tilladte.map((n, i) => ({ n, i })).sort((a, b) => rang(a.n) - rang(b.n) || a.i - b.i).map(x => x.n)
   if (!sorteret.length) return { varer: [], besked: `Ingen varer fundet for "${q}". Prøv færre eller andre ord.` }
   const items = await getItemsByNumbers(sorteret.slice(0, MAX_VARER)).catch(() => [] as BCItem[])
   const orden = new Map(sorteret.map((n, i) => [n, i]))
@@ -350,7 +355,8 @@ async function mineFavoritter(ctx: RobotKontekst) {
     const ud: T[] = []; for (const x of l) if (await ctx.maaSe(x.itemNo)) ud.push(x); return ud
   }
   return {
-    favoritter: (await vis(fav.filter(f => f.active !== false))).map(f => ({
+    // STD-varer (kunden skal altid have dem) først, som på bestillingssiden.
+    favoritter: (await vis(fav.filter(f => f.active !== false).sort((a, b) => Number(!!b.standardFavorite) - Number(!!a.standardFavorite)))).map(f => ({
       varenr: f.itemNo, navn: f.description, ...(f.standardFavorite ? { standard: true } : {}),
     })),
     fasteUgentlige: (await vis(faste)).map(l => ({
