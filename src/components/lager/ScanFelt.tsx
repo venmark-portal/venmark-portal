@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, ScanLine, X } from 'lucide-react'
+import { Camera, Keyboard, ScanLine, X } from 'lucide-react'
 
 /**
  * Scanne-feltet. Håndterminalen sender stregkoden som tastetryk efterfulgt af Enter —
@@ -27,8 +27,12 @@ export default function ScanFelt({
   const [vaerdi, setVaerdi] = useState('')
   const [kamera, setKamera] = useState(false)
   const [kanKamera, setKanKamera] = useState(false)
+  const [tast, setTast] = useState(false)
 
   useEffect(() => {
+    // Kamera-scanning findes kun i Chrome på Android, ChromeOS og macOS — IKKE på
+    // Windows og ikke i Safari. Derfor skjuler vi knappen i stedet for at vise en
+    // knap der fejler, og tilbyder tastaturet som vej ind i stedet.
     setKanKamera(typeof window !== 'undefined' && 'BarcodeDetector' in window)
   }, [])
 
@@ -69,9 +73,10 @@ export default function ScanFelt({
                 send(vaerdi)
               }
             }}
-            // none = ingen skærmtastatur der dækker halve skærmen ved hvert scan.
-            // Manuel indtastning sker i søgefeltet ("varen har ingen stregkode").
-            inputMode="none"
+            // none = intet skærmtastatur der dækker halve skærmen ved hvert scan.
+            // Tastatur-knappen slår det til når koden skal tastes — og et fysisk
+            // tastatur virker altid, så en PC kan bruges til test uden scanner.
+            inputMode={tast ? 'text' : 'none'}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -89,7 +94,28 @@ export default function ScanFelt({
             <Camera size={22} />
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => {
+            setTast(t => !t)
+            // Skærmtastaturet kommer først når feltet får fokus igen med den nye tilstand.
+            setTimeout(() => inputRef.current?.focus(), 0)
+          }}
+          className={
+            'rounded-2xl px-4 ' + (tast ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 ring-1 ring-gray-300')
+          }
+          aria-label="Tast koden i stedet"
+          title="Tast koden i stedet for at scanne"
+        >
+          <Keyboard size={22} />
+        </button>
       </div>
+
+      {tast && (
+        <p className="text-xs text-gray-500">
+          Tastetilstand: skriv koden og tryk Enter. Et fysisk tastatur virker altid — også uden scanner.
+        </p>
+      )}
 
       {kamera && (
         <Kamera
