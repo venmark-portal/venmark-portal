@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Plus, Send, Trash2,
+  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Plus, Send, Trash2, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur from '@/components/lager/Taltastatur'
@@ -49,6 +49,7 @@ export default function OptaellingSide() {
   // vægt — der er ikke noget at taste.
   const [scanLager, setScanLager] = useState(false)
   const [kasser, setKasser] = useState(0)
+  const [listeAaben, setListeAaben] = useState(false)
 
   const lydRef = useRef<AudioContext | null>(null)
   const bip = useCallback((hz: number, ms: number) => {
@@ -334,20 +335,22 @@ export default function OptaellingSide() {
   const laast = optaelling.status !== 'aaben'
 
   return (
-    <div className="mx-auto max-w-lg px-4 pb-32 pt-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{optaelling.no}</h1>
-          <p className="text-sm text-gray-500">
-            {optaelling.locationCode} · {varer.length} varer talt
-            {optaelling.blind && ' · blind'}
-          </p>
-        </div>
-        <Link href="/lager" className="text-sm text-gray-500">Luk</Link>
-      </div>
+    // Fast app-ramme: skærmen fylder PRÆCIS skærmen, og siden ruller ikke. En
+    // optæller skal kunne nå alt med tommelfingeren uden at lede efter en knap
+    // under kanten — listen over talte varer åbnes i stedet som en plade nedefra.
+    <div className="mx-auto flex h-[100dvh] max-w-lg flex-col overflow-hidden">
+      <header className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2 pt-3">
+        <h1 className="min-w-0 truncate text-base font-bold text-gray-900">
+          {optaelling.no}
+          <span className="ml-2 text-sm font-normal text-gray-500">
+            {optaelling.locationCode}{optaelling.blind && ' · blind'}
+          </span>
+        </h1>
+        <Link href="/lager" className="shrink-0 text-sm text-gray-500">Luk</Link>
+      </header>
 
       {laast ? (
-        <div className="rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
+        <div className="m-4 rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
           <p className="font-semibold text-emerald-900">Sendt til BC</p>
           <p className="mt-1 text-sm text-emerald-800">
             {optaelling.bcLinesWritten} linjer i lageropgørelseskladden, {optaelling.bcDiffLines} med afvigelse.
@@ -356,110 +359,92 @@ export default function OptaellingSide() {
         </div>
       ) : (
         <>
-          {/* Hylde */}
-          <div className="mb-3">
-            <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-gray-700">
-              <Layers size={14} /> Hylde
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {/* Man skal kunne slå hylden FRA igen — ikke alt står på en hylde. */}
+          {/* Tilstand + hylde på ÉN linje der ruller vandret. To linjer her koster
+              plads som taltastaturet skal bruge. */}
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-2">
+            <div className="flex shrink-0 overflow-hidden rounded-xl ring-1 ring-gray-300">
               <button
-                onClick={() => setHylde('')}
+                onClick={() => setScanLager(false)}
+                className={'px-3 py-2 text-sm font-semibold ' + (!scanLager ? 'bg-gray-900 text-white' : 'bg-white text-gray-600')}
+              >
+                Tæl varer
+              </button>
+              <button
+                onClick={() => setScanLager(true)}
+                className={'px-3 py-2 text-sm font-semibold ' + (scanLager ? 'bg-gray-900 text-white' : 'bg-white text-gray-600')}
+              >
+                Scan lager
+              </button>
+            </div>
+
+            <Layers size={14} className="shrink-0 text-gray-400" />
+            {/* Man skal kunne slå hylden FRA igen — ikke alt står på en hylde. */}
+            <button
+              onClick={() => setHylde('')}
+              className={
+                'shrink-0 rounded-xl px-3 py-2 text-sm font-medium ring-1 ' +
+                (hylde === '' ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white text-gray-500 ring-gray-300')
+              }
+            >
+              Ingen
+            </button>
+            {hylder.map(h => (
+              <button
+                key={h.id}
+                onClick={() => setHylde(hylde === h.code ? '' : h.code)}
                 className={
-                  'rounded-xl px-3 py-2 text-sm font-medium ring-1 ' +
-                  (hylde === ''
-                    ? 'bg-gray-900 text-white ring-gray-900'
-                    : 'bg-white text-gray-500 ring-gray-300')
+                  'shrink-0 rounded-xl px-3 py-2 text-sm font-medium ring-1 ' +
+                  (hylde === h.code ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white text-gray-700 ring-gray-300')
                 }
               >
-                Ingen
+                {h.code}
               </button>
-              {hylder.map(h => (
-                <button
-                  key={h.id}
-                  onClick={() => setHylde(hylde === h.code ? '' : h.code)}
-                  className={
-                    'rounded-xl px-3 py-2 text-sm font-medium ring-1 ' +
-                    (hylde === h.code
-                      ? 'bg-gray-900 text-white ring-gray-900'
-                      : 'bg-white text-gray-700 ring-gray-300')
-                  }
-                >
-                  {h.code}
-                </button>
-              ))}
-              <NyHylde
-                lokation={optaelling.locationCode}
-                onOprettet={h => { setHylder(h); }}
-              />
-            </div>
+            ))}
+            <NyHylde lokation={optaelling.locationCode} onOprettet={h => setHylder(h)} />
           </div>
 
-          {/* To måder at tælle på. Man vælger den der passer til hylden man står ved. */}
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setScanLager(false)}
-              className={
-                'rounded-xl py-2.5 text-sm font-semibold ring-1 ' +
-                (!scanLager ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white text-gray-600 ring-gray-300')
-              }
-            >
-              Tæl varer
-            </button>
-            <button
-              onClick={() => setScanLager(true)}
-              className={
-                'rounded-xl py-2.5 text-sm font-semibold ring-1 ' +
-                (scanLager ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white text-gray-600 ring-gray-300')
-              }
-            >
-              Scan lager
-            </button>
-          </div>
+          <div className="shrink-0 px-4">
+            <ScanFelt
+              onScan={scan}
+              travl={travl}
+              placeholder={scanLager ? 'Scan kasse' : 'Scan vare eller kasse'}
+              pause={stemmerDialog || !!bemaerkVare}
+            />
 
-          {scanLager && (
-            <div className="mb-3 rounded-2xl bg-sky-50 p-3 text-sm text-sky-900 ring-1 ring-sky-200">
-              <p className="font-semibold">Scan hver kasse — vægten følger med kassen.</p>
-              <p className="mt-1">
-                Pr. produktion scanner du <strong>enten samlekasser eller enkeltkasser</strong>, aldrig
-                begge. Gør du begge dele, tælles den samme vægt to gange — appen stopper dig, men
-                det er hurtigst at vide det på forhånd.
+            {scanLager && (
+              <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200">
+                <strong>Enten samlekasser eller enkeltkasser</strong> pr. produktion — aldrig begge,
+                så tælles vægten to gange. {kasser} kasse{kasser === 1 ? '' : 'r'} scannet.
               </p>
-              <p className="mt-1 font-semibold tabular-nums">{kasser} kasse{kasser === 1 ? '' : 'r'} scannet</p>
-            </div>
-          )}
+            )}
 
-          <ScanFelt
-            onScan={scan}
-            travl={travl}
-            placeholder={scanLager ? 'Scan kasse' : 'Scan vare eller kasse'}
-            pause={stemmerDialog || !!bemaerkVare}
-          />
+            {besked && (
+              <p
+                className={
+                  'mt-2 rounded-xl px-3 py-2 text-sm font-medium ' +
+                  (besked.slags === 'ok'
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : besked.slags === 'advar'
+                      ? 'bg-amber-50 text-amber-900'
+                      : 'bg-red-50 text-red-800')
+                }
+              >
+                {besked.slags === 'advar' && <AlertTriangle size={14} className="mr-1.5 inline" />}
+                {besked.tekst}
+              </p>
+            )}
+          </div>
 
-          {besked && (
-            <p
-              className={
-                'mt-3 rounded-xl px-3 py-3 text-sm font-medium ' +
-                (besked.slags === 'ok'
-                  ? 'bg-emerald-50 text-emerald-800'
-                  : besked.slags === 'advar'
-                    ? 'bg-amber-50 text-amber-900'
-                    : 'bg-red-50 text-red-800')
-              }
-            >
-              {besked.slags === 'advar' && <AlertTriangle size={14} className="mr-1.5 inline" />}
-              {besked.tekst}
-            </p>
-          )}
-
-          {/* Den vare der tælles nu */}
+          {/* Arbejdsområdet fylder resten af skærmen: varen man står med, og
+              taltastaturet der strækker sig ned til bundlinjen. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 pt-2">
           {aktiv && (
-            <div className="mt-3 rounded-2xl bg-white p-4 ring-2 ring-emerald-600">
+            <div className="shrink-0 rounded-2xl bg-white p-3 ring-2 ring-emerald-600">
               <div className="flex gap-3">
                 <Varebillede itemNo={aktiv.itemNo} />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-gray-900">{aktiv.itemNo}</p>
-                  <p className="text-sm text-gray-600">{aktiv.navn}</p>
+                  <p className="truncate text-sm text-gray-600">{aktiv.navn}</p>
                 </div>
               </div>
               <div className="mt-1 flex items-end gap-4">
@@ -483,38 +468,42 @@ export default function OptaellingSide() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-gray-500">{aktiv.antal} registrering(er) på denne tælling</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <p className="text-xs text-gray-500">{aktiv.antal} registrering(er) · {hylde || 'ingen hylde'}</p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
                 <button
                   onClick={faerdigMedVaren}
                   disabled={travl}
-                  className="rounded-xl bg-emerald-700 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  className="rounded-xl bg-emerald-700 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
                 >
-                  <Check size={15} className="mr-1 inline" /> Færdig med varen
+                  <Check size={15} className="mr-1 inline" /> Færdig
                 </button>
                 <button
                   onClick={() => fortryd(aktiv.itemNo)}
-                  className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
+                  className="rounded-xl bg-white py-2.5 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
                 >
-                  <Trash2 size={15} className="mr-1 inline" /> Fortryd sidste
+                  <Trash2 size={15} className="mr-1 inline" /> Fortryd
+                </button>
+                <button
+                  onClick={() => setBemaerkVare(aktiv.itemNo)}
+                  className={
+                    'rounded-xl py-2.5 text-sm font-semibold ring-1 ' +
+                    (varer.find(v => v.itemNo === aktiv.itemNo)?.remark
+                      ? 'bg-amber-50 text-amber-800 ring-amber-300'
+                      : 'bg-white text-gray-800 ring-gray-300')
+                  }
+                >
+                  <MessageSquare size={15} className="mr-1 inline" /> Note
                 </button>
               </div>
-              <button
-                onClick={() => setBemaerkVare(aktiv.itemNo)}
-                className="mt-2 w-full rounded-xl bg-white py-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
-              >
-                <MessageSquare size={15} className="mr-1 inline" />
-                {varer.find(v => v.itemNo === aktiv.itemNo)?.remark ? 'Ret bemærkning' : 'Bemærkning'}
-              </button>
               {aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001 && (
                 // "BC har ret": det talte slettes, så de to ikke lægges sammen.
                 <button
                   onClick={() => stemmer(aktiv.itemNo, true)}
                   disabled={travl}
-                  className="mt-2 w-full rounded-xl bg-sky-700 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  className="mt-2 w-full rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
                 >
                   <CircleCheck size={15} className="mr-1 inline" />
-                  Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom} — brug BC&apos;s tal
+                  Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom}
                 </button>
               )}
             </div>
@@ -528,6 +517,7 @@ export default function OptaellingSide() {
               enhed={aktiv.uom}
               nuvaerende={aktiv.total}
               deaktiveret={travl}
+              fyld
               onGem={async (antal, anslaaet) => {
                 const res = await fetch(`/api/lager/optaelling/${optaelling.id}/linje`, {
                   method: 'POST',
@@ -547,6 +537,16 @@ export default function OptaellingSide() {
               }}
             />
           )}
+
+          {!aktiv && (
+            <p className="mt-6 text-center text-sm text-gray-400">
+              {scanLager
+                ? 'Scan en kasse for at begynde.'
+                : 'Scan en vare, eller tryk på tastatur-knappen for at taste nummeret.'}
+            </p>
+          )}
+          </div>
+
           {bemaerkVare && (
             <Bemaerkning
               vare={`${bemaerkVare} · ${varer.find(v => v.itemNo === bemaerkVare)?.description ?? ''}`}
@@ -571,8 +571,20 @@ export default function OptaellingSide() {
         </>
       )}
 
-      {/* Talt indtil nu */}
-      <ul className="mt-5 space-y-2">
+      {/* Talt indtil nu — åbnes som en plade nedefra, så hovedskærmen aldrig ruller. */}
+      {listeAaben && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40" onClick={() => setListeAaben(false)}>
+          <div
+            className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-t-3xl bg-gray-100 p-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-2 flex shrink-0 items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">{varer.length} varer talt</h2>
+              <button onClick={() => setListeAaben(false)} className="rounded-full bg-white p-2 ring-1 ring-gray-300">
+                <X size={18} />
+              </button>
+            </div>
+            <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto">
         {varer.map(v => (
           <li key={v.itemNo} className="rounded-2xl bg-white p-3 ring-1 ring-gray-200">
             <div className="flex items-start justify-between gap-2">
@@ -619,22 +631,31 @@ export default function OptaellingSide() {
             </div>
           </li>
         ))}
-      </ul>
+            </ul>
+          </div>
+        </div>
+      )}
 
-      {/* Send */}
+      {/* Bundlinje — altid synlig, aldrig under skærmkanten. */}
       {!laast && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 p-3 backdrop-blur">
-          <div className="mx-auto flex max-w-lg items-center gap-2">
+        <footer className="shrink-0 border-t border-gray-200 bg-white p-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setListeAaben(true)}
+              className="rounded-xl bg-white px-3 py-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
+            >
+              {varer.length} <span className="font-normal text-gray-500">varer</span>
+            </button>
             <StemmerKnap onVare={nr => stemmer(nr, false)} aaben={stemmerDialog} setAaben={setStemmerDialog} />
             <button
               onClick={send}
               disabled={travl || varer.length === 0}
-              className="flex-1 rounded-xl bg-gray-900 py-3.5 font-semibold text-white disabled:opacity-40"
+              className="flex-1 rounded-xl bg-gray-900 py-3 font-semibold text-white disabled:opacity-40"
             >
-              <Send size={16} className="mr-1.5 inline" /> Send til BC ({varer.length})
+              <Send size={16} className="mr-1.5 inline" /> Send til BC
             </button>
           </div>
-        </div>
+        </footer>
       )}
     </div>
   )

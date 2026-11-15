@@ -23,12 +23,16 @@ export default function Taltastatur({
   enhed = '',
   nuvaerende,
   deaktiveret = false,
+  fyld = false,
   onGem,
 }: {
   enhed?: string
   /** Hvad der står på varen lige nu — så man kan se hvad man ændrer. */
   nuvaerende?: number
   deaktiveret?: boolean
+  /** Strækker tasterne ud i den plads der er tilbage på skærmen, så siden ikke
+   *  behøver rulle. Store taster er samtidig dem man rammer med en handske på. */
+  fyld?: boolean
   onGem: (antal: number, anslaaet: boolean) => void
 }) {
   const [tekst, setTekst] = useState('')
@@ -54,8 +58,13 @@ export default function Taltastatur({
   const taster = ['7', '8', '9', '4', '5', '6', '1', '2', '3', ',', '0', 'slet']
 
   return (
-    <div className="mt-3 rounded-2xl bg-white p-3 ring-1 ring-gray-200">
-      <div className="mb-2 flex items-baseline justify-between gap-2 rounded-xl bg-gray-100 px-4 py-3">
+    <div
+      className={
+        'rounded-2xl bg-white p-3 ring-1 ring-gray-200 ' +
+        (fyld ? 'flex min-h-0 flex-1 flex-col' : 'mt-3')
+      }
+    >
+      <div className="mb-2 flex shrink-0 items-baseline justify-between gap-2 rounded-xl bg-gray-100 px-4 py-3">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
           Sæt antal
           {nuvaerende !== undefined && ` · nu ${nuvaerende.toLocaleString('da-DK', { maximumFractionDigits: 3 })}`}
@@ -66,7 +75,11 @@ export default function Taltastatur({
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div
+        className={
+          'grid grid-cols-3 gap-2 ' + (fyld ? 'min-h-0 flex-1 auto-rows-fr' : '')
+        }
+      >
         {taster.map(t => (
           <button
             key={t}
@@ -74,7 +87,8 @@ export default function Taltastatur({
             onClick={() => tryk(t)}
             disabled={deaktiveret}
             className={
-              'rounded-xl py-3.5 text-2xl font-semibold disabled:opacity-30 ' +
+              'rounded-xl text-2xl font-semibold disabled:opacity-30 ' +
+              (fyld ? 'h-full ' : 'py-3.5 ') +
               (t === 'slet'
                 ? 'bg-gray-200 text-gray-700'
                 : 'bg-white text-gray-900 ring-1 ring-gray-300 active:bg-gray-100')
@@ -85,18 +99,18 @@ export default function Taltastatur({
         ))}
       </div>
 
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="mt-2 grid shrink-0 grid-cols-2 gap-2">
         <button
           onClick={() => gem(false)}
           disabled={!gyldig || deaktiveret}
-          className="rounded-xl bg-emerald-700 py-3.5 text-base font-semibold text-white disabled:opacity-40"
+          className="rounded-xl bg-emerald-700 py-3 text-base font-semibold text-white disabled:opacity-40"
         >
           <Check size={18} className="mr-1.5 inline" /> Gem antal
         </button>
         <button
           onClick={() => gem(true)}
           disabled={!gyldig || deaktiveret}
-          className="rounded-xl bg-amber-600 py-3.5 text-base font-semibold text-white disabled:opacity-40"
+          className="rounded-xl bg-amber-600 py-3 text-base font-semibold text-white disabled:opacity-40"
         >
           <Pencil size={18} className="mr-1.5 inline" /> Gem som anslået
         </button>
