@@ -51,6 +51,11 @@ export async function ensureOptaellingSchema() {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "LagerCountLine_countId_itemNo_idx" ON "LagerCountLine"("countId", "itemNo")
   `
+  // Tilføjet 15-11: BC's antal vises som standard. Blind tælling er stadig muligt,
+  // men er nu et valg pr. optælling — det meste stemmer, og så er det hurtigere at
+  // se forskellen med det samme.
+  await prisma.$executeRaw`ALTER TABLE "LagerCount" ADD COLUMN IF NOT EXISTS "blind" BOOLEAN NOT NULL DEFAULT false`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "bcQty" DECIMAL(18,5)`
   ensured = true
 }
 
@@ -62,10 +67,15 @@ export interface Optaelling {
   startedAt: Date
   createdByName: string
   note: string | null
+  /** true = tælleren ser ikke BC's tal. Standard er false: det meste stemmer. */
+  blind: boolean
   bcLinesWritten: number | null
   bcDiffLines: number | null
   bcError: string | null
 }
+
+const FELTER = `id, "no", "locationCode", status, "startedAt", "createdByName", note, blind,
+                "bcLinesWritten", "bcDiffLines", "bcError"`
 
 /** OPT-ÅÅMMDD-NN. Lokal dato — toISOString() ville give gårsdagens nummer om aftenen. */
 async function nytNummer(): Promise<string> {
@@ -86,34 +96,32 @@ export async function startOptaelling(
   locationCode: string,
   brugerId: string,
   brugerNavn: string,
+  blind = false,
 ): Promise<Optaelling> {
   await ensureOptaellingSchema()
   const id = `cnt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   const no = await nytNummer()
   await prisma.$executeRaw`
-    INSERT INTO "LagerCount" ("id", "no", "locationCode", "createdById", "createdByName")
-    VALUES (${id}, ${no}, ${locationCode}, ${brugerId}, ${brugerNavn})
+    INSERT INTO "LagerCount" ("id", "no", "locationCode", "createdById", "createdByName", blind)
+    VALUES (${id}, ${no}, ${locationCode}, ${brugerId}, ${brugerNavn}, ${blind})
   `
   return (await hentOptaelling(id))!
 }
 
 export async function hentOptaelling(id: string): Promise<Optaelling | null> {
   await ensureOptaellingSchema()
-  const rows = await prisma.$queryRaw<Optaelling[]>`
-    SELECT id, "no", "locationCode", status, "startedAt", "createdByName", note,
-           "bcLinesWritten", "bcDiffLines", "bcError"
-    FROM "LagerCount" WHERE id = ${id} LIMIT 1
-  `
+  const rows = await prisma.$queryRawUnsafe<Optaelling[]>(
+    `SELECT ${FELTER} FROM "LagerCount" WHERE id = $1 LIMIT 1`,
+    id,
+  )
   return rows[0] ?? null
 }
 
 export async function aabneOptaellinger(): Promise<Optaelling[]> {
   await ensureOptaellingSchema()
-  return prisma.$queryRaw<Optaelling[]>`
-    SELECT id, "no", "locationCode", status, "startedAt", "createdByName", note,
-           "bcLinesWritten", "bcDiffLines", "bcError"
-    FROM "LagerCount" WHERE status = 'aaben' ORDER BY "startedAt" DESC LIMIT 20
-  `
+  return prisma.$queryRawUnsafe<Optaelling[]>(
+    `SELECT ${FELTER} FROM "LagerCount" WHERE status = 'aaben' ORDER BY "startedAt" DESC LIMIT 20`,
+  )
 }
 
 export interface NyLinje {
@@ -126,6 +134,9 @@ export interface NyLinje {
   shelfCode?: string
   lotNo?: string
   barcode?: string
+  /** BC-beholdningen som opslaget gav. Gemmes, så oversigten kan vise forskellen
+   *  uden et nyt BC-kald pr. vare. */
+  bcQty?: number | null
 }
 
 /**
@@ -141,11 +152,12 @@ export async function tilfoejLinje(
   const id = `cl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   await prisma.$executeRaw`
     INSERT INTO "LagerCountLine"
-      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy")
+      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty")
     VALUES
       (${id}, ${countId}, ${linje.itemNo.toUpperCase()}, ${linje.description ?? ''}, ${linje.qty},
        ${linje.uom ?? ''}, ${!!linje.estimated}, ${!!linje.confirmed},
-       ${linje.shelfCode ?? null}, ${linje.lotNo ?? null}, ${linje.barcode ?? null}, ${brugerNavn})
+       ${linje.shelfCode ?? null}, ${linje.lotNo ?? null}, ${linje.barcode ?? null}, ${brugerNavn},
+       ${linje.bcQty ?? null})
   `
   return vareTotal(countId, linje.itemNo)
 }
@@ -165,12 +177,19 @@ export async function kasseAlleredeTalt(countId: string, barcode: string): Promi
   return rows.length > 0
 }
 
-export async function vareTotal(countId: string, itemNo: string): Promise<{ total: number; antal: number }> {
+export async function vareTotal(
+  countId: string,
+  itemNo: string,
+): Promise<{ total: number; antal: number; bcAntal: number | null }> {
   const rows = await prisma.$queryRaw<any[]>`
-    SELECT COALESCE(SUM(qty), 0) AS total, COUNT(*) AS antal
+    SELECT COALESCE(SUM(qty), 0) AS total, COUNT(*) AS antal, MAX("bcQty") AS bcqty
     FROM "LagerCountLine" WHERE "countId" = ${countId} AND "itemNo" = ${itemNo.toUpperCase()}
   `
-  return { total: Number(rows[0]?.total ?? 0), antal: Number(rows[0]?.antal ?? 0) }
+  return {
+    total: Number(rows[0]?.total ?? 0),
+    antal: Number(rows[0]?.antal ?? 0),
+    bcAntal: rows[0]?.bcqty === null || rows[0]?.bcqty === undefined ? null : Number(rows[0].bcqty),
+  }
 }
 
 /** Fjerner den seneste registrering på en vare — fortryd-knappen. */
@@ -195,7 +214,8 @@ export async function tjekVare(
   countId: string,
   itemNo: string,
   locationCode: string,
-): Promise<{ stemmer: boolean; talt: number; kunneTjekkes: boolean }> {
+  blind = false,
+): Promise<{ stemmer: boolean; talt: number; kunneTjekkes: boolean; bcAntal?: number; afvigelse?: number }> {
   const { total } = await vareTotal(countId, itemNo)
   // Varenummeret er en gyldig "stregkode" for BC's opslag, og svaret indeholder
   // beholdningen på lokationen. Derfor ingen ekstra API-side til dette.
@@ -203,7 +223,10 @@ export async function tjekVare(
   if (!bc || !bc.found) return { stemmer: false, talt: total, kunneTjekkes: false }
   // Afrunding: vægt i kg kan give 0,0000001 i forskel uden at nogen har talt forkert.
   const stemmer = Math.abs(bc.inventory - total) < 0.001
-  return { stemmer, talt: total, kunneTjekkes: true }
+  // Blind tælling: kun ja/nej. Ellers tallene med, så man kan se HVOR meget der
+  // mangler og straks afgøre om det er en tælefejl eller en rigtig afvigelse.
+  if (blind) return { stemmer, talt: total, kunneTjekkes: true }
+  return { stemmer, talt: total, kunneTjekkes: true, bcAntal: bc.inventory, afvigelse: total - bc.inventory }
 }
 
 /**
@@ -228,6 +251,7 @@ export async function bekraeftVare(
       qty: bc.inventory,
       uom: bc.baseUnitOfMeasure,
       confirmed: true,
+      bcQty: bc.inventory,
     },
     brugerNavn,
   )
@@ -244,10 +268,17 @@ export interface OptaellingLinje {
   confirmed: boolean
   shelves: string
   lotNo: string
+  /** BC's beholdning da varen blev registreret. null på en blind tælling. */
+  bcAntal: number | null
+  afvigelse: number | null
 }
 
-/** Summeret pr. vare — det BC skal have, og det kontoret ser. */
-export async function summerPrVare(countId: string): Promise<OptaellingLinje[]> {
+/**
+ * Summeret pr. vare — det BC skal have, og det kontoret ser.
+ * `skjulBC` tømmer BC-tallene, så en blind tælling forbliver blind hele vejen
+ * ud til skærmen og ikke kun i tjek-svaret.
+ */
+export async function summerPrVare(countId: string, skjulBC = false): Promise<OptaellingLinje[]> {
   await ensureOptaellingSchema()
   const rows = await prisma.$queryRaw<any[]>`
     SELECT "itemNo",
@@ -258,23 +289,30 @@ export async function summerPrVare(countId: string): Promise<OptaellingLinje[]> 
            BOOL_OR(estimated)                                  AS estimated,
            BOOL_AND(confirmed)                                 AS confirmed,
            STRING_AGG(DISTINCT COALESCE("shelfCode",''), ', ') AS shelves,
-           MAX(COALESCE("lotNo",''))                           AS lotno
+           MAX(COALESCE("lotNo",''))                           AS lotno,
+           MAX("bcQty")                                        AS bcqty
     FROM "LagerCountLine"
     WHERE "countId" = ${countId}
     GROUP BY "itemNo"
     ORDER BY "itemNo"
   `
-  return rows.map(r => ({
-    itemNo: r.itemNo,
-    description: r.description ?? '',
-    total: Number(r.total ?? 0),
-    uom: r.uom ?? '',
-    antal: Number(r.antal ?? 0),
-    estimated: !!r.estimated,
-    confirmed: !!r.confirmed,
-    shelves: (r.shelves ?? '').replace(/^, |, $/g, ''),
-    lotNo: r.lotno ?? '',
-  }))
+  return rows.map(r => {
+    const total = Number(r.total ?? 0)
+    const bcAntal = skjulBC || r.bcqty === null || r.bcqty === undefined ? null : Number(r.bcqty)
+    return {
+      itemNo: r.itemNo,
+      description: r.description ?? '',
+      total,
+      uom: r.uom ?? '',
+      antal: Number(r.antal ?? 0),
+      estimated: !!r.estimated,
+      confirmed: !!r.confirmed,
+      shelves: (r.shelves ?? '').replace(/^, |, $/g, ''),
+      lotNo: r.lotno ?? '',
+      bcAntal,
+      afvigelse: bcAntal === null ? null : total - bcAntal,
+    }
+  })
 }
 
 /**

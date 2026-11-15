@@ -38,13 +38,21 @@ export default function ScanFelt({
 
   // Hold fokus. Terminalen "taster" ind i det felt der har fokus — mister vi det,
   // forsvinder scanningerne ud i ingenting, og det er umuligt at se hvorfor.
+  //
+  // MEN: kun når INTET andet felt er i brug. Tager vi fokus mens nogen taster et
+  // antal, river vi bogstaverne ud af hånden på dem — og det er præcis sådan
+  // "Anslå antal" var umulig at udfylde.
   useEffect(() => {
     if (kamera) return
-    const tag = () => inputRef.current?.focus()
+    const iBrug = () => {
+      const a = document.activeElement as HTMLElement | null
+      if (!a || a === document.body) return false
+      if (a === inputRef.current) return true
+      return ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) || a.isContentEditable
+    }
+    const tag = () => { if (!iBrug()) inputRef.current?.focus() }
     tag()
-    const i = window.setInterval(() => {
-      if (document.activeElement !== inputRef.current) tag()
-    }, 1500)
+    const i = window.setInterval(tag, 1500)
     return () => window.clearInterval(i)
   }, [kamera])
 

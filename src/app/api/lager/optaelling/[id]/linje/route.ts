@@ -51,6 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       shelfCode: body?.shelfCode ? String(body.shelfCode) : undefined,
       lotNo: body?.lotNo ? String(body.lotNo) : undefined,
       barcode: body?.barcode ? String(body.barcode) : undefined,
+      // BC's beholdning kom med fra opslaget — gem den, så oversigten kan vise
+      // afvigelsen uden et nyt BC-kald pr. vare.
+      bcQty: Number.isFinite(Number(body?.bcQty)) ? Number(body.bcQty) : null,
     },
     bruger.navn,
   )

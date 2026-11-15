@@ -844,6 +844,9 @@ model LagerCount {
   createdByName String   @default("")
   note          String?
   // Svaret fra BC da tællingen blev sendt — hvor mange linjer, og hvor mange der afveg.
+  // Blind tælling: skjul BC's tal for tælleren. Som standard FRA — det meste
+  // stemmer, og så er det hurtigere at se forskellen med det samme.
+  blind          Boolean  @default(false)
   bcLinesWritten Int?
   bcDiffLines    Int?
   bcError        String?
@@ -871,6 +874,9 @@ model LagerCountLine {
   lotNo       String?
   barcode     String?
   countedBy   String   @default("")
+  // BC-beholdningen da linjen blev registreret. Gemt her, så oversigten kan vise
+  // forskellen uden et nyt BC-kald pr. vare.
+  bcQty       Decimal? @db.Decimal(18, 5)
   createdAt   DateTime @default(now())
 
   @@index([countId, itemNo])

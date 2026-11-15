@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
   const lokation = String(body?.locationCode ?? bruger.lokation ?? '').trim().toUpperCase()
   if (!lokation) return NextResponse.json({ error: 'Vælg en lokation' }, { status: 400 })
 
-  const optaelling = await startOptaelling(lokation, bruger.id, bruger.navn)
-  console.log(`[lager optaelling] ${optaelling.no} startet på ${lokation} af ${bruger.navn}`)
+  // Blind tælling er et valg, ikke en regel: det meste stemmer, og så er det
+  // hurtigere at se forskellen med det samme.
+  const optaelling = await startOptaelling(lokation, bruger.id, bruger.navn, !!body?.blind)
+  console.log(
+    `[lager optaelling] ${optaelling.no} startet på ${lokation} af ${bruger.navn}${optaelling.blind ? ' (blind)' : ''}`,
+  )
   return NextResponse.json(optaelling)
 }

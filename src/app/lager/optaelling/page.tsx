@@ -12,10 +12,17 @@ interface Hylde { id: string; locationCode: string; code: string; name: string; 
 interface Vare {
   itemNo: string; description: string; total: number; uom: string
   antal: number; estimated: boolean; confirmed: boolean; shelves: string
+  bcAntal: number | null; afvigelse: number | null
 }
 interface Optaelling {
   id: string; no: string; locationCode: string; status: string; createdByName: string
+  blind: boolean
   bcLinesWritten: number | null; bcDiffLines: number | null
+}
+
+/** Tal som lageret læser dem: 1.250,5 — og uden decimalhalehæng på hele tal. */
+function tal(n: number): string {
+  return n.toLocaleString('da-DK', { maximumFractionDigits: 3 })
 }
 
 export default function OptaellingSide() {
@@ -26,7 +33,10 @@ export default function OptaellingSide() {
   const [hylder, setHylder] = useState<Hylde[]>([])
   const [hylde, setHylde] = useState('')
   const [varer, setVarer] = useState<Vare[]>([])
-  const [aktiv, setAktiv] = useState<{ itemNo: string; navn: string; uom: string; total: number; antal: number } | null>(null)
+  const [aktiv, setAktiv] = useState<
+    { itemNo: string; navn: string; uom: string; total: number; antal: number; bcAntal: number | null } | null
+  >(null)
+  const [blind, setBlind] = useState(false)
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
   const [travl, setTravl] = useState(false)
   const [anslaa, setAnslaa] = useState(false)
@@ -72,7 +82,7 @@ export default function OptaellingSide() {
       const r = await fetch('/api/lager/optaelling', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationCode: lokation }),
+        body: JSON.stringify({ locationCode: lokation, blind }),
       }).then(x => x.json())
       if (r.id) { setOptaelling(r); setVarer([]) }
     } finally { setTravl(false) }
@@ -106,7 +116,7 @@ export default function OptaellingSide() {
         body: JSON.stringify({
           itemNo: v.itemNo, description: v.description, qty: v.quantity,
           uom: v.baseUnitOfMeasure, shelfCode: hylde || undefined, lotNo: v.lotNo || undefined,
-          barcode: kode, unikKasse, idempotencyKey: nyNoegle(),
+          barcode: kode, unikKasse, bcQty: v.inventory, idempotencyKey: nyNoegle(),
         }),
       })
       const data = await res.json()
@@ -118,7 +128,11 @@ export default function OptaellingSide() {
       }
 
       bip(880, 80)
-      setAktiv({ itemNo: v.itemNo, navn: v.description, uom: v.baseUnitOfMeasure, total: data.total, antal: data.antal })
+      setAktiv({
+        itemNo: v.itemNo, navn: v.description, uom: v.baseUnitOfMeasure,
+        total: data.total, antal: data.antal,
+        bcAntal: optaelling.blind ? null : v.inventory,
+      })
       setVarer(await fetch(`/api/lager/optaelling/${optaelling.id}`).then(x => x.json()).then(x => x.varer ?? []))
     } finally { setTravl(false) }
   }
@@ -139,11 +153,18 @@ export default function OptaellingSide() {
         bip(1040, 90)
         setBesked({ slags: 'ok', tekst: `${aktiv.itemNo} stemmer` })
       } else {
-        // Blind tælling: ingen tal her. Kun at det ikke stemmer, så han tæller om
-        // mens han står ved hylden.
         bip(300, 400)
         navigator.vibrate?.([100, 60, 100])
-        setBesked({ slags: 'advar', tekst: `${aktiv.itemNo} stemmer IKKE — tæl varen om` })
+        // Med tallene kan man se HVOR meget der mangler og straks afgøre om det er
+        // en tælefejl eller en rigtig afvigelse. På en blind tælling kommer de ikke med.
+        setBesked({
+          slags: 'advar',
+          tekst:
+            r.bcAntal === undefined
+              ? `${aktiv.itemNo} stemmer IKKE — tæl varen om`
+              : `${aktiv.itemNo}: du har talt ${tal(r.talt)}, BC har ${tal(r.bcAntal)} ` +
+                `(${r.afvigelse > 0 ? '+' : ''}${tal(r.afvigelse)})`,
+        })
       }
       setAktiv(null)
     } finally { setTravl(false) }
@@ -198,7 +219,8 @@ export default function OptaellingSide() {
         </Link>
         <h1 className="mb-1 text-xl font-bold text-gray-900">Lageroptælling</h1>
         <p className="mb-4 text-sm text-gray-500">
-          Tællingen er blind: du får ikke BC&apos;s tal at se. Du får besked med det samme hvis det ikke stemmer.
+          Du ser BC&apos;s tal mens du tæller, og afvigelsen med det samme. Vil du tælle uden at kende
+          tallet, så slå blind tælling til.
         </p>
 
         <div className="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-gray-200">
@@ -212,6 +234,26 @@ export default function OptaellingSide() {
               <option key={l.kode} value={l.kode}>{l.kode} — {l.navn}</option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={() => setBlind(b => !b)}
+            className="flex w-full items-center justify-between rounded-xl px-1 py-2 text-left"
+          >
+            <span>
+              <span className="block text-sm font-medium text-gray-700">Blind tælling</span>
+              <span className="block text-xs text-gray-500">Skjul BC&apos;s tal — du får kun at vide om det stemmer</span>
+            </span>
+            <span
+              className={
+                'ml-3 flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition ' +
+                (blind ? 'bg-gray-900' : 'bg-gray-300')
+              }
+            >
+              <span className={'h-5 w-5 rounded-full bg-white transition ' + (blind ? 'translate-x-5' : '')} />
+            </span>
+          </button>
+
           <button
             onClick={start}
             disabled={travl || !lokation}
@@ -254,7 +296,10 @@ export default function OptaellingSide() {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-gray-900">{optaelling.no}</h1>
-          <p className="text-sm text-gray-500">{optaelling.locationCode} · {varer.length} varer talt</p>
+          <p className="text-sm text-gray-500">
+            {optaelling.locationCode} · {varer.length} varer talt
+            {optaelling.blind && ' · blind'}
+          </p>
         </div>
         <Link href="/lager" className="text-sm text-gray-500">Luk</Link>
       </div>
@@ -318,9 +363,27 @@ export default function OptaellingSide() {
           {aktiv && (
             <div className="mt-3 rounded-2xl bg-white p-4 ring-2 ring-emerald-600">
               <p className="font-semibold text-gray-900">{aktiv.itemNo} · {aktiv.navn}</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700">
-                {aktiv.total.toLocaleString('da-DK')} {aktiv.uom}
-              </p>
+              <div className="mt-1 flex items-end gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Talt</p>
+                  <p className="text-2xl font-bold tabular-nums text-emerald-700">
+                    {tal(aktiv.total)} {aktiv.uom}
+                  </p>
+                </div>
+                {aktiv.bcAntal !== null && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">BC</p>
+                    <p
+                      className={
+                        'text-2xl font-bold tabular-nums ' +
+                        (Math.abs(aktiv.total - aktiv.bcAntal) < 0.001 ? 'text-gray-400' : 'text-amber-600')
+                      }
+                    >
+                      {tal(aktiv.bcAntal)}
+                    </p>
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-gray-500">{aktiv.antal} registrering(er) på denne tælling</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
@@ -357,7 +420,8 @@ export default function OptaellingSide() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
-                    estimated: true, shelfCode: hylde || undefined, idempotencyKey: nyNoegle(),
+                    estimated: true, shelfCode: hylde || undefined,
+                    bcQty: aktiv.bcAntal ?? undefined, idempotencyKey: nyNoegle(),
                   }),
                 })
                 const data = await res.json()
@@ -380,7 +444,15 @@ export default function OptaellingSide() {
               <div className="min-w-0">
                 <p className="truncate font-medium text-gray-900">{v.itemNo} · {v.description}</p>
                 <p className="text-sm text-gray-600">
-                  <span className="font-semibold tabular-nums">{v.total.toLocaleString('da-DK')} {v.uom}</span>
+                  <span className="font-semibold tabular-nums">{tal(v.total)} {v.uom}</span>
+                  {v.bcAntal !== null && (
+                    <span className="ml-2 text-gray-400">BC {tal(v.bcAntal)}</span>
+                  )}
+                  {v.afvigelse !== null && Math.abs(v.afvigelse) >= 0.001 && (
+                    <span className="ml-2 font-semibold tabular-nums text-amber-700">
+                      {v.afvigelse > 0 ? '+' : ''}{tal(v.afvigelse)}
+                    </span>
+                  )}
                   <span className="ml-2 text-gray-400">{v.antal} reg.</span>
                   {v.shelves && <span className="ml-2 text-gray-400">{v.shelves}</span>}
                 </p>
@@ -482,8 +554,8 @@ function AnslaaAntal({
   const antal = Number(tekst.replace(',', '.'))
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end bg-black/40">
-      <div className="w-full rounded-t-3xl bg-white p-4">
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40">
+      <div className="w-full max-w-lg rounded-t-3xl bg-white p-4">
         <h2 className="text-lg font-bold text-gray-900">Anslå antal</h2>
         <p className="mb-3 text-sm text-gray-500">
           {vare.itemNo} · {vare.navn} — i {vare.uom}. Linjen bliver mærket <strong>anslået</strong>, så
@@ -529,8 +601,8 @@ function StemmerKnap({ onVare }: { onVare: (itemNo: string) => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end bg-black/40">
-      <div className="w-full rounded-t-3xl bg-white p-4">
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40">
+      <div className="w-full max-w-lg rounded-t-3xl bg-white p-4">
         <h2 className="text-lg font-bold text-gray-900">Stemmer</h2>
         <p className="mb-3 text-sm text-gray-500">
           Godkend BC&apos;s tal på en vare uden at tælle den. Den gemmes som <strong>bekræftet</strong>,
