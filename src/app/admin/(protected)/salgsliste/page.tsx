@@ -47,7 +47,7 @@ export default async function SalgslistePage({
           <h1 className="text-2xl font-bold text-gray-900">Salgsliste</h1>
           <p className="mt-1 text-sm text-gray-500">
             Summeret salg pr. vare for afsendelse {datoTekst} (alle kunder) ·
-            klik på en vare for kundesalg. Salg efter i dag er foldet ud.
+            klik på en vare for kundesalg. Salg efter fra-datoen er foldet ud.
           </p>
         </div>
 
@@ -79,7 +79,7 @@ export default async function SalgslistePage({
         </form>
       </div>
 
-      <SalgslisteTabel key={`${fra}|${til}`} rows={rows} datoTekst={datoTekst} idag={idag} flereDage={fra !== til} />
+      <SalgslisteTabel key={`${fra}|${til}`} rows={rows} datoTekst={datoTekst} fraDato={fra} flereDage={fra !== til} />
     </div>
   )
 }

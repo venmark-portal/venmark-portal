@@ -45,18 +45,18 @@ function cmpItemNo(a: string, b: string): number {
 }
 
 export default function SalgslisteTabel({
-  rows, datoTekst, idag, flereDage,
+  rows, datoTekst, fraDato, flereDage,
 }: {
   rows: SalgslisteRow[]
   datoTekst: string
-  idag: string
+  fraDato: string
   flereDage: boolean
 }) {
-  // Standard: varer med salg EFTER i dag er foldet ud (de skal planlægges), dagens står
+  // Standard: varer med salg EFTER fra-datoen er foldet ud (de skal planlægges), fra-dagens står
   // som totaler. Kan foldes ind/ud — og udskriften følger det der er foldet ud.
   const defaultExpanded = useMemo(
-    () => new Set(rows.filter(r => r.customers.some(c => c.shipmentDate > idag)).map(r => `${r.itemNo}|${r.uom}`)),
-    [rows, idag],
+    () => new Set(rows.filter(r => r.customers.some(c => c.shipmentDate > fraDato)).map(r => `${r.itemNo}|${r.uom}`)),
+    [rows, fraDato],
   )
   const [expanded, setExpanded] = useState<Set<string>>(defaultExpanded)
   const [query, setQuery] = useState('')
