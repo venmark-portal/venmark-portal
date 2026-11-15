@@ -120,6 +120,7 @@ export interface CountLinje {
   antal: number
   shelves: string
   lotNo: string
+  remark: string
 }
 
 /**
@@ -178,6 +179,8 @@ export async function sendCountToBC(
         countedBy: hoved.countedBy.slice(0, 100),
         scanCount: l.antal,
         lotNo: (l.lotNo ?? '').slice(0, 50),
+        // Bemærkningen havner i sit eget felt på kladdelinjen sammen med ANSLÅET-mærket.
+        remark: (l.remark ?? '').slice(0, 150),
       }),
       cache: 'no-store',
     } as any)

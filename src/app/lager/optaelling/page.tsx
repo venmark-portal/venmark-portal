@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, Plus, Send, Trash2,
+  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Plus, Send, Trash2,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur from '@/components/lager/Taltastatur'
+import Bemaerkning from '@/components/lager/Bemaerkning'
 import { nyNoegle } from '@/lib/lager/device'
 
 interface Hylde { id: string; locationCode: string; code: string; name: string; sortOrder: number }
 interface Vare {
   itemNo: string; description: string; total: number; uom: string
   antal: number; estimated: boolean; confirmed: boolean; shelves: string
+  remark: string
   bcAntal: number | null; afvigelse: number | null
 }
 interface Optaelling {
@@ -41,6 +43,7 @@ export default function OptaellingSide() {
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
   const [travl, setTravl] = useState(false)
   const [stemmerDialog, setStemmerDialog] = useState(false)
+  const [bemaerkVare, setBemaerkVare] = useState('')
 
   const lydRef = useRef<AudioContext | null>(null)
   const bip = useCallback((hz: number, ms: number) => {
@@ -73,7 +76,16 @@ export default function OptaellingSide() {
 
   async function hentStatus(id: string) {
     const r = await fetch(`/api/lager/optaelling/${id}`).then(x => x.json())
-    setOptaelling(r.optaelling)
+    setOptaelling(prev => {
+      // Skifter vi til en ANDEN optælling, skal hyldevalget ikke følge med.
+      // Hylden hører til den runde man gik — ikke til brugeren.
+      if (prev?.id !== r.optaelling?.id) {
+        setHylde('')
+        setAktiv(null)
+        setBesked(null)
+      }
+      return r.optaelling
+    })
     setVarer(r.varer ?? [])
   }
 
@@ -85,7 +97,15 @@ export default function OptaellingSide() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ locationCode: lokation, blind }),
       }).then(x => x.json())
-      if (r.id) { setOptaelling(r); setVarer([]) }
+      if (r.id) {
+        setOptaelling(r)
+        setVarer([])
+        // Ny runde, nyt hyldevalg. Ellers står den forrige hylde og ser ud som om
+        // man stadig tæller dér.
+        setHylde('')
+        setAktiv(null)
+        setBesked(null)
+      }
     } finally { setTravl(false) }
   }
 
@@ -230,14 +250,23 @@ export default function OptaellingSide() {
 
         <div className="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-gray-200">
           <label className="block text-sm font-medium text-gray-700">Lokation</label>
+          {/* Vores egne lokationer øverst — resten er auktioner, lønhuggere og
+              frysehuse, som man aldrig tæller på. */}
           <select
             value={lokation}
             onChange={e => setLokation(e.target.value)}
             className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base"
           >
-            {(mig?.lokationer ?? []).map((l: any) => (
-              <option key={l.kode} value={l.kode}>{l.kode} — {l.navn}</option>
-            ))}
+            <optgroup label="Vores lager">
+              {(mig?.lokationer ?? []).filter((l: any) => l.foretrukken).map((l: any) => (
+                <option key={l.kode} value={l.kode}>{l.kode} — {l.navn}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Øvrige">
+              {(mig?.lokationer ?? []).filter((l: any) => !l.foretrukken).map((l: any) => (
+                <option key={l.kode} value={l.kode}>{l.kode} — {l.navn}</option>
+              ))}
+            </optgroup>
           </select>
 
           <button
@@ -325,10 +354,22 @@ export default function OptaellingSide() {
               <Layers size={14} /> Hylde
             </div>
             <div className="flex flex-wrap gap-2">
+              {/* Man skal kunne slå hylden FRA igen — ikke alt står på en hylde. */}
+              <button
+                onClick={() => setHylde('')}
+                className={
+                  'rounded-xl px-3 py-2 text-sm font-medium ring-1 ' +
+                  (hylde === ''
+                    ? 'bg-gray-900 text-white ring-gray-900'
+                    : 'bg-white text-gray-500 ring-gray-300')
+                }
+              >
+                Ingen
+              </button>
               {hylder.map(h => (
                 <button
                   key={h.id}
-                  onClick={() => setHylde(h.code)}
+                  onClick={() => setHylde(hylde === h.code ? '' : h.code)}
                   className={
                     'rounded-xl px-3 py-2 text-sm font-medium ring-1 ' +
                     (hylde === h.code
@@ -350,7 +391,7 @@ export default function OptaellingSide() {
             onScan={scan}
             travl={travl}
             placeholder="Scan vare eller kasse"
-            pause={stemmerDialog}
+            pause={stemmerDialog || !!bemaerkVare}
           />
 
           {besked && (
@@ -416,6 +457,13 @@ export default function OptaellingSide() {
                   <Trash2 size={15} className="mr-1 inline" /> Fortryd sidste
                 </button>
               </div>
+              <button
+                onClick={() => setBemaerkVare(aktiv.itemNo)}
+                className="mt-2 w-full rounded-xl bg-white py-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
+              >
+                <MessageSquare size={15} className="mr-1 inline" />
+                {varer.find(v => v.itemNo === aktiv.itemNo)?.remark ? 'Ret bemærkning' : 'Bemærkning'}
+              </button>
               {aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001 && (
                 // "BC har ret": det talte slettes, så de to ikke lægges sammen.
                 <button
@@ -456,6 +504,27 @@ export default function OptaellingSide() {
               }}
             />
           )}
+          {bemaerkVare && (
+            <Bemaerkning
+              vare={`${bemaerkVare} · ${varer.find(v => v.itemNo === bemaerkVare)?.description ?? ''}`}
+              start={varer.find(v => v.itemNo === bemaerkVare)?.remark ?? ''}
+              onLuk={() => setBemaerkVare('')}
+              onGem={async tekst => {
+                const r = await fetch(`/api/lager/optaelling/${optaelling.id}/bemaerkning`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ itemNo: bemaerkVare, remark: tekst }),
+                })
+                const data = await r.json()
+                setBemaerkVare('')
+                if (!r.ok) {
+                  setBesked({ slags: 'advar', tekst: data.error ?? 'Bemærkningen kunne ikke gemmes' })
+                  return
+                }
+                await hentStatus(optaelling.id)
+              }}
+            />
+          )}
         </>
       )}
 
@@ -479,6 +548,9 @@ export default function OptaellingSide() {
                   <span className="ml-2 text-gray-400">{v.antal} reg.</span>
                   {v.shelves && <span className="ml-2 text-gray-400">{v.shelves}</span>}
                 </p>
+                {v.remark && (
+                  <p className="mt-0.5 text-sm italic text-gray-500">&raquo;{v.remark}&laquo;</p>
+                )}
                 <p className="mt-0.5 flex gap-2 text-[11px] font-semibold uppercase">
                   {v.estimated && <span className="text-amber-700">anslået</span>}
                   {v.confirmed && <span className="text-sky-700">bekræftet, ikke talt</span>}

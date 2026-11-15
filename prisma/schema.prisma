@@ -877,6 +877,8 @@ model LagerCountLine {
   // BC-beholdningen da linjen blev registreret. Gemt her, så oversigten kan vise
   // forskellen uden et nyt BC-kald pr. vare.
   bcQty       Decimal? @db.Decimal(18, 5)
+  // Optaellerens egen bemaerkning fra hylden. Foelger med til kladdelinjen i BC.
+  remark      String?
   createdAt   DateTime @default(now())
 
   @@index([countId, itemNo])

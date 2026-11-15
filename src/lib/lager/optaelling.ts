@@ -6,8 +6,12 @@
 // kontoret, på optællingen i BC.
 
 import { prisma } from '@/lib/prisma'
+import { sendEmail } from '@/lib/email'
 import { ensureLagerSchema } from '@/lib/lager/db'
 import { resolveBarcode, sendCountToBC } from '@/lib/lager/bc'
+
+/** Hvem der skal tjekke og bogføre optællingen. */
+const OPTAELLING_MAIL = 'fisk@venmark.dk'
 
 let ensured = false
 
@@ -56,6 +60,7 @@ export async function ensureOptaellingSchema() {
   // se forskellen med det samme.
   await prisma.$executeRaw`ALTER TABLE "LagerCount" ADD COLUMN IF NOT EXISTS "blind" BOOLEAN NOT NULL DEFAULT false`
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "bcQty" DECIMAL(18,5)`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "remark" TEXT`
   ensured = true
 }
 
@@ -134,6 +139,9 @@ export interface NyLinje {
   shelfCode?: string
   lotNo?: string
   barcode?: string
+  /** Optællerens egen bemærkning, skrevet eller indtalt ved hylden. Maks 150 tegn —
+   *  det er hvad der er plads til på kladdelinjen, og hvad nogen gider læse. */
+  remark?: string
   /** BC-beholdningen som opslaget gav. Gemmes, så oversigten kan vise forskellen
    *  uden et nyt BC-kald pr. vare. */
   bcQty?: number | null
@@ -147,17 +155,17 @@ export async function tilfoejLinje(
   countId: string,
   linje: NyLinje,
   brugerNavn: string,
-): Promise<{ total: number; antal: number }> {
+): Promise<{ total: number; antal: number; bcAntal: number | null }> {
   await ensureOptaellingSchema()
   const id = `cl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   await prisma.$executeRaw`
     INSERT INTO "LagerCountLine"
-      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty")
+      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark")
     VALUES
       (${id}, ${countId}, ${linje.itemNo.toUpperCase()}, ${linje.description ?? ''}, ${linje.qty},
        ${linje.uom ?? ''}, ${!!linje.estimated}, ${!!linje.confirmed},
        ${linje.shelfCode ?? null}, ${linje.lotNo ?? null}, ${linje.barcode ?? null}, ${brugerNavn},
-       ${linje.bcQty ?? null})
+       ${linje.bcQty ?? null}, ${linje.remark?.slice(0, 150) ?? null})
   `
   return vareTotal(countId, linje.itemNo)
 }
@@ -217,6 +225,25 @@ export async function vareTotal(
     antal: Number(rows[0]?.antal ?? 0),
     bcAntal: rows[0]?.bcqty === null || rows[0]?.bcqty === undefined ? null : Number(rows[0].bcqty),
   }
+}
+
+/**
+ * Sætter bemærkningen på ALLE varens registreringer i tællingen. Bemærkningen hører
+ * til varen, ikke til det enkelte scan — ellers skulle man huske hvilken scanning man
+ * skrev den på, og den ville forsvinde ved næste registrering.
+ */
+export async function saetBemaerkning(
+  countId: string,
+  itemNo: string,
+  bemaerkning: string,
+): Promise<boolean> {
+  await ensureOptaellingSchema()
+  const tekst = bemaerkning.slice(0, 150)
+  const n = await prisma.$executeRaw`
+    UPDATE "LagerCountLine" SET remark = ${tekst || null}
+    WHERE "countId" = ${countId} AND "itemNo" = ${itemNo.toUpperCase()}
+  `
+  return n > 0
 }
 
 /** Fjerner den seneste registrering på en vare — fortryd-knappen. */
@@ -304,6 +331,7 @@ export interface OptaellingLinje {
   confirmed: boolean
   shelves: string
   lotNo: string
+  remark: string
   /** BC's beholdning da varen blev registreret. null på en blind tælling. */
   bcAntal: number | null
   afvigelse: number | null
@@ -326,6 +354,7 @@ export async function summerPrVare(countId: string, skjulBC = false): Promise<Op
            BOOL_AND(confirmed)                                 AS confirmed,
            STRING_AGG(DISTINCT COALESCE("shelfCode",''), ', ') AS shelves,
            MAX(COALESCE("lotNo",''))                           AS lotno,
+           MAX(COALESCE(remark,''))                            AS remark,
            MAX("bcQty")                                        AS bcqty
     FROM "LagerCountLine"
     WHERE "countId" = ${countId}
@@ -345,6 +374,7 @@ export async function summerPrVare(countId: string, skjulBC = false): Promise<Op
       confirmed: !!r.confirmed,
       shelves: (r.shelves ?? '').replace(/^, |, $/g, ''),
       lotNo: r.lotno ?? '',
+      remark: r.remark ?? '',
       bcAntal,
       afvigelse: bcAntal === null ? null : total - bcAntal,
     }
@@ -388,5 +418,68 @@ export async function sendOptaelling(
         "bcDiffLines" = ${svar.afvigelser ?? 0}, "bcError" = NULL
     WHERE id = ${countId}
   `
+
+  // Besked til kontoret: kladden ligger og venter på at blive tjekket og bogført.
+  // Mail må ALDRIG vælte afsendelsen — tællingen er landet i BC uanset hvad.
+  try {
+    await sendOptaellingMail(optaelling, linjer, svar.afvigelser ?? 0)
+  } catch (e: any) {
+    console.error(`[lager optaelling] mail for ${optaelling.no} fejlede: ${e?.message ?? e}`)
+  }
+
   return { ok: true, linjer: svar.linjer, afvigelser: svar.afvigelser }
+}
+
+async function sendOptaellingMail(
+  optaelling: Optaelling,
+  linjer: OptaellingLinje[],
+  afvigelser: number,
+) {
+  const anslaaede = linjer.filter(l => l.estimated)
+  const bekraeftede = linjer.filter(l => l.confirmed)
+  const medAfvigelse = linjer.filter(l => l.afvigelse !== null && Math.abs(l.afvigelse) >= 0.001)
+
+  const nr = (n: number) => n.toLocaleString('da-DK', { maximumFractionDigits: 3 })
+  const linje = (l: OptaellingLinje) =>
+    `  ${l.itemNo.padEnd(10)} ${l.description.slice(0, 32).padEnd(34)} ` +
+    `talt ${nr(l.total).padStart(9)} ${l.uom}` +
+    (l.bcAntal !== null ? `   BC ${nr(l.bcAntal).padStart(9)}   forskel ${l.afvigelse! > 0 ? '+' : ''}${nr(l.afvigelse!)}` : '') +
+    (l.estimated ? '   [ANSLÅET]' : '') +
+    (l.confirmed ? '   [bekræftet, ikke talt]' : '') +
+    (l.remark ? `\n      ${l.remark}` : '')
+
+  const tekst = [
+    `Optælling ${optaelling.no} er sendt til Business Central.`,
+    '',
+    `Lokation:      ${optaelling.locationCode}`,
+    `Talt af:       ${optaelling.createdByName}`,
+    `Varer:         ${linjer.length}`,
+    `Med afvigelse: ${afvigelser}`,
+    `Anslåede tal:  ${anslaaede.length}`,
+    `Bekræftede:    ${bekraeftede.length}`,
+    optaelling.note ? `Bemærkning:    ${optaelling.note}` : '',
+    '',
+    'Linjerne ligger i lageropgørelseskladden (kladdenavn LAGERAPP) og skal tjekkes og bogføres.',
+    'I BC: søg efter "Lageroptællinger (app)" for at se tællingen, eller åbn kladden direkte.',
+    '',
+    medAfvigelse.length > 0 ? `AFVIGELSER (${medAfvigelse.length}):` : 'Ingen afvigelser.',
+    ...medAfvigelse.map(linje),
+    '',
+    anslaaede.length > 0 ? `ANSLÅEDE TAL (${anslaaede.length}) — der er ikke talt, men skønnet:` : '',
+    ...anslaaede.map(linje),
+    '',
+    `Alle ${linjer.length} linjer:`,
+    ...linjer.map(linje),
+  ]
+    .filter(l => l !== '')
+    .join('\n')
+
+  await sendEmail({
+    to: OPTAELLING_MAIL,
+    subject:
+      `Optælling ${optaelling.no} — ${optaelling.locationCode}, ${linjer.length} varer, ` +
+      `${afvigelser} afvigelse${afvigelser === 1 ? '' : 'r'}`,
+    text: tekst,
+  })
+  console.log(`[lager optaelling] mail sendt til ${OPTAELLING_MAIL} for ${optaelling.no}`)
 }
