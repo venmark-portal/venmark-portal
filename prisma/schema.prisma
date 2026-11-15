@@ -778,3 +778,52 @@ model Bid {
   @@index([auctionId, createdAt])
   @@index([auctionId, amount])
 }
+
+// ─── Lager-app (/lager) ──────────────────────────────────────────────────────
+// Appen har ALDRIG egen beholdning — BC er hovedbogen. Her ligger kun det BC ikke
+// kan rumme: hvem der må scanne, hvilke hylder vi har, og hvad der er modtaget én
+// gang (idempotens), så en genafspillet kø ikke tæller dobbelt.
+
+model LagerUser {
+  id              String   @id @default(cuid())
+  name            String
+  initials        String?                          // vises i hjørnet og på optællingslinjer
+  pinHash         String
+  isActive        Boolean  @default(true)
+  // Lokation appen starter på. Tom = brugeren vælger selv hver gang.
+  defaultLocation String?
+  canCount        Boolean  @default(true)          // må lave lageroptælling
+  canPack         Boolean  @default(false)         // må pakke (fase 3)
+  bcUserName      String?                          // BC-bruger, så optællingen kan spores til en person
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Hylde = APPENS eget begreb. BC's placeringer (bins) er IKKE slået til, og at slå dem
+// til ville tvinge en hylde på salg, montage, produktion og varemodtagelse fra dag ét.
+// Appen husker hvad der blev talt hvor og lægger sammen pr. vare, før BC får totalen.
+model LagerShelf {
+  id           String   @id @default(cuid())
+  locationCode String                               // BC-lokation: VENMARK, PRODUCTION, VENMKBH ...
+  code         String                               // kort kode, fx "F1-A"
+  name         String                               // "Frys 1, reol A"
+  sortOrder    Int      @default(0)                 // rækkefølgen man går lageret igennem
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([locationCode, code])
+  @@index([locationCode, sortOrder])
+}
+
+// Hver handling fra en håndterminal bærer en nøgle lavet PÅ ENHEDEN. Kommer den samme
+// nøgle igen (dårligt wifi, genafspillet kø, dobbelttryk), svarer serveren med det
+// gemte svar i stedet for at udføre handlingen igen.
+model LagerIdempotency {
+  key       String   @id
+  endpoint  String
+  userId    String?
+  result    String   @db.Text                       // JSON-svaret vi gav første gang
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

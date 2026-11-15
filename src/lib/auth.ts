@@ -157,6 +157,39 @@ export const authOptions: NextAuthOptions = {
         return { id: driver.id, name: driver.name, role: 'driver' as const }
       },
     }),
+
+    // Lager-appen (/lager): håndterminal med navn + PIN. Samme mønster som chauffør —
+    // en lagermand skal ikke taste email og kodeord med handsker på.
+    CredentialsProvider({
+      id: 'lager',
+      name: 'Lager',
+      credentials: {
+        userId: { label: 'Medarbejder', type: 'text' },
+        pin:    { label: 'PIN',         type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.userId || !credentials?.pin) return null
+        const rows = await prisma.$queryRaw<any[]>`
+          SELECT id, name, initials, "pinHash", "defaultLocation", "canCount", "canPack", "bcUserName"
+          FROM "LagerUser"
+          WHERE id = ${credentials.userId} AND "isActive" = true LIMIT 1
+        `
+        const u = rows[0]
+        if (!u) return null
+        const valid = await compare(credentials.pin, u.pinHash)
+        if (!valid) return null
+        return {
+          id:              u.id,
+          name:            u.name,
+          role:            'lager' as const,
+          lagerInitials:   u.initials ?? '',
+          lagerLocation:   u.defaultLocation ?? '',
+          lagerCanCount:   !!u.canCount,
+          lagerCanPack:    !!u.canPack,
+          lagerBcUserName: u.bcUserName ?? '',
+        } as any
+      },
+    }),
   ],
 
   session: { strategy: 'jwt' },
@@ -173,6 +206,12 @@ export const authOptions: NextAuthOptions = {
         token.isContact             = (user as any).isContact ?? false
         // Tom for en rigtig kunde — kun sat når en admin kigger med.
         ;(token as any).impersonatedBy = (user as any).impersonatedBy ?? ''
+        // Lager-appen: hvem scanner, hvor, og hvad må han.
+        ;(token as any).lagerInitials   = (user as any).lagerInitials ?? ''
+        ;(token as any).lagerLocation   = (user as any).lagerLocation ?? ''
+        ;(token as any).lagerCanCount   = (user as any).lagerCanCount ?? false
+        ;(token as any).lagerCanPack    = (user as any).lagerCanPack ?? false
+        ;(token as any).lagerBcUserName = (user as any).lagerBcUserName ?? ''
         // "Bestil på vegne af": aktiv kunde starter som login-kunden selv.
         // active* = valgt butik; token.bcCustomerNumber/bcPriceGroup/... forbliver
         // login-kundens EGET (parent) og bruges kun til adgangs-validering.
@@ -218,6 +257,11 @@ export const authOptions: NextAuthOptions = {
         ;(session.user as any).role                 = token.role
         ;(session.user as any).isContact            = token.isContact ?? false
         ;(session.user as any).impersonatedBy       = (token as any).impersonatedBy ?? ''
+        ;(session.user as any).lagerInitials        = (token as any).lagerInitials ?? ''
+        ;(session.user as any).lagerLocation        = (token as any).lagerLocation ?? ''
+        ;(session.user as any).lagerCanCount        = (token as any).lagerCanCount ?? false
+        ;(session.user as any).lagerCanPack         = (token as any).lagerCanPack ?? false
+        ;(session.user as any).lagerBcUserName      = (token as any).lagerBcUserName ?? ''
         ;(session.user as any).requirePoNumber      = token.requirePoNumber ?? false
 
         // Login-kundens EGET nr. (parent) — bevares til adgangs-validering

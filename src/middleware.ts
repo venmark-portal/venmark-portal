@@ -17,7 +17,8 @@ export async function middleware(req: NextRequest) {
     // en admin, så den kan ikke selv kræve at man allerede er logget ind.
     pathname === '/portal/som-kunde' ||
     pathname === '/admin/login' ||
-    pathname === '/chauffeur/login'
+    pathname === '/chauffeur/login' ||
+    pathname === '/lager/login'
   ) return NextResponse.next()
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -35,6 +36,15 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/chauffeur')) {
     if (!token || token.role !== 'driver') {
       return NextResponse.redirect(new URL('/chauffeur/login', req.url))
+    }
+    return NextResponse.next()
+  }
+
+  // Lager-appen: kræver lager-rolle. En admin skal også kunne komme ind — ellers kan
+  // kontoret ikke se hvad der sker på lageret uden at låne en håndterminal.
+  if (pathname.startsWith('/lager')) {
+    if (!token || (token.role !== 'lager' && token.role !== 'admin')) {
+      return NextResponse.redirect(new URL('/lager/login', req.url))
     }
     return NextResponse.next()
   }
@@ -60,5 +70,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/portal/:path*', '/admin/:path*', '/chauffeur/:path*'],
+  matcher: ['/portal/:path*', '/admin/:path*', '/chauffeur/:path*', '/lager/:path*'],
 }
