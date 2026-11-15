@@ -15,6 +15,7 @@ interface Tjek {
   flyttet?: boolean
   til?: string
   afsendelsesdato?: string
+  samletMed?: string
   problemer?: { varenr: string; navn: string; antal: number; maks: number; enhed: string }[]
 }
 
@@ -99,6 +100,7 @@ export default function SkiftLeveringsdag({ ordrenr }: { ordrenr: string }) {
       {tjek?.ok && !tjek.flyttet && valgt && (
         <div className="space-y-2 rounded-lg bg-blue-50 p-3 text-blue-900">
           <p>{t('kanFlyttes', { dato: dagTekst(valgt), afs: tjek.afsendelsesdato ? dagTekst(tjek.afsendelsesdato) : '' })}</p>
+          {tjek.samletMed && <p className="font-medium">{t('samles', { nr: tjek.samletMed })}</p>}
           <button type="button" disabled={travl} onClick={() => send(valgt, true)}
             className="rounded-lg bg-blue-600 px-4 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50">
             {t('flyt')}

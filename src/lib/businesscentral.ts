@@ -1542,6 +1542,9 @@ export interface BCFlytSvar {
   /** Varer der ikke kan leveres den nye dag — antal og maks i basisenheden. */
   problemer?:       { varenr: string; navn: string; antal: number; maks: number; enhed: string }[]
   priserOpdateret?: number
+  /** Lagt sammen med denne ordre (mergeIntoOrder) — den flyttede ordre er slettet. */
+  samletMed?:       string
+  linjerFlyttet?:   number
 }
 
 /**
@@ -1559,6 +1562,25 @@ export async function changeBCOrderDeliveryDate(bcOrderId: string, newDate: stri
   if (!res.ok) {
     const tekst = (await res.text()).slice(0, 300)
     console.error(`[flyt-levering] BC ${res.status} for ${bcOrderId} → ${newDate}: ${tekst}`)
+    throw new Error(`BC ${res.status}: ${tekst}`)
+  }
+  return JSON.parse((await res.json())?.value ?? '{}') as BCFlytSvar
+}
+
+/**
+ * Flyt ordren til en dag hvor kunden allerede har en åben, upakket ordre: BC lægger linjerne på
+ * targetOrderNo (som "Tilføj til ordre") og sletter den flyttede ordre. dryRun = kun tjek.
+ */
+export async function mergeBCOrderInto(bcOrderId: string, targetOrderNo: string, newDate: string, dryRun: boolean): Promise<BCFlytSvar> {
+  const token = await getAccessToken()
+  const res = await fetchBcDeadlockRetry(`${bcPortalBaseUrl()}/portalSalesOrders(${bcOrderId})/Microsoft.NAV.mergeIntoOrder`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body:    JSON.stringify({ targetOrderNo, newDate, dryRun }),
+  })
+  if (!res.ok) {
+    const tekst = (await res.text()).slice(0, 300)
+    console.error(`[flyt-levering] BC ${res.status} sammenlæg ${bcOrderId} → ${targetOrderNo} ${newDate}: ${tekst}`)
     throw new Error(`BC ${res.status}: ${tekst}`)
   }
   return JSON.parse((await res.json())?.value ?? '{}') as BCFlytSvar
