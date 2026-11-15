@@ -15,6 +15,10 @@ const nextConfig = {
     }
     return config
   },
+  // Håndbogen er statiske filer i public/haandbog — Next serverer ikke index.html for en mappe.
+  async rewrites() {
+    return [{ source: '/haandbog', destination: '/haandbog/index.html' }]
+  },
   async headers() {
     return [
       {

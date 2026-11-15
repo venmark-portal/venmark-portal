@@ -5,12 +5,14 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import PortalNav from '@/components/portal/PortalNav'
 import VersionVagt from '@/components/portal/VersionVagt'
+import AktivitetsMaaler from '@/components/portal/AktivitetsMaaler'
 import SomKundeBaand from '@/components/portal/SomKundeBaand'
 import SessionProvider from '@/components/portal/SessionProvider'
 import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
 import TicketNotifier from '@/components/portal/TicketNotifier'
 import PushSubscribeButton from '@/components/portal/PushSubscribeButton'
 import SprogSkifter from '@/components/portal/SprogSkifter'
+import RobotChat from '@/components/portal/RobotChat'
 import { LangProvider } from '@/lib/i18n/portal/LangProvider'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT } from '@/lib/i18n/portal/lang'
@@ -79,6 +81,9 @@ export default async function PortalLayout({
     <LangProvider lang={lang}>
       <div lang={lang} className="flex min-h-screen flex-col" style={{ backgroundColor: settings.bgColor }}>
 
+        {/* Portal-brug (admin/admin-som-kunde logges ikke) — se src/lib/aktivitet.ts */}
+        {!(session.user as any)?.impersonatedBy && (session.user as any)?.role === 'customer' && <AktivitetsMaaler />}
+
         {/* Admin kigger med som kunden — skal kunne ses på HVER side. */}
         {(session.user as any)?.impersonatedBy && (
           <SomKundeBaand
@@ -88,7 +93,7 @@ export default async function PortalLayout({
         )}
 
         {/* Desktop-topbar */}
-        <header className="hidden border-b border-white/60 bg-white/80 backdrop-blur-sm md:block sticky top-0 z-30 shadow-sm">
+        <header data-portal-topbar className="hidden border-b border-white/60 bg-white/80 backdrop-blur-sm md:block sticky top-0 z-30 shadow-sm">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
             <span className="text-xl font-bold">
               <span className="text-gray-900">Venmark</span>
@@ -118,7 +123,7 @@ export default async function PortalLayout({
         </header>
 
         {/* Mobil-header */}
-        <header className="border-b border-white/60 bg-white/80 backdrop-blur-sm md:hidden sticky top-0 z-30 shadow-sm">
+        <header data-portal-topbar className="border-b border-white/60 bg-white/80 backdrop-blur-sm md:hidden sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-lg font-bold">
               <span className="text-gray-900">Venmark</span>
@@ -157,6 +162,8 @@ export default async function PortalLayout({
         <TicketNotifier />
         <PushSubscribeButton />
         <VersionVagt />
+        {/* Svar-robotten — vises kun for kunder der er slået til under /admin/robot */}
+        {(session.user as any)?.role === 'customer' && <RobotChat />}
         {/* Mobil-bundnavigation */}
         <PortalNav />
       </div>

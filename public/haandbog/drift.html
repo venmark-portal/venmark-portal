@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Drift &amp; overblik · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html" aria-current="page">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Ledelse · administrator</p>
+    <h1 class="title">Drift &amp; overblik</h1>
+    <p class="lede">Venmark Opsætning, genstart af BC, de automatiske jobs, chaufførappen, info-skærmene og statistiksiderne på portalen.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#opsaetning">Venmark Opsætning</a></li>
+      <li><a href="#genstart">Genstart BC</a></li>
+      <li><a href="#jobkoe">Automatiske jobs</a></li>
+      <li><a href="#chauffoer">Chaufførappen</a></li>
+      <li><a href="#fragtmand">Eksterne vognmænd</a></li>
+      <li><a href="#skaerme">Info-skærme</a></li>
+      <li><a href="#tidslinjer">Tidslinjer</a></li>
+      <li><a href="#portalbrug">Portal-brug</a></li>
+      <li><a href="#salgslog">Salgslinje-loggen</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="opsaetning">
+      <p class="eyebrow">Indstillinger</p>
+      <h2>Venmark Opsætning</h2>
+      <p>Én side med alle Venmarks egne indstillinger. De vigtigste:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Felt / gruppe</th><th>Styrer</th></tr></thead>
+          <tbody>
+            <tr><td><span class="fld">Portal URL</span></td><td>Links i mails (faktura-links i kontoudtog) og håndbogsknapper.</td></tr>
+            <tr><td><span class="fld">Robotkode (automatik)</span></td><td>Sælger på webordrer og indkøber på auktionsordrer (WEB). Tom = slået fra.</td></tr>
+            <tr><td><span class="fld">Afvist-dialog aktiv</span></td><td>Om Afvist-dialogen og pakke-spærringen er slået til.</td></tr>
+            <tr><td><span class="fld">Pak næste dag til kl.</span></td><td>Leveringsformer der hentes før kl. pakkes dagen før.</td></tr>
+            <tr><td><span class="fld">Produktion slutter kl.</span></td><td>Efter kl. tæller råvare ikke med i disponibelt for afsendelse i dag.</td></tr>
+            <tr><td><span class="fld">Buffer-trapper (disponibel)</span></td><td>Hvor meget en strengt-lager-vare må mangle før den er Afvist.</td></tr>
+            <tr><td>Netfisk-felterne</td><td>Webshoppens adgang, debitor og nummerserie.</td></tr>
+            <tr><td><span class="fld">Afsendernavn (SMS)</span></td><td>Skal være vores nummer, så kunder kan svare.</td></tr>
+            <tr><td>Interne system-mails</td><td>Mail Salgsafdeling, Mail Kvalitet og Produktion, cert-påmindelser.</td></tr>
+            <tr><td><span class="fld">MSC-/ASC-certifikatnr.</span></td><td>Trykkes på faktura og følgeseddel.</td></tr>
+            <tr><td>NETS / Leverandørservice</td><td>Finanskladde til NETS-opkrævninger.</td></tr>
+            <tr><td>AI (Claude)</td><td>Nøgle til AI-læsning af leverandørfakturaer.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Knapper på siden bl.a.: <span class="btn">Opdater priser på alle ikke-manuelle linjer</span>, <span class="btn">Genberegn moms på alle åbne salgsordrer</span>, <span class="btn">Opsæt automatisk AI-behandling</span>.</p>
+    </section>
+
+    <section class="blk" id="genstart">
+      <p class="eyebrow">Når BC hænger</p>
+      <h2>Genstart BC</h2>
+      <p>Knappen <span class="btn">Genstart BC</span> på Venmark Opsætning genstarter produktionsmiljøet via Microsofts admin-center. Alle brugere smides af i et par minutter. Brug den kun, når BC hænger for alle.</p>
+      <div class="note">
+        <p class="note-h">Efter en ny version</p>
+        <p>Når en ny version af Venmark-udvidelsen er lagt på, skal den <strong>Force Synces</strong> i admin-centret — en almindelig genindlæsning (Ctrl+F5) er ikke nok.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="jobkoe">
+      <p class="eyebrow">Baggrund</p>
+      <h2>Automatiske jobs (jobkø)</h2>
+      <p>Disse skal stå som <strong>Klar</strong> under <strong>Jobkøposter</strong>. Står et job i Fejl, så åbn det, se fejlen, og sæt det til Klar igen.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Job</th><th>Gør</th><th>Hvor ofte</th></tr></thead>
+          <tbody>
+            <tr><td>Netfisk Import</td><td>Henter webshop-ordrer</td><td>Hvert 15. min</td></tr>
+            <tr><td>Auktionsimport</td><td>Henter auktionskøb</td><td>Hvert 5. min, hverdage 7–11</td></tr>
+            <tr><td>Disponibel Refresh</td><td>Genberegner disponibel for ændrede varer</td><td>Hvert 5. min</td></tr>
+            <tr><td>Disponibel Full Refresh</td><td>Fuld genberegning</td><td>Kl. 03 hver nat</td></tr>
+            <tr><td>Claude Traceability</td><td>AI læser leverandørfakturaer for sporbarhed</td><td>Hvert 30. min, hverdage</td></tr>
+            <tr><td>Expense AutoPost</td><td>Auto-bogfører Expense720-fakturaer</td><td>Hvert 15. min, hverdage</td></tr>
+            <tr><td>Freight Auto Send</td><td>Mailer fragtfirma før afhentning</td><td>Hvert ~10. min</td></tr>
+            <tr><td>Cert Reminder</td><td>Påmindelse om udløbne MSC/ASC-certifikater</td><td>Månedligt</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="blk" id="chauffoer">
+      <p class="eyebrow">Egne biler</p>
+      <h2>Chaufførappen</h2>
+      <p>Chaufførerne bruger <span class="k">portal.venmark.dk/chauffeur</span> på telefonen (kan lægges på hjemmeskærmen). Log ind med navn og PIN.</p>
+      <h3 id="chauffoer-opsaet">Opsætning (portal-admin → Chauffører)</h3>
+      <ul class="clean">
+        <li>Chauffører oprettes i BC og hentes med <span class="btn">Sync fra BC</span>. Sæt PIN (mindst 4 cifre) og standardbil.</li>
+        <li>Bilerne vedligeholdes samme sted.</li>
+        <li>Leveringskoder der køres med egne biler skal have fluebenet <strong>Egen rute</strong> (admin → Leveringskoder).</li>
+      </ul>
+      <h3 id="rute">Ruten</h3>
+      <ul class="clean">
+        <li>Efter kl. 15 viser appen næste hverdags rute. Ruten dannes automatisk fra BC-ordrerne.</li>
+        <li><strong>Træk ⋮⋮</strong> for at flytte et stop — rækkefølgen gemmes som kundens faste rutenummer fremover.</li>
+        <li><strong>Flyt til</strong> anden bil — med “Fast for kunden” bliver bilen kundens faste.</li>
+        <li><span class="btn">Tag foto + leveret</span> gemmer foto og GPS og sender leveringsbevis til kunden. <span class="btn">Fejlet</span> hvis leveringen ikke kunne gennemføres.</li>
+        <li>Info-knappen viser dørkode, nøgleboks og alarmkode.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="fragtmand">
+      <p class="eyebrow">Eksterne</p>
+      <h2>Eksterne vognmænd</h2>
+      <p>Hver vognmand har sit eget link (<span class="k">/fragt/…</span>) uden login. Siden viser dagens leverancer for deres leveringskoder med kasser og kg, og kan printes. Linket oprettes i BC. Virker det ikke: <em>“Linket er ugyldigt eller udløbet”</em> — lav et nyt.</p>
+    </section>
+
+    <section class="blk" id="skaerme">
+      <p class="eyebrow">TV-skærme</p>
+      <h2>Info-skærme</h2>
+      <p>Portal-admin → <strong>Skærme</strong>. Hver skærm har sin egen adresse (<span class="k">/skaerm/…</span>), som åbnes i skærmens browser. Grøn prik = skærmen har meldt sig inden for 2 minutter.</p>
+      <ol class="steps">
+        <li><strong>Opret skærm</strong>: navn, landskab/portræt, layout.</li>
+        <li>Tilføj indhold fra <strong>Tilføj BC-widget</strong> (Dagens salg, Leveringer i dag, Produktion nu, Udbytter, Afviste varer, Pakkeristatus, Sælgere i dag, Telefon i dag …), sæt sekunder og <span class="btn">Gem indhold</span>.</li>
+        <li>Skærmen skifter selv inden for et halvt minut.</li>
+      </ol>
+      <ul class="clean">
+        <li><span class="btn">Nyt token</span> giver ny adresse — den gamle holder straks op med at virke.</li>
+        <li>Initialer på produktionsskærmen: fanen <strong>Medarbejdere</strong>.</li>
+        <li>Fanen <strong>Adgang</strong> giver kolleger lov til kun at se eller styre skærmene.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="tidslinjer">
+      <p class="eyebrow">Statistik</p>
+      <h2>Tidslinjer</h2>
+      <p>Portal-admin → <strong>Tidslinjer</strong>: dag for dag, standard 30 dage.</p>
+      <ul class="clean">
+        <li><strong>Omsætning</strong> — faktureret ekskl. moms, sammenlignet med samme ugedag sidste år.</li>
+        <li><strong>Salgslinjer pr. sælger</strong> — antal linjer og andel pr. sælger pr. dag. Webordrer tæller som “Portal”, webshoppen som “Netfisk”.</li>
+        <li><strong>Telefon</strong> — opkald pr. dag og de numre vi taler mest med, krydstjekket mod kunder, kontakter og leverandører.</li>
+        <li><strong>Pakkeri</strong> — linjer pakket pr. time stemplet (data fra 14-09-2026).</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="portalbrug">
+      <p class="eyebrow">Statistik</p>
+      <h2>Portal-brug</h2>
+      <p>Portal-admin → <strong>Portal-brug</strong>: hvilke kunder bruger portalen, hvor længe og fra mobil eller pc — over 7, 30 eller 90 dage. Klik på en kunde for detaljer. “Ikke set i perioden” viser kunder der ikke har været inde. Admin “som kunde” tæller ikke med.</p>
+    </section>
+
+    <section class="blk" id="salgslog">
+      <p class="eyebrow">Statistik</p>
+      <h2>Salgslinje-loggen</h2>
+      <p>Salgslinjer slettes, når ordren bogføres — derfor logges hver linje i <strong>Salgslinje-log (statistik)</strong>: oprettet af, sælger, pakket af, scannet, slettet igen, bogført. Al statistik (tidslinjer, skærme) tæller herfra.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Drift &amp; overblik</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

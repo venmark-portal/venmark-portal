@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getItems, getItemsByNumbers, getWebshopVisibleItemNos } from '@/lib/businesscentral'
+import { getItems, getItemsByNumbers, getItemsUoMs, getWebshopVisibleItemNos } from '@/lib/businesscentral'
+import type { BCItemUoM } from '@/lib/businesscentral'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { getVarenavne, oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
 
@@ -13,7 +14,8 @@ export async function GET(req: NextRequest) {
   const top      = Number(searchParams.get('top')  ?? 50)
   const skip     = Number(searchParams.get('skip') ?? 0)
   // Kun kundeportalens søgning sender portal=1 — admin og katalog beholder danske navne.
-  const lang     = searchParams.get('portal') === '1' ? await getPortalLang() : 'da'
+  const isPortal = searchParams.get('portal') === '1'
+  const lang     = isPortal ? await getPortalLang() : 'da'
 
   try {
     // Søgning skal også respektere portal-synligheden (RangeringPrisliste = 99 = skjult).
@@ -43,6 +45,20 @@ export async function GET(req: NextRequest) {
     }
     if (visible && d && Array.isArray(d.value))
       d.value = d.value.filter((i: any) => visible.has(i.number))
+    // Kundeportalens søgning skal kunne vælge enhed (kasse, spand …) ligesom varelisten.
+    // Uden enhederne viste søgningen kun basisenheden (Claus 08-11-2026).
+    if (isPortal && d && Array.isArray(d.value) && d.value.length) {
+      const uomMap = await getItemsUoMs(d.value.map((i: any) => ({ id: i.id, number: i.number }))).catch(() => new Map())
+      d.value = d.value.map((i: any) => {
+        const byCode = new Map<string, BCItemUoM>()
+        byCode.set(i.baseUnitOfMeasureCode, {
+          code: i.baseUnitOfMeasureCode, displayName: i.baseUnitOfMeasureCode,
+          qtyPerUnitOfMeasure: 1, baseUnitOfMeasure: true,
+        })
+        for (const u of (uomMap.get(i.number) ?? []) as BCItemUoM[]) byCode.set(u.code, u)
+        return { ...i, uoms: Array.from(byCode.values()) }
+      })
+    }
     return NextResponse.json(data)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Ukendt fejl'

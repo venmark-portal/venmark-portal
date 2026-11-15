@@ -6,6 +6,7 @@ import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getEffectiveDateF
 import { sendOrderNotification, sendBCVerificationAlert } from '@/lib/email'
 import { createBCSalesOrder, flagBeskedUlaest, getPortalShipmentMethods, getPortalCalendarDays, getItemCutoffs, getCustomerLocationCode, getItemAvailabilities, getCartCoverage, addLinesToBCOrder } from '@/lib/businesscentral'
 import { findAabenOrdre } from '@/lib/aabenOrdre'
+import { kbhOpsplit } from '@/lib/kbhLevering'
 import { revalidatePath } from 'next/cache'
 import { getActiveCustomerNo, getParentCustomerNo, isCustomerAllowed } from '@/lib/activeCustomer'
 import { getPortalLang } from '@/lib/i18n/portal/server'
@@ -36,6 +37,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: t('ingenAdgangButik') }, { status: 403 })
   }
 
+  // Tidsmåling pr. fase → én linje i pm2-loggen pr. bestilling ("[ordre-tid]"), så vi kan se
+  // hvor ventetiden efter "Sender…" går hen (kunderne oplevede at den stod stille).
+  const t0 = Date.now()
+  let sidst = t0
+  const faser: string[] = []
+  const tid = (navn: string) => { const nu = Date.now(); faser.push(`${navn} ${nu - sidst}ms`); sidst = nu }
+  let antalLinjer = 0
+
   try {
     const body = await req.json()
     const { deliveryDate: deliveryDateStr, notes, lines, shipmentMethodCode, poNumber, driverNote } = body
@@ -43,6 +52,7 @@ export async function POST(req: NextRequest) {
     if (!deliveryDateStr || !lines?.length) {
       return NextResponse.json({ error: t('manglerDatoLinjer') }, { status: 400 })
     }
+    antalLinjer = lines.length
 
     const deliveryDate = new Date(deliveryDateStr)
 
@@ -50,11 +60,32 @@ export async function POST(req: NextRequest) {
     // bestillingsfrist-tjek. (Hentes altid, så frist-håndhævelsen også virker uden metode.)
     const toDate90 = new Date(); toDate90.setDate(toDate90.getDate() + 90)
     const today8601 = new Date().toISOString().split('T')[0]
-    const [allMethods, calendarDays, itemCutoffs] = await Promise.all([
-      getPortalShipmentMethods().catch(() => []),
+    // HASTIGHED: alt der ikke afhænger af hinanden hentes samtidig. Disponibel hentes KUN for
+    // kurvens varer — før blev hele kataloget (4200+ varer, beregnet pr. vare i BC) hentet ved
+    // hver bestilling, og det var hovedparten af ventetiden efter "Sender…" (09-11-2026).
+    const kurvVarer = Array.from(new Set((lines as any[]).map(l => l?.bcItemNumber).filter(Boolean))) as string[]
+    // Åben ordre samme dag (én ordre pr. leverance, se nedenfor) slås op SAMTIDIG med resten —
+    // den afhænger kun af kunde/dato/leveringsform og tog 2-8 s for sig selv. Den skal dog
+    // kende leveringsformens transitdage for at kunne regne kundens leveringsdato om til den
+    // AFSENDELSESdag ordrerne er nøglet på, så den hægtes på metode-opslaget frem for at vente
+    // på hele Promise.all'en.
+    const methodsP = getPortalShipmentMethods().catch(() => [])
+    const aabenOrdreP = methodsP
+      .then(ms => findAabenOrdre(
+        activeCustomerNo,
+        new Date(deliveryDateStr).toISOString().split('T')[0],
+        shipmentMethodCode || '',
+        shipmentMethodCode ? ms.find(m => m.code === shipmentMethodCode) : undefined,
+      ))
+      .catch(() => null)
+    const [allMethods, calendarDays, itemCutoffs, custLoc] = await Promise.all([
+      methodsP,
       getPortalCalendarDays(today8601, toDate90.toISOString().split('T')[0]).catch(() => []),
       getItemCutoffs().catch(() => new Map()),
+      getCustomerLocationCode(activeCustomerNo).catch(() => ''),
     ])
+    const avails = await getItemAvailabilities(custLoc, kurvVarer).catch(() => new Map())
+    tid('opslag')
 
     // Beregn deadline med leveringsmetode-logik hvis muligt, ellers simpel fallback
     const method = shipmentMethodCode ? allMethods.find(m => m.code === shipmentMethodCode) : undefined
@@ -79,8 +110,6 @@ export async function POST(req: NextRequest) {
     for (const d of calendarDays) {
       if ((!d.shipmentMethodCode || d.shipmentMethodCode === '') && d.dayType === 1) holidaySet.add(d.date)
     }
-    const custLoc    = await getCustomerLocationCode(activeCustomerNo).catch(() => '')
-    const avails     = await getItemAvailabilities(custLoc).catch(() => new Map())
     const ddMidnight = new Date(deliveryDate); ddMidnight.setHours(0, 0, 0, 0)
     const dStr       = deliveryDate.toISOString().split('T')[0]
     // Dansk dato. toISOString gav UTC-datoen, og den er en dag bagud mellem midnat og
@@ -186,6 +215,7 @@ export async function POST(req: NextRequest) {
         console.error(`[ordre] coverage-loft fejlede for ${activeCustomerNo} ${dStr} (${afgangLines.map(x => x.itemNo).join(',')}):`,
           e instanceof Error ? e.message : e)
       }
+      tid('coverage')
     }
     if (tooEarly.length) {
       return NextResponse.json(
@@ -211,14 +241,15 @@ export async function POST(req: NextRequest) {
     // Tjekket ligger her og ikke kun i browseren: en fane der har stået åben
     // siden i morges ved ikke at kontoret har taget en ordre i telefonen siden.
     // Er ordren pakket, kan den ikke nå at få mere med, og en ny er det rigtige.
-    const eksisterende = await findAabenOrdre(activeCustomerNo, dStr, shipmentMethodCode || '')
-      .catch(() => null)
+    const eksisterende = await aabenOrdreP
+    tid('aabenOrdre')
 
     if (eksisterende && !eksisterende.pakket) {
       const { errors } = await addLinesToBCOrder(
         eksisterende.bcOrderId,
-        lines.map((l: any) => ({ itemNumber: l.bcItemNumber, quantity: l.quantity, uomCode: l.uom })),
+        lines.map((l: any) => ({ itemNumber: l.bcItemNumber, quantity: l.quantity, uomCode: l.uom, note: typeof l?.note === 'string' ? l.note : undefined })),
       )
+      tid('bcLinjer')
       // Slettes ordren i BC i sekundet mellem opslaget og linjerne (kontoret rydder op), afviser
       // BC ALLE linjer med "No document with the specified ID exists". Så findes den ikke længere
       // → fald igennem og opret en NY ordre nedenfor (Claus: "ellers opret ny ordre").
@@ -234,6 +265,13 @@ export async function POST(req: NextRequest) {
         )
       }
       if (!ordreForsvandt) {
+        // KBH-levering: varer på lager i København → kundens XVEN-ordre (eksisterende ordre slettes aldrig).
+        const kbh = await kbhOpsplit({
+          ordreNr: eksisterende.bcOrderNumber, sletTomHoved: false, navne: varenavne(lines),
+          portalKunde: await prisma.customer.findUnique({ where: { id: userId }, select: { id: true, name: true, bcCustomerNumber: true } }) ?? undefined,
+          kundeNr: activeCustomerNo,
+        })
+        tid('kbh')
         revalidatePath('/portal/ordrer')
         return NextResponse.json({
           tilfoejet:   true,
@@ -241,6 +279,7 @@ export async function POST(req: NextRequest) {
           antal:       lines.length,
           ialt:        eksisterende.antalLinjer + lines.length,
           fraPortal:   eksisterende.fraPortal,
+          kbh,
         }, { status: 200 })
       }
     }
@@ -324,22 +363,32 @@ export async function POST(req: NextRequest) {
         notes ?? undefined,
         shipmentMethodCode ?? undefined,   // kundens VALGTE leveringskode → BC (transit/afsendelse)
       )
+      tid('bcOrdre')
+
+      // KBH-levering: varer på lager i København → kundens XVEN-ordre. Kom ALT derfra, er
+      // Hirtshals-ordren slettet, og portalens ordre peger så på XVEN-ordren i stedet.
+      const kbh = await kbhOpsplit({
+        ordreNr: bc.number, sletTomHoved: true, navne: varenavne(lines),
+        portalKunde: customer, kundeNr: activeCustomerNo,
+      })
+      tid('kbh')
 
       // Opdater til SENT_TO_BC med BC-referencer
       await prisma.order.update({
         where: { id: order.id },
         data:  {
           status:       'SENT_TO_BC',
-          bcOrderNumber: bc.number,
-          bcOrderId:    bc.id,
+          bcOrderNumber: kbh?.hovedSlettet ? kbh.xvenOrdre : bc.number,
+          bcOrderId:    kbh?.hovedSlettet ? null : bc.id,
           approvedAt:   new Date(),
         },
       })
 
+      // Mails sendes EFTER svaret til kunden (ikke await) — kunden skal ikke vente på SMTP.
       // BC-verifikation: hvis post-create GET ikke kunne bekraefte alle linjer → alarm
       if (!bc.verified) {
         console.error(`BC-verifikation FEJLEDE for ordre ${order.id}: ${bc.verifyError}`)
-        await sendBCVerificationAlert({
+        void sendBCVerificationAlert({
           customer,
           portalOrderId: order.id,
           bcOrderNumber: bc.number,
@@ -350,13 +399,13 @@ export async function POST(req: NextRequest) {
       }
 
       // Send email-notifikation
-      await sendOrderNotification({
+      void sendOrderNotification({
         customer,
         order: { ...order, status: 'SENT_TO_BC', bcOrderNumber: bc.number },
         lines: order.lines,
       }).catch((e) => console.warn('Email-notifikation fejlede:', e.message))
 
-      return NextResponse.json({ orderId: order.id, bcOrderNumber: bc.number }, { status: 201 })
+      return NextResponse.json({ orderId: order.id, bcOrderNumber: kbh?.hovedSlettet ? kbh.xvenOrdre : bc.number, kbh }, { status: 201 })
 
     } catch (bcErr: any) {
       // BC fejlede — behold SUBMITTED så admin kan gensende manuelt
@@ -375,5 +424,14 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error('Ordre-fejl:', e)
     return NextResponse.json({ error: t('serverfejl') }, { status: 500 })
+  } finally {
+    console.log(`[ordre-tid] ${activeCustomerNo} ${antalLinjer} linjer: ${Date.now() - t0}ms · ${faser.join(' · ')}`)
   }
+}
+
+/** Varenr → dansk navn fra kurven (til Venmarks KBH-besked). */
+function varenavne(lines: any[]): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const l of lines ?? []) if (l?.bcItemNumber) m.set(l.bcItemNumber, l.itemName || l.bcItemNumber)
+  return m
 }

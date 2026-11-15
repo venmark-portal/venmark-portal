@@ -27,7 +27,7 @@ export default async function SalgslistePage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4 print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Salgsliste</h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -55,7 +55,7 @@ export default async function SalgslistePage({
         </form>
       </div>
 
-      <SalgslisteTabel rows={rows} />
+      <SalgslisteTabel rows={rows} datoTekst={formatDanish(dato)} />
     </div>
   )
 }

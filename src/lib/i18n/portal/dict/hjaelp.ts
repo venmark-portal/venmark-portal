@@ -1,9 +1,13 @@
 import { defineDict } from '../lang'
 
-// Hjælpesiden (videoguide til bestilling).
+// Support og vejledning (før "Hjælp"): Claus' direkte nummer + videoguide til bestilling.
 export const hjaelpDict = defineDict({
   da: {
-    metaTitel: 'Hjælp — Venmark',
+    metaTitel: 'Support og vejledning — Venmark',
+    sideTitel: 'Support og vejledning',
+    hotlineTitel: 'Brug for hjælp? Ring til Claus',
+    hotlineTekst: 'Du er velkommen til at ringe når som helst — også uden for åbningstid. Tager jeg den ikke, så send en kort SMS, og jeg vender tilbage, så snart jeg kan.',
+    hotlineNummer: '41 96 96 44',
     titel: 'Sådan bestiller du',
     intro: 'En gennemgang af bestillingssiden — fra søgning til afsendt ordre.',
     videoTitel: 'Venmark Fisk web bestillings guide',
@@ -16,7 +20,11 @@ export const hjaelpDict = defineDict({
     drillerMidt: 'eller skriv en besked under', beskeder: 'Beskeder', drillerEfter: '.',
   },
   en: {
-    metaTitel: 'Help — Venmark',
+    metaTitel: 'Support and guides — Venmark',
+    sideTitel: 'Support and guides',
+    hotlineTitel: 'Need help? Call Claus',
+    hotlineTekst: "You're welcome to call any time — also outside opening hours. If I don't pick up, send a short text message and I'll get back to you as soon as I can.",
+    hotlineNummer: '+45 41 96 96 44',
     titel: 'How to order',
     intro: 'A walkthrough of the order page — from search to submitted order.',
     videoTitel: 'Venmark Fisk web ordering guide',
@@ -29,7 +37,11 @@ export const hjaelpDict = defineDict({
     drillerMidt: 'or write a message under', beskeder: 'Messages', drillerEfter: '.',
   },
   de: {
-    metaTitel: 'Hilfe — Venmark',
+    metaTitel: 'Support und Anleitung — Venmark',
+    sideTitel: 'Support und Anleitung',
+    hotlineTitel: 'Brauchen Sie Hilfe? Rufen Sie Claus an',
+    hotlineTekst: 'Sie können jederzeit anrufen — auch außerhalb der Öffnungszeiten. Wenn ich nicht abnehme, schicken Sie mir eine kurze SMS, und ich melde mich so schnell wie möglich.',
+    hotlineNummer: '+45 41 96 96 44',
     titel: 'So bestellen Sie',
     intro: 'Ein Rundgang durch die Bestellseite — von der Suche bis zur abgeschickten Bestellung.',
     videoTitel: 'Venmark Fisk Web-Bestellanleitung',

@@ -10,6 +10,7 @@ import { getDeadlineForDelivery, getDeadlineForMethodDelivery, getDeliveryDatesF
 import type { BCItem, BCItemAttributeValue, BCItemUoM, BCItemCategory, BCItemAvailability, BCShipmentMethod, BCCalendarDay } from '@/lib/businesscentral'
 import ItemSearchModal from './ItemSearchModal'
 import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
+import { defaultUom } from '@/lib/uom'
 import type { TFunc } from '@/lib/i18n/portal/lang'
 import { bestilDict } from '@/lib/i18n/portal/dict/bestil'
 
@@ -26,12 +27,55 @@ function langDato(locale: string, date: Date): string {
   return date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+/** Kvitteringsboks for KBH-levering: hvad kommer fra København, og hvad blev delt. */
+function KbhBoks({ k, t, locale }: { k: KbhKvit; t: BT; locale: string }) {
+  const [y, m, d] = k.levering.split('-').map(Number)
+  const dato = y > 1 ? langDato(locale, new Date(y, m - 1, d)) : ''
+  const tal  = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 })
+  return (
+    <div className="mx-auto mt-3 max-w-md rounded-xl bg-sky-50 px-4 py-3 text-left text-sm text-sky-950 ring-1 ring-sky-200">
+      {k.hovedSlettet ? (
+        <p>{t('kbhAlt', { nr: k.xvenOrdre, dato })}</p>
+      ) : (
+        <>
+          <p className="font-semibold">{t('kbhDelt2Titel')}</p>
+          <p className="mt-1">
+            {t(k.flyttet.length === 1 ? 'kbhFraKbh1' : 'kbhFraKbhN', { n: k.flyttet.length, nr: k.xvenOrdre })}
+            {t('kbhResten', { dato })}
+          </p>
+        </>
+      )}
+      {k.delt.length > 0 && (
+        <div className="mt-2 border-t border-sky-200 pt-2">
+          <p className="font-semibold">{t('kbhDeltTitel')}</p>
+          <ul className="mt-1 space-y-1">
+            {k.delt.map(dl => (
+              <li key={dl.itemNo}>
+                {t('kbhDeltLinje', { navn: dl.navn, bestilt: tal(dl.bestilt), enhed: dl.enhed, kbh: tal(dl.kbh), rest: tal(dl.hirtshals) })}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Det danske varenavn (navnDa sættes server-side før oversættelse) — sendes til ordre/favorit. */
 function daNavn(it: EnrichedItem): string {
   return ((it as { navnDa?: string }).navnDa) || it.displayName
 }
 
 // ─── Typer ────────────────────────────────────────────────────────────────────
+
+/** KBH-levering-kvittering fra ordre-API'et (se src/lib/kbhLevering.ts). */
+type KbhKvit = {
+  xvenOrdre:    string
+  levering:     string
+  hovedSlettet: boolean
+  flyttet: { itemNo: string; navn: string; antal: number; enhed: string }[]
+  delt:    { itemNo: string; navn: string; bestilt: number; kbh: number; hirtshals: number; enhed: string }[]
+}
 
 export type EnrichedItem = BCItem & {
   unitPrice:   number
@@ -456,7 +500,10 @@ export function resolvePrice(
   if (!tiers.length) return fallback
   const today = new Date().toISOString().split('T')[0]
 
-  const isBaseUnit = !uomCode || uomCode === baseUomCode || qtyPerUom <= 1
+  // En anden enhed end basis er IKKE basis, selv om dens faktor står til 1 i BC — fx "2 KG/SP"
+  // med Antal pr. enhed = 1 (07-11-2026). Før blev den regnet som basis, fandt ingen prislinje
+  // og faldt tilbage til varekortets 999-pris i kurven.
+  const isBaseUnit = !uomCode || uomCode === baseUomCode
 
   // Alle gyldige tiers for varen (uafhængigt af qty) — bruges som vis-pris-pulje
   // når qty=0 eller under mindste tier-minimum.
@@ -482,19 +529,40 @@ export function resolvePrice(
   }
 
   // ── 3. Fallback: base-enhedspriser × konverteringsfaktor ───────────────────
-  if (!isBaseUnit && qtyPerUom > 1) {
-    const effectiveBaseQty = Math.max(qty, 1) * qtyPerUom
-    const baseTiers = tiers.filter(t =>
+  // Samme regel som BC's salgslinje: kg-pris (efter kg-mængde) × Antal pr. enhed.
+  if (!isBaseUnit) {
+    const factor = qtyPerUom > 0 ? qtyPerUom : 1
+    const effectiveBaseQty = Math.max(qty, 1) * factor
+    const allBaseTiers = tiers.filter(t =>
       t.itemNo === itemNo &&
-      t.minimumQuantity <= effectiveBaseQty &&
       (!t.unitOfMeasure || t.unitOfMeasure === baseUomCode) &&
       (!t.startingDate || t.startingDate <= today) &&
       (!t.endingDate   || t.endingDate.startsWith('0001') || t.endingDate   >= today),
     )
-    if (baseTiers.length) return pickBySource(baseTiers) * qtyPerUom
+    const baseTiers = allBaseTiers.filter(t => t.minimumQuantity <= effectiveBaseQty)
+    if (baseTiers.length) return pickBySource(baseTiers) * factor
+    // Under mindste trappe-minimum (fx priser fra 2 kg): vis fra-prisen, ikke 999.
+    if (allBaseTiers.length) {
+      const lowestMin = Math.min(...allBaseTiers.map(t => t.minimumQuantity))
+      return pickBySource(allBaseTiers.filter(t => t.minimumQuantity === lowestMin)) * factor
+    }
   }
 
   return isBaseUnit ? fallback : fallback * qtyPerUom
+}
+
+/**
+ * Den enhed linjen skal bruge: kundens gemte valg, men KUN hvis varen stadig har enheden.
+ * Valget huskes i browseren pr. vare; er enheden siden slettet/omdøbt i BC (fx "2KG/KS" på
+ * 50399, 07-11-2026), viste rækken KG mens kurven regnede og sendte den døde enhed.
+ */
+export function validUom(
+  item: { baseUnitOfMeasureCode: string; uoms?: { code: string; qtyPerUnitOfMeasure?: number; salesUnit?: boolean }[] },
+  wanted?: string | null,
+): string {
+  if (!wanted) return defaultUom(item)            // intet valg → varens salgsenhed (BC)
+  if (!item.uoms?.length) return wanted          // enhederne ikke hentet: kan ikke afvise
+  return item.uoms.some(u => u.code === wanted) ? wanted : defaultUom(item)
 }
 
 /**
@@ -780,7 +848,7 @@ export function OrderRow({
   const attrs  = item.attributes ?? []
   const uoms   = item.uoms ?? []
 
-  const activeUomCode  = selectedUom ?? item.baseUnitOfMeasureCode
+  const activeUomCode  = validUom(item, selectedUom)
   const activeUomObj   = uoms.find(u => u.code === activeUomCode)
   const qtyPerUom      = activeUomObj?.qtyPerUnitOfMeasure ?? 1
   const baseUomCode    = uoms.find(u => u.baseUnitOfMeasure)?.code ?? item.baseUnitOfMeasureCode
@@ -961,7 +1029,8 @@ export function OrderRow({
             >
               {uoms.map(u => (
                 <option key={u.code} value={u.code}>
-                  {u.code}{u.qtyPerUnitOfMeasure > 1 ? ` ×${u.qtyPerUnitOfMeasure}` : ''}
+                  {/* "×5" kun når navnet ikke selv siger mængden ("KASSE ×5", ikke "2 KG/SP ×2") */}
+                  {u.code}{u.qtyPerUnitOfMeasure > 1 && !/\d/.test(u.code) ? ` ×${u.qtyPerUnitOfMeasure}` : ''}
                 </option>
               ))}
             </select>
@@ -1275,6 +1344,19 @@ export default function OrderList({
   const [coverageDiag, setCoverageDiag]       = useState('')   // ?debug=1: synlig coverage-status
   // STD-pin overstyringer (itemNo → er STD) sat af stjerne-knappen; overlejrer serverens flag.
   const [stdOverrides, setStdOverrides]       = useState<Map<string, boolean>>(new Map())
+  // Kurv-linjens sticky top = topbarens FAKTISKE højde. Topbaren ombrydes på mellemstore
+  // skærme (navn/"Log ud" på to linjer) og blev højere end en fast 65px → kurven gemte sig under.
+  const [kurvTop, setKurvTop] = useState<number | null>(null)
+  useEffect(() => {
+    const bars = Array.from(document.querySelectorAll<HTMLElement>('[data-portal-topbar]'))
+    if (bars.length === 0) return
+    const maal = () => setKurvTop(Math.max(0, ...bars.map(b => b.offsetHeight)))
+    maal()
+    const ro = new ResizeObserver(maal)
+    bars.forEach(b => ro.observe(b))
+    window.addEventListener('resize', maal)
+    return () => { ro.disconnect(); window.removeEventListener('resize', maal) }
+  }, [])
   useEffect(() => {
     if (!zeroPriceNos.length) return
     let cancelled = false
@@ -1807,6 +1889,8 @@ export default function OrderList({
   const [dateChangeNotice, setDateChangeNotice] = useState<{ name: string; from: number; to: number }[] | null>(null)
   /** Sat når serveren lagde varerne på en eksisterende ordre i stedet for at oprette en ny. */
   const [lagtPaa, setLagtPaa] = useState<{ ordreNummer: string; antal: number; ialt: number } | null>(null)
+  // KBH-levering: serveren har flyttet varer på lager i København til kundens XVEN-ordre.
+  const [kbhKvit, setKbhKvit] = useState<KbhKvit | null>(null)
   /** Tilføj-tilstand: målordren var slettet hos Venmark (nummeret), og varerne gik via checkout. null = nej. */
   const [ordreVaek, setOrdreVaek] = useState<string | null>(null)
   /** Bestillingen gik IKKE igennem. Vises som dialog — en rød linje over knappen var for nem at overse. */
@@ -2075,7 +2159,7 @@ export default function OrderList({
   }
 
   // ── Tilføj via søgning ──────────────────────────────────────────────────────
-  function addSearchedItems(items: { item: EnrichedItem; quantity: number }[]) {
+  function addSearchedItems(items: { item: EnrichedItem; quantity: number; uom?: string }[]) {
     setLines(prev => {
       const next = new Map(prev)
       for (const { item, quantity } of items) {
@@ -2093,25 +2177,34 @@ export default function OrderList({
       }
       return next
     })
+    // Enheden valgt i søgningen følger med (og huskes som kundens valg, som i varelisten).
+    for (const { item, uom } of items) {
+      if (uom && uom !== validUom(item, lineUoms.get(item.number))) setLineUom(item, uom)
+    }
     setShowSearch(false)
   }
 
   // Add-mode: efter varer er lagt på ordren → tilbage til ordreoversigten.
   useEffect(() => {
-    if (submitted && addToOrderId) {
+    // Med KBH-kvittering bliver kunden stående, så beskeden om de 2 ordrer kan læses.
+    if (submitted && addToOrderId && !kbhKvit) {
       const t = setTimeout(() => { window.location.href = '/portal/ordrer' }, 1500)
       return () => clearTimeout(t)
     }
-  }, [submitted, addToOrderId])
+  }, [submitted, addToOrderId, kbhKvit])
 
   // ── Indsend ordre ────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (lines.size === 0 || !deliveryDate) return
     setSubmitting(true)
     setError('')
+    // Kvitteringen fra FORRIGE bestilling skal væk — ellers viste en ny ordre "lagt på
+    // W0000193 … har nu 17 varer" fra bestillingen før (09-11-2026).
+    setLagtPaa(null)
+    setKbhKvit(null)
 
     const orderLines = Array.from(lines.values()).map(l => {
-      const uomCode     = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+      const uomCode     = validUom(l.item, lineUoms.get(l.item.number))
       const uomObj      = l.item.uoms?.find(u => u.code === uomCode)
       const qtyPerUom   = uomObj?.qtyPerUnitOfMeasure ?? 1
       const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
@@ -2192,6 +2285,16 @@ export default function OrderList({
       // ordre i telefonen siden, så svaret her er det eneste der kan stoles på.
       try {
         const svar = await res.clone().json()
+        if (svar?.kbh?.xvenOrdre) {
+          // Kundens egne (evt. oversatte) varenavne — serveren kender kun de danske.
+          const vist = new Map(Array.from(lines.values()).map(l => [l.item.number, l.item.displayName]))
+          const k = svar.kbh as KbhKvit
+          setKbhKvit({
+            ...k,
+            flyttet: k.flyttet.map(f => ({ ...f, navn: vist.get(f.itemNo) ?? f.navn })),
+            delt:    k.delt.map(d => ({ ...d, navn: vist.get(d.itemNo) ?? d.navn })),
+          })
+        }
         if (svar?.tilfoejet) {
           setLagtPaa({
             ordreNummer: String(svar.ordreNummer ?? ''),
@@ -2226,7 +2329,7 @@ export default function OrderList({
   const activeLines = Array.from(lines.values())
   const totalLines  = activeLines.length
   const totalAmount = activeLines.reduce((s, l) => {
-    const uomCode    = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+    const uomCode    = validUom(l.item, lineUoms.get(l.item.number))
     const uomObj     = l.item.uoms?.find(u => u.code === uomCode)
     const qtyPerUom  = uomObj?.qtyPerUnitOfMeasure ?? 1
     const baseUomCode = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
@@ -2501,7 +2604,8 @@ export default function OrderList({
               </p>
             </>
           )}
-          <p className="mt-0.5 text-sm text-gray-400">{t('senderTilbage')}</p>
+          {kbhKvit && <KbhBoks k={kbhKvit} t={t} locale={locale} />}
+          {!kbhKvit && <p className="mt-0.5 text-sm text-gray-400">{t('senderTilbage')}</p>}
         </div>
         <a href="/portal/ordrer" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
           {t('tilbageTilBestillinger')}
@@ -2530,6 +2634,7 @@ export default function OrderList({
           ) : (
             <p className="mt-1 text-sm text-gray-500">{t('leveringDato', { dato: langDato(locale, deliveryDate) })}</p>
           )}
+          {kbhKvit && <KbhBoks k={kbhKvit} t={t} locale={locale} />}
           <p className="mt-0.5 text-sm text-gray-400">{t('viBekraefter')}</p>
         </div>
         <div className="flex gap-3 mt-2">
@@ -2537,7 +2642,7 @@ export default function OrderList({
             {t('tilbageOversigt')}
           </a>
           <button
-            onClick={() => { setSubmitted(false); setLines(new Map()); setNotes('') }}
+            onClick={() => { setSubmitted(false); setLagtPaa(null); setKbhKvit(null); setLines(new Map()); setNotes('') }}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             {t('nyBestilling')}
@@ -2581,7 +2686,7 @@ export default function OrderList({
       {/* Kurven følger med ned ad siden, så man altid kan se hvad der er valgt og
           komme videre uden at scrolle til bunden. top-offset = højden på portalens
           egen sticky topbar (mobil ~52px, desktop ~65px). */}
-      <div className="sticky top-[52px] z-20 md:top-[65px]">
+      <div className="sticky top-[52px] z-20 md:top-[65px]" style={kurvTop != null ? { top: kurvTop } : undefined}>
         <button
           onClick={() => { setShowReview(true); setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
           disabled={totalLines === 0}
@@ -3237,7 +3342,7 @@ export default function OrderList({
           {/* Ordrelinjer */}
           <div className="divide-y divide-blue-100">
             {Array.from(lines.values()).map(l => {
-              const uomCode    = lineUoms.get(l.item.number) ?? l.item.baseUnitOfMeasureCode
+              const uomCode    = validUom(l.item, lineUoms.get(l.item.number))
               const uomObj     = l.item.uoms?.find(u => u.code === uomCode)
               const qtyPerUom  = uomObj?.qtyPerUnitOfMeasure ?? 1
               const baseUom    = l.item.uoms?.find(u => u.baseUnitOfMeasure)?.code ?? l.item.baseUnitOfMeasureCode
@@ -3252,6 +3357,7 @@ export default function OrderList({
                     </p>
                     <p className="text-[11px] text-gray-400 font-mono">
                       {l.item.number}{price > 0 ? ` · ${fmt.format(price)}/${uomCode}` : ''}
+                      {price > 0 && uomCode !== baseUom && qtyPerUom > 1 ? ` (${fmt.format(price / qtyPerUom)}/${baseUom})` : ''}
                     </p>
                     {total > 0 && <p className="text-[11px] text-gray-500 sm:hidden">{fmt.format(total)}</p>}
                   </div>
@@ -3372,6 +3478,11 @@ export default function OrderList({
                   ? t('laegPaaOrdre', { varer: varerTekst, nr: dagensOrdre.bcOrderNumber })
                   : t('sendBestilling', { linjer: linjerTekst })}
             </button>
+            {/* Afsendelsen kan tage op til et halvt minut (BC opretter ordre + linjer én
+                ad gangen). Uden besked troede kunderne at siden var gået i stå. */}
+            {submitting && (
+              <p className="text-center text-base font-bold text-gray-800" role="status">{t('taalmodighed')}</p>
+            )}
           </div>
         </div>
       )}
@@ -3392,6 +3503,7 @@ export default function OrderList({
           getDisplayPrice={getSearchDisplayPrice}
           getMaxQty={rowMaxQty}
           getRowStatus={rowAvailStatus}
+          getUom={no => lineUoms.get(no)}
         />
       )}
 

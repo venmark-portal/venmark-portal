@@ -12,6 +12,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { addLinesToBCOrder, getCartCoverage, getCustomerLocationCode } from '@/lib/businesscentral'
 import { findTilfoejMaal } from '@/lib/tilfoejOrdre'
+import { kbhOpsplit } from '@/lib/kbhLevering'
 import { getT } from '@/lib/i18n/portal/server'
 import { ordrerApiDict } from '@/lib/i18n/portal/dict/ordrer-api'
 
@@ -112,6 +113,18 @@ export async function POST(
     )
   }
 
+  // KBH-levering: varer på lager i København → kundens XVEN-ordre. Ordren selv slettes aldrig
+  // her (den har andre linjer). Varer der flyttes, gemmes stadig i portalens kopi nedenfor.
+  const userId = (session.user as any)?.id as string | undefined
+  const kbh = await kbhOpsplit({
+    ordreNr: maal.bcOrderNumber, sletTomHoved: false,
+    navne: new Map((lines as any[]).filter(l => l?.bcItemNumber).map(l => [l.bcItemNumber, l.itemName || l.bcItemNumber])),
+    portalKunde: userId
+      ? await prisma.customer.findUnique({ where: { id: userId }, select: { id: true, name: true, bcCustomerNumber: true } }) ?? undefined
+      : undefined,
+    kundeNr: maal.customerNo,
+  })
+
   // Portalens egen kopi — kun når ordren ER portalens. En ordre tastet i BC har ingen
   // række at hænge linjerne på, og den skal den heller ikke have: BC er kilden, og
   // ordreoversigten læser linjerne derfra.
@@ -140,5 +153,5 @@ export async function POST(
   revalidatePath('/portal/ordrer')
   revalidatePath(`/portal/ordrer/${params.id}`)
 
-  return NextResponse.json({ added: gemt || lines.length }, { status: 201 })
+  return NextResponse.json({ added: gemt || lines.length, kbh }, { status: 201 })
 }

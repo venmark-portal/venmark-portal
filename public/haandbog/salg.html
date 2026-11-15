@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Salg &amp; ordrer · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html" aria-current="page">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Kontor · sælgere</p>
+    <h1 class="title">Salg &amp; ordrer</h1>
+    <p class="lede">Fra kunden ringer til fakturaen er bogført: hvordan linjerne får status, hvad Salgstjek gør, hurtig ordreindtastning, sælgerkoder, KBH-levering, Netfisk — og hvad du gør når bogføringen siger nej.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#flow">Fra ordre til faktura</a></li>
+      <li><a href="#status">Godkendt · Afventer · Afvist</a></li>
+      <li><a href="#afvist">Afvist-dialogen</a></li>
+      <li><a href="#salgstjek">Salgstjek</a></li>
+      <li><a href="#hurtig">Hurtig ordreindtastning</a></li>
+      <li><a href="#salgsliste">Salgsliste (summeret)</a></li>
+      <li><a href="#kunde">Kundetjek &amp; fast reference</a></li>
+      <li><a href="#saelger">Sælgerkoder</a></li>
+      <li><a href="#kbh">KBH-levering</a></li>
+      <li><a href="#netfisk">Netfisk-ordrer</a></li>
+      <li><a href="#bogfoering">Bogføring siger nej</a></li>
+      <li><a href="#slet">Sletning</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="flow">
+      <p class="eyebrow">Overblikket</p>
+      <h2>Fra ordre til faktura</h2>
+      <p>En salgsordre går igennem de samme trin, uanset om den er tastet i BC, kommer fra portalen eller fra Netfisk:</p>
+      <ol class="steps">
+        <li><strong>Linjen tastes.</strong> Systemet sætter straks en status — <span class="pill ok">Godkendt</span>, <span class="pill wait">Afventer</span> eller <span class="pill stop">Afvist</span> — ud fra hvad vi har disponibelt til afsendelsesdagen.</li>
+        <li><strong>Salget tjekkes.</strong> På <span class="k">Salgstjek</span> ser du dagens linjer samlet og retter status, pris og antal.</li>
+        <li><strong>Pakkeriet pakker.</strong> Kun linjer der må pakkes kan pakkes (se <a href="/haandbog/pakkeri.html">Pakkeri</a>). Når hele ordren er pakket, står <span class="k">Packed By</span> på hovedet.</li>
+        <li><strong>Prisen godkendes.</strong> <span class="k">AP Manuel</span> sættes på linjen når prisen er rigtig.</li>
+        <li><strong>Ordren bogføres.</strong> Levering kan bogføres når alt er pakket og godkendt; fakturering kræver også AP Manuel og en gyldig pris. Fakturaen mailes automatisk (se <a href="/haandbog/mails.html">Mails</a>).</li>
+      </ol>
+    </section>
+
+    <section class="blk" id="status">
+      <p class="eyebrow">Linjestatus</p>
+      <h2>Godkendt · Afventer · Afvist</h2>
+      <p>Hver varelinje har feltet <span class="k">Portal Line Status</span> (grøn, gul eller rød). Kun <strong>Godkendt</strong>-linjer kan bogføres.</p>
+
+      <div class="statusgrid">
+        <div class="statuscard ok"><span class="pill ok">Godkendt</span><p>Der er dækning til afsendelsesdagen — eller varen kan nå at blive produceret til datoen.</p></div>
+        <div class="statuscard wait"><span class="pill wait">Afventer</span><p>Strengt-lager-vare hvor manglen ligger inden for varens buffer — eller sælgeren har valgt “Måske”.</p></div>
+        <div class="statuscard stop"><span class="pill stop">Afvist</span><p>Der er ikke dækning. Kan ikke pakkes, medmindre sælgeren har bekræftet at sætte den ind alligevel.</p></div>
+      </div>
+
+      <h3 id="status-hvornaar">Hvornår regnes status</h3>
+      <p>Status regnes automatisk når du ændrer <strong>antal, vare, afsendelsesdato eller lokation</strong> på linjen — eller leveringsform og datoer på hovedet. Det sker kun for <strong>sælgere</strong> (Brugeropsætning → <span class="k">Brugerrolle</span> = Sælger eller Begge). Ordrer der kommer ind uden en person bag (portal, Netfisk) bliver godkendt automatisk.</p>
+      <ul class="clean">
+        <li><strong>Handelsvarer:</strong> dækning → Godkendt, ellers Afvist (medmindre varens auktionsfrist dækker datoen).</li>
+        <li><strong>Strengt lager:</strong> fuldt dækket → Godkendt; mangel inden for buffer-% → Afventer; ellers Afvist.</li>
+        <li><strong>Producerede varer</strong> der kan nås til datoen → altid Godkendt.</li>
+      </ul>
+
+      <h3 id="status-manuel">Når du selv retter status</h3>
+      <p>Retter du status manuelt, sættes <span class="k">Status manuelt sat</span>. Så rører systemet ikke linjen igen. <strong>Ryd feltet</strong>, hvis systemet skal tage over igen. Godkendt sætter <em>Lever antal = Antal</em>; Afventer og Afvist sætter <em>Lever antal = 0</em>.</p>
+
+      <div class="msg">
+        <q>Der er lukket for ordrer til dags afgang. Vi skal tjekke op!</q>
+        <span class="why">Varen har en dagsfrist der er passeret, eller den er lukket for dagens afgang på varelisten.</span>
+        <span class="do">Tjek med indkøb om varen kan skaffes, før du lover den.</span>
+      </div>
+      <div class="msg">
+        <q>Lager må ikke ændre varenummer på en eksisterende salgslinje. Bed sælger ændre.</q>
+        <span class="why">Brugere med rollen Lager må ikke skifte vare på en linje.</span>
+        <span class="do">Bed en sælger rette linjen.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="afvist">
+      <p class="eyebrow">Oversalg</p>
+      <h2>Afvist-dialogen: Ja eller Måske</h2>
+      <p>Taster du en linje der bliver <span class="pill stop">Afvist</span>, spørger BC: <em>“Varen er AFVIST — der er ikke dækning. Hvad vil du?”</em> Der er ikke noget “Nej” — du skal tage stilling.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Valg</th><th>Hvad sker der</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Ja</strong> — sæt ind med FULDT antal</td><td>Linjen beholder antallet og status Afvist, men <span class="k">Bekræft u. dækning</span> sættes, så den <strong>kan pakkes</strong>. Oversalget logges.</td></tr>
+            <tr><td><strong>Måske</strong> — sæt Afventer</td><td>Antal sættes til <strong>0,1</strong>, status Afventer, og “&lt;dit navn&gt; tjekker om der er nok” skrives i Portalbemærkning. <strong>Esc = Måske.</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <p class="note-h">Husk Måske-linjerne</p>
+        <p>En Måske-linje står som <strong>Afventer med 0,1</strong>, indtil nogen retter den — og en Afventer-linje <strong>blokerer bogføring af hele ordren</strong>. Ret antallet og sæt Godkendt (eller slet linjen), når du ved om der er nok.</p>
+      </div>
+      <p>Dialogen er kun aktiv når <span class="k">Afvist-dialog aktiv</span> er slået til i Venmark Opsætning <em>og</em> priserne er opdateret inden for 16 timer. For strengt-lager-varer gælder den altid. Siger du <strong>Ja</strong> for 1., 4. og 7. gang samme dag, får du en advarsel om oversalg. Alle Ja'er kan ses på siden <span class="k">Afvist-log (oversalg)</span>.</p>
+    </section>
+
+    <section class="blk" id="salgstjek">
+      <p class="eyebrow">Dagens linjer samlet</p>
+      <h2>Salgstjek</h2>
+      <p>Søg efter <strong>Salgstjek</strong>. Siden viser alle åbne salgslinjer med varer — som standard med <em>bogføringsdato i dag</em> (filteret kan ryddes). Du kan rette direkte i listen.</p>
+      <ul class="clean">
+        <li><strong>Antal %</strong> = antal i forhold til det oprindeligt bestilte. Gul under 90 %, rød under 80 %.</li>
+        <li><strong>Kostpris</strong> er rød, når den er lig med eller over salgsprisen.</li>
+        <li><strong>Linjetotal</strong> = antal × enhedspris − rabat, i ordrens valuta.</li>
+      </ul>
+
+      <h3 id="gennemloeb">Gennemløb salgslinjer (status vs disponibel)</h3>
+      <p>Knappen afstemmer status med det der faktisk er disponibelt — vare for vare, for <strong>alle</strong> åbne linjer (ikke kun dem du ser):</p>
+      <ul class="clean">
+        <li>Rækker varen til alle linjer → alle bliver Godkendt.</li>
+        <li>Rækker den kun til de godkendte → de afviste låses som “manuelt sat”.</li>
+        <li>Rækker den ikke engang til de godkendte → der fordeles efter ordrenr.; de overskydende markeres <span class="k">Salgstjek</span>.</li>
+      </ul>
+      <p>Linjer med <em>Status manuelt sat</em> og Afventer-linjer røres ikke. Gennemløbet tager ikke højde for produktionstid — varer der produceres til ordren kan derfor blive markeret.</p>
+
+      <h3 id="godkend-ap">Godkend + AP manuel (arbejdsdato)</h3>
+      <p>Sætter Godkendt, “manuelt sat” og AP Manuel på <strong>alle</strong> linjer med afsendelse på arbejdsdatoen — <strong>uden at tjekke disponibel</strong>. Frigivne ordrer springes over. Brug den, når dagens salg er gennemgået.</p>
+      <p>Øvrige knapper: <span class="btn">Opdater Venmark priser</span> <span class="btn">Opdater priser (alle ikke-manuelle)</span> <span class="btn">Udskriv plukliste</span> (bruger sidens filter) <span class="btn">SMS til kontakter</span> <span class="btn">Mail til kontakter</span>.</p>
+    </section>
+
+    <section class="blk" id="hurtig">
+      <p class="eyebrow">Telefonordrer</p>
+      <h2>Hurtig ordreindtastning</h2>
+      <p>Åbnes fra salgsordren (<span class="btn">Hurtig ordreindtastning (portal)</span>) eller debitorkortet (<span class="btn">Hurtig ordreindtastning</span>). Alle varer med kostpris vises, med kundens varer øverst i denne rækkefølge:</p>
+      <ol class="steps">
+        <li><strong>✪ STD</strong> — varer kunden altid skal have</li>
+        <li><strong>★ Favoritter</strong> — kundens øvrige faste varer</li>
+        <li><strong>Venmark anbefaler</strong> (“Sælg for H”), derefter resten</li>
+      </ol>
+      <h3 id="hurtig-trin">Sådan</h3>
+      <ol class="steps">
+        <li>Tast <span class="k">Antal til ordre</span> ud for varerne. Antallene gemmes løbende som kladde.</li>
+        <li>Tryk <span class="btn">Sæt linjer ind</span> (F9).</li>
+        <li>Åbnet fra debitoren: vælg <em>Opret ny ordre</em> eller en af kundens åbne, upakkede ordrer.</li>
+      </ol>
+      <ul class="clean">
+        <li>Luk/Esc sætter <strong>ikke</strong> linjer ind — antallene ligger klar næste gang. <span class="btn">Nulstil antal</span> rydder dem.</li>
+        <li>Filtrene øverst (★ Kun favoritter, Kun fastordre, Rangering &gt; 0, Kostpris &lt;&gt; 0, Varegruppe) slås til og fra med et klik.</li>
+        <li><strong>Salgslinjebemærkning</strong> lægges i linjens interne Bemærkning. <strong>Varebemærkning</strong> huskes fast pr. kunde og vare.</li>
+        <li>Har kunden KBH-levering, flyttes København-varerne automatisk (se <a href="#kbh">KBH-levering</a>).</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="salgsliste">
+      <p class="eyebrow">Pr. vare</p>
+      <h2>Salgsliste (summeret)</h2>
+      <p>Én linje pr. vare og enhed for en afsendelsesdato, med salg, lager, <em>I prod.</em> og <em>I køb</em> side om side. Klik på <strong>Antal</strong> for at se de enkelte salgslinjer.</p>
+      <ul class="clean">
+        <li><strong>Dato</strong> = afsendelsesdato (standard: arbejdsdato). <strong>Debitornr.</strong> er som standard Netfisk-kunden — ryd feltet for alle kunder.</li>
+        <li>Antal er hele linjens antal, også på delvist leverede linjer. Varer der starter med X er udeladt.</li>
+        <li><span class="btn">Udskriv (A4)</span> giver listen på papir.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="kunde">
+      <p class="eyebrow">Når kunden vælges</p>
+      <h2>Kundetjek &amp; fast reference</h2>
+      <p>Når du vælger kunde på en salgsordre, tjekker BC kunden og giver besked — men stopper aldrig ordren:</p>
+      <div class="msg">
+        <q>Kontakt 1 mangler BÅDE e-mail og SMS/mobil.</q>
+        <span class="why">Felterne “Kontakt 1 — Email/Mobil” under Kontaktpersoner på debitorkortet er tomme.</span>
+        <span class="do">Udfyld dem — de bruges til SMS og mails.</span>
+      </div>
+      <div class="msg">
+        <q>TJEK ALT på kunden — det er over 9 måneder siden sidste køb (hovedkonto).</q>
+        <span class="why">Seneste bogførte faktura på faktureringskontoen er over 9 måneder gammel (eller kunden har aldrig købt). Over 3 måneder: tjek bankkonto og CVR.</span>
+        <span class="do">Gennemgå kundens data, før ordren sendes.</span>
+      </div>
+      <p>Webordrer får ikke beskeden på skærmen — den sendes i stedet som mail til <span class="k">fisk@venmark.dk</span>.</p>
+      <h3 id="fast-reference">Fast reference</h3>
+      <p>Feltet <span class="k">Fast reference</span> på debitorkortet (Generelt) sættes automatisk i <strong>Deres reference</strong> på nye ordrer — fra BC, portalen og Netfisk — men kun hvis feltet er tomt. Skifter du kunde på en ordre, bliver den gamle reference stående; ryd den selv.</p>
+    </section>
+
+    <section class="blk" id="saelger">
+      <p class="eyebrow">Hvem solgte</p>
+      <h2>Sælgerkoder — automatisk</h2>
+      <p>Opretter du en salgs- eller købsordre i BC, får den <strong>din</strong> sælger-/indkøberkode (fra Brugeropsætning), også selvom kunden har en anden fast sælger.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Ordren kommer fra</th><th>Sælgerkode</th></tr></thead>
+          <tbody>
+            <tr><td>Dig i BC</td><td>Din egen kode</td></tr>
+            <tr><td>Portalen (webordre)</td><td><span class="k">WEB</span> — Robotkode i Venmark Opsætning</td></tr>
+            <tr><td>Netfisk-webshoppen</td><td><span class="k">NETFISK</span></td></tr>
+            <tr><td>Auktionsindlæsning (køb)</td><td>Robotkoden som indkøber</td></tr>
+            <tr><td>KBH/XVEN-ordre</td><td>Samme som hovedordren</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>En robotkode (WEB, NETFISK) overskrives aldrig af en bruger, der åbner ordren bagefter.</p>
+      <h3 id="hvem-bogfoert">Hvem-felter på bogførte dokumenter</h3>
+      <ul class="clean">
+        <li>Er sælger/indkøber tom ved bogføring, udfyldes den med den der bogfører.</li>
+        <li>Bogførte modtagelser og købsfakturaer viser <strong>Modtaget af</strong> pr. linje. Bogførte salgsdokumenter viser <strong>Oprettet af</strong> og <strong>Pakket af</strong>.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="kbh">
+      <p class="eyebrow">Lageret i København</p>
+      <h2>KBH-levering (XVEN)</h2>
+      <p>Har en kunde en XVEN-konto, flyttes de varer der er på lager i <strong>København (XVEN-KØB)</strong> automatisk til en ordre på XVEN-kontoen — med samme leveringsdag som Hirtshals-ordren.</p>
+      <ol class="steps">
+        <li>Udfyld <span class="k">KBH-levering (XVEN-konto)</span> på debitorkortet. Udfyldt = slået til.</li>
+        <li>Det sker automatisk ved <em>Sæt linjer ind</em> i hurtig ordreindtastning og ved alle bestillinger fra portalen.</li>
+      </ol>
+      <ul class="clean">
+        <li>Er der kun en del i København, deles linjen: KBH-delen på XVEN-ordren, resten fra Hirtshals.</li>
+        <li>Findes der allerede en åben XVEN-ordre til samme dag, genbruges den.</li>
+        <li>Fragtlinjer, pakkede linjer og linjer der allerede er tjekket (<span class="k">KBH-tjekket</span>) flyttes aldrig.</li>
+      </ul>
+      <div class="msg">
+        <q>Linjerne er sat ind på ordre …, men KBH-opsplitningen fejlede: … Varerne leveres fra Hirtshals.</q>
+        <span class="why">Fx er XVEN-kontoen spærret eller ordren mangler dato.</span>
+        <span class="do">Flyt linjerne manuelt, hvis de skal fra København.</span>
+      </div>
+      <p>Kunden får på portalen at vide at bestillingen er delt i to. Delvist delte linjer giver en besked til kontoret: “kun delvist på lager i København — tjek op”.</p>
+    </section>
+
+    <section class="blk" id="netfisk">
+      <p class="eyebrow">Webshoppen</p>
+      <h2>Netfisk-ordrer</h2>
+      <p>Ordrer fra netfisk.dk hentes automatisk ind hvert 15. minut og bliver salgsordrer med <strong>NF-numre</strong> på den fælles Netfisk-debitor. Debitornavnet på ordren bliver <em>“* modtagerens navn”</em>, så pakkeriet kan skelne dem.</p>
+      <ul class="clean">
+        <li><strong>Datoer:</strong> kundens valgte dag = ønsket levering. Afsendelse og bogføring = dagen før. Netfisk pakkes på afsendelsesdagen.</li>
+        <li><strong>Varer uden BC-varenr.</strong> bliver tekstlinjer: <em>** NETFISK uden varenr.: …</em> — ret dem manuelt. Emballage-linjen udelades.</li>
+        <li>Kunden får ordrebekræftelse ved første import, ikke ved genimport.</li>
+      </ul>
+      <h3 id="netfisk-side">Siden “Netfisk ordrer”</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Knap</th><th>Brug den når</th></tr></thead>
+          <tbody>
+            <tr><td><span class="btn">Hent nye ordrer</span></td><td>Du vil hente nu i stedet for at vente på jobkøen.</td></tr>
+            <tr><td><span class="btn">Forsøg igen</span></td><td>En ordre står med status Fejl.</td></tr>
+            <tr><td><span class="btn">Genimporter valgte ordrer</span></td><td>En importeret ordre skal hentes igen (fx efter rettet varenr.). Den gamle BC-ordre slettes automatisk.</td></tr>
+            <tr><td><span class="btn">Importer</span></td><td>Du har et bestemt HostedShop ordre-ID der mangler.</td></tr>
+            <tr><td><span class="btn">Opret Shipmondo forsendelse</span></td><td>Labels og tracking — sender også “Sendt” til webshoppen.</td></tr>
+            <tr><td><span class="btn">Test API forbindelse</span></td><td>Intet bliver hentet. TRIN 1 viser den præcise fejl.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <p class="note-h">Slet ikke Netfisk-ordrer manuelt</p>
+        <p>Brug <strong>Genimporter valgte ordrer</strong> — den rydder selv den gamle ordre. “Hent nye ordrer” henter kun ordrer webshoppen ikke allerede har markeret som behandlet.</p>
+      </div>
+      <div class="msg">
+        <q>Netfisk: kunne ikke oprette API-session.</q>
+        <span class="why">Typisk forkert brugernavn eller adgangskode til webshoppen.</span>
+        <span class="do">Tjek Netfisk-felterne i Venmark Opsætning og kør Test API forbindelse.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="bogfoering">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Når bogføringen siger nej</h2>
+      <p>BC tjekker ordren, før den bogføres. Beskeden fortæller præcis hvilken linje — her er de mest almindelige:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Beskeden siger</th><th>Gælder</th><th>Gør</th></tr></thead>
+          <tbody>
+            <tr><td>Salgshovedet mangler “Packed By”</td><td>altid</td><td>Ordren er ikke færdigpakket. Pak færdig.</td></tr>
+            <tr><td>Linje … mangler “Packed By”</td><td>altid</td><td>Linjen er ikke pakket.</td></tr>
+            <tr><td>“Superinfo” er ikke tomt</td><td>altid</td><td>Ryd feltet.</td></tr>
+            <tr><td>Linje … er ikke godkendt (Portal Line Status: …)</td><td>altid — også ren levering</td><td>Godkend linjen, eller slet den. Husk Måske-linjer på 0,1.</td></tr>
+            <tr><td>Linje … har antal 0</td><td>altid</td><td>Ret antallet eller slet linjen.</td></tr>
+            <tr><td>Fangstområde/-redskab påkrævet</td><td>altid</td><td>Udfyld sporbarhed (se <a href="/haandbog/sporbarhed.html">Sporbarhed</a>).</td></tr>
+            <tr><td>Salgspris … er ikke højere end kostpris</td><td>altid</td><td>Ret prisen — eller kostprisen hvis den er forkert.</td></tr>
+            <tr><td>Debitor … kræver eksternt bilagsnr.</td><td>faktura</td><td>Udfyld Eksternt bilagsnr. Levering uden faktura er tilladt.</td></tr>
+            <tr><td>“AP Manuel” skal være sat før linjen kan faktureres</td><td>faktura</td><td>Godkend prisen og sæt AP Manuel.</td></tr>
+            <tr><td>Salgsprisen er … 0,- og 999,- er ikke gyldige fakturapriser</td><td>faktura</td><td>Se <a href="/haandbog/priser.html#kg">999-fejlen</a>.</td></tr>
+            <tr><td>… overstiger tolerancen … pct.</td><td>altid</td><td>Sæt <span class="k">TOK</span> på linjen hvis afvigelsen er i orden.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="intet-antal">“Du har ikke angivet et antal”</h3>
+      <p>BC's egen fejl: <em>“Du kan ikke bogføre linjerne, fordi du ikke har angivet et antal på én eller flere af linjerne.”</em> Antal og oprindeligt antal ser rigtige ud — men <strong>Lever antal</strong> står på 0 på en Godkendt linje. Det er usynligt, fordi 0 vises som tomt.</p>
+      <ol class="steps">
+        <li>Find linjen med tom <strong>Lever antal</strong>.</li>
+        <li>Tast Lever antal = Antal, eller sæt status til Godkendt igen.</li>
+        <li>Kun som sidste udvej: slet linjen og opret den igen.</li>
+      </ol>
+      <p>Systemet retter det selv i de fleste tilfælde — men ikke på linjer der allerede er delvist leveret.</p>
+    </section>
+
+    <section class="blk" id="slet">
+      <p class="eyebrow">Beskyttelse</p>
+      <h2>Sletning af ordrer, linjer, kunder og leverandører</h2>
+      <div class="msg">
+        <q>Linje … er pakket/scannet og kan ikke slettes. Annuller pakningen (ryd scanning + “Packed By”) først.</q>
+        <span class="why">Pakkede eller scannede linjer er beskyttet, så varer ikke forsvinder fra en ordre der er på vej ud.</span>
+        <span class="do">Annullér pakningen først — eller bed pakkeriet om det.</span>
+      </div>
+      <div class="msg">
+        <q>Ordre … har … ubehandlede linje(r). Slet linjerne eller bogfør ordren først.</q>
+        <span class="why">En ordre med udestående linjer kan ikke slettes i ét hug.</span>
+        <span class="do">Slet linjerne én for én, eller bogfør.</span>
+      </div>
+      <p>Antal kan heller ikke ændres på en pakket linje, og der kan ikke tilføjes linjer til en ordre der er færdigpakket.</p>
+
+      <h3 id="masseslet">Masse-sletning af debitorer og kreditorer</h3>
+      <ol class="steps">
+        <li>Åbn <strong>Debitorer</strong> eller <strong>Kreditorer</strong> og vælg <span class="btn">Rediger liste</span> (ellers er kolonnen grå).</li>
+        <li>Sæt X i kolonnen <span class="k">Slet</span>.</li>
+        <li>Vælg <span class="btn">Masseslet markerede</span> og bekræft. Kan ikke fortrydes.</li>
+      </ol>
+      <p>Disse springes <strong>altid</strong> over og beholder deres X: saldo ≠ 0, poster i indeværende regnskabsår, og åbne salgs-/købsdokumenter. Resultatet viser hvem og hvorfor.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Salg &amp; ordrer</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Kundeportalen · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html" aria-current="page">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Kontor · sælgere</p>
+    <h1 class="title">Kundeportalen</h1>
+    <p class="lede">Hvad kunden ser og kan på portal.venmark.dk, hvad portalen gør i BC — og svarene på de spørgsmål kunderne ringer med: “Hvorfor kan jeg kun få 5?”, “Hvorfor blev det to ordrer?”, “Hvorfor kan jeg ikke tilføje mere?”.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#adgang">Adgang &amp; login</a></li>
+      <li><a href="#bestil">Bestilling</a></li>
+      <li><a href="#frist">Frister</a></li>
+      <li><a href="#loft">“Maks X” — antals-loftet</a></li>
+      <li><a href="#samle">Én ordre pr. leverance</a></li>
+      <li><a href="#aabne">Mine åbne bestillinger</a></li>
+      <li><a href="#tilfoej">Tilføj vare</a></li>
+      <li><a href="#ibc">Portalordrer i BC</a></li>
+      <li><a href="#katalog">Katalog, sprog &amp; favoritter</a></li>
+      <li><a href="#faktura">Fakturaer, reklamationer, beskeder</a></li>
+      <li><a href="#onboarding">Kunde-onboarding</a></li>
+      <li><a href="#leverandoer">Leverandørerklæring</a></li>
+      <li><a href="#auktion">Auktioner</a></li>
+      <li><a href="#admin">Portal-admin</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="adgang">
+      <p class="eyebrow">Hvem kan logge ind</p>
+      <h2>Adgang &amp; login</h2>
+      <ul class="clean">
+        <li>Kunden logger ind med mailen fra <span class="k">Kontakt 1/2/3 — Portal login (email)</span> på debitorkortet. Brugeren oprettes på portalen, når kunden synkroniseres fra BC.</li>
+        <li>Spærrede eller inaktive kunder kan ikke logge ind.</li>
+        <li><strong>Bestil på vegne af:</strong> på debitorkortet under <em>Bestillingsadgang — butikker denne kunde kan bestille til</em> kan en kunde (fx et hovedkontor) få lov til at bestille til andre debitorer. Butikkerne vises samlet på portalen.</li>
+        <li><strong>Se portalen som kunden:</strong> <span class="btn">Åbn portal som kunde</span> på debitorkortet (eller øje-ikonet i portal-admin → Kunder). Et bånd øverst viser at du ser den som kunden; <span class="btn">Afslut</span> logger ud. Linket virker i 2 minutter og kun én gang.</li>
+      </ul>
+      <div class="note warn">
+        <p class="note-h">Som kunde = fuld adgang</p>
+        <p>Når du ser portalen som kunden, kan du også bestille — og byde på auktioner — i kundens navn.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="bestil">
+      <p class="eyebrow">Kundens side</p>
+      <h2>Bestilling</h2>
+      <ol class="steps">
+        <li>Kunden vælger <strong>leveringsform</strong> (fra kundens tilladte portal-leveringsformer) og <strong>leveringsdag</strong>.</li>
+        <li>Lægger varer i kurven — favoritter øverst, derefter Venmark anbefaler og resten af kataloget.</li>
+        <li>Trykker bestil. Portalen tjekker frist og antal igen på serveren, før ordren sendes til BC.</li>
+      </ol>
+      <ul class="clean">
+        <li>Skifter kunden dato, og passer antallene ikke længere, sættes de automatisk ned, og kunden får besked.</li>
+        <li>Ordren oprettes i BC som en <strong>W-ordre</strong> med sælger WEB. Afsendelsesdato = leveringsdag − transitdage.</li>
+        <li>Har kunden KBH-levering, flyttes København-varerne til en XVEN-ordre, og kunden får at vide at bestillingen er delt (se <a href="/haandbog/salg.html#kbh">KBH-levering</a>).</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="frist">
+      <p class="eyebrow">Hvornår lukker det</p>
+      <h2>Frister</h2>
+      <div class="formula">
+<b>Frist</b> <span class="op">=</span> afsendelsesdagen kl. <b>Bestillingsfrist</b> <span class="cm">(ellers Hentes kl., ellers 14:00)</span><br>
+<span class="cm">Fredag: aldrig senere end kl. 12. Portalkalenderen kan overstyre pr. dato.</span>
+      </div>
+      <p>Fristen sættes på leveringsformen — se <a href="/haandbog/disponibel.html#leveringsformer">Leveringsformer</a>. Varer kan have deres egne frister oveni (ugentlig frist, auktionsfrist, “Tilgængelig fra”).</p>
+    </section>
+
+    <section class="blk" id="loft">
+      <p class="eyebrow">“Hvorfor kun 5?”</p>
+      <h2>“Maks X” — antals-loftet</h2>
+      <p>Portalen spørger BC, hvor meget kunden må bestille af hver vare til den valgte dag. Svaret er enten <strong>ubegrænset</strong> (varen kan skaffes eller produceres i tide) eller <strong>disponibelt</strong> på afsendelsesdagen.</p>
+      <ul class="clean">
+        <li><strong>Afsendelse i dag:</strong> kun lager.</li>
+        <li><strong>Åbn til (kl.):</strong> indtil klokkeslættet laver vi mere — intet loft. Efter: lageret.</li>
+        <li><strong>Auktionsvarer:</strong> frie, hvis der kan nås en auktion før afsendelsen (ingen auktion weekend/helligdag).</li>
+        <li><strong>Strengt lager:</strong> kun hvad der er — eller hvad der kan genskaffes til datoen.</li>
+        <li>Varer der deler råvare, regnes sammen med kurven: tager kunden meget af den ene, falder loftet på den anden.</li>
+      </ul>
+      <p>Prøver kunden at bestille mere end loftet, afviser portalen og tilbyder at sætte antallet ned til det der er. Der reserveres intet, før ordren er sendt.</p>
+    </section>
+
+    <section class="blk" id="samle">
+      <p class="eyebrow">“Hvorfor blev det (ikke) to ordrer?”</p>
+      <h2>Én ordre pr. leverance</h2>
+      <p>Bestiller kunden igen til en leverance hvor der allerede ligger en <strong>åben, upakket</strong> ordre, lægges varerne <strong>på den eksisterende ordre</strong> — også en ordre kontoret har tastet i telefonen. Kunden får at vide hvilken ordre varerne blev lagt på.</p>
+      <ul class="clean">
+        <li>Det matches på <strong>afsendelsesdag + leveringsform</strong>. To leveringsformer samme dag (fx tidlig og sen bil) holdes adskilt.</li>
+        <li>Er ordren <strong>pakket</strong> (Packed By på hovedet), oprettes en ny ordre.</li>
+        <li>Er der flere åbne ordrer til samme dag, vælges den ældste upakkede.</li>
+      </ul>
+      <div class="note">
+        <p class="note-h">Telefonordrer uden ønsket leveringsdato</p>
+        <p>På ordrer tastet i BC er det <strong>afsendelsesdatoen på linjerne</strong> der tæller. Står den forkert (fx leveringsdagen i stedet for afsendelsesdagen), finder portalen ikke ordren — og kunden får en ny ordre til samme bil.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="aabne">
+      <p class="eyebrow">Kundens oversigt</p>
+      <h2>Mine åbne bestillinger</h2>
+      <p>Viser kundens (og butikkernes) åbne ordrer med linjer, status og pakket af — nærmeste levering øverst. Ordrer tastet i BC er mærket “Tlf/mail-ordre”, portalordrer “Bestilt online”.</p>
+      <ul class="clean">
+        <li><strong>Levering</strong> = ordrens ønskede leveringsdato. Har ordren ingen (typisk telefonordrer), regnes den som linjernes afsendelsesdato + leveringsformens transitdage.</li>
+        <li><strong>Bestilt</strong> = ordrens ordredato i BC.</li>
+        <li>Linjestatus vises pr. vare: afventer, godkendt, afvist.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="tilfoej">
+      <p class="eyebrow">“Hvorfor kan jeg ikke tilføje mere?”</p>
+      <h2>Tilføj vare</h2>
+      <p>Under en åben ordre kan kunden trykke <strong>Tilføj vare til denne ordre</strong>. Det virker på både portalordrer og telefonordrer — så længe ordren ikke er færdigpakket og fristen ikke er passeret.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Ordren er</th><th>Kunden kan tilføje indtil</th></tr></thead>
+          <tbody>
+            <tr><td>Bestilt på portalen</td><td>Fristen fra bestillingen (afsendelsesdagen kl. leveringsformens frist).</td></tr>
+            <tr><td>Tastet i BC (telefon/mail)</td><td><strong>Hele afsendelsesdagen</strong> (kl. 23.59) — kontoret overstyrer ofte klokkeslættet i telefonen, så kun dagen tæller.</td></tr>
+            <tr><td>Færdigpakket (Packed By på hovedet)</td><td>Kan ikke udvides.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Antals-loftet gælder også her — ordrens egne linjer tæller allerede med.</p>
+    </section>
+
+    <section class="blk" id="ibc">
+      <p class="eyebrow">Bag kulissen</p>
+      <h2>Portalordrer i BC</h2>
+      <ul class="clean">
+        <li>W-ordrer er mærket <span class="k">Webshop-ordre (portal)</span> og har sælger = robotkoden (WEB).</li>
+        <li>Portallinjer bliver <strong>Godkendt</strong> med det samme — portalen har allerede tjekket disponibelt. Afvist-dialogen kommer aldrig på portallinjer.</li>
+        <li>Kundens bemærkning pr. vare står i <span class="k">Portalbemærkning</span>. En ordrebesked bliver til en portalbesked.</li>
+        <li>Ved nye webordrer tjekkes kundedata (kontakter, sidste køb). Advarsler mailes til fisk@venmark.dk.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="katalog">
+      <p class="eyebrow">Hvad kunden ser</p>
+      <h2>Katalog, sprog &amp; favoritter</h2>
+      <ul class="clean">
+        <li><strong>Kategorier:</strong> kun varekategorier med <span class="k">Synlig på portal</span> vises. En enkelt vare skjules med <span class="k">Skjul på portal</span> på varelisten.</li>
+        <li><strong>Sprog:</strong> dansk, engelsk eller tysk — kundens eget valg, ellers <em>Sprogkode</em> på debitorkortet. Varenavne oversættes via varetranslationerne.</li>
+        <li><strong>Favoritter:</strong> kundens faste varer (✪ STD og ★) kommer fra BC og deles med hurtig ordreindtastning.</li>
+        <li><strong>Priser:</strong> portalen viser kundens pris. Se <a href="/haandbog/priser.html#prioritet">Priser</a> for hvilken pris der vinder.</li>
+      </ul>
+      <div class="note tip">
+        <p class="note-h">“Samme opsætning, men forskellig visning”</p>
+        <p>Ser to kunder med samme opsætning forskellige favoritter, er det næsten altid data (en ældre favoritliste), ikke en fejl i portalen. Tjek favoritterne i BC først.</p>
+      </div>
+    </section>
+
+    <section class="blk" id="faktura">
+      <p class="eyebrow">Efter købet</p>
+      <h2>Fakturaer, reklamationer &amp; beskeder</h2>
+      <ul class="clean">
+        <li><strong>Fakturaer:</strong> fakturaer og kreditnotaer fra de seneste 12 måneder, med PDF og kontoudtog som Excel.</li>
+        <li><strong>Faktura-links i mails</strong> (fra kontoudtog) virker uden login.</li>
+        <li><strong>Reklamation:</strong> kunden opretter en sag med op til 5 billeder. Kontoret svarer i portal-admin → Reklamationer.</li>
+        <li><strong>Beskeder:</strong> chat med Venmark. Kundens beskeder vises som ulæste i BC og på kontorskærmen. Kontoret svarer i portal-admin → Beskeder. Beskeder slettes efter 30 dage.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="onboarding">
+      <p class="eyebrow">Nye kunder</p>
+      <h2>Kunde-onboarding</h2>
+      <p>Nye kunder udfylder deres oplysninger selv via et personligt link (<span class="k">/kunde/…</span>), som sendes fra BC. Formularen findes på dansk og engelsk.</p>
+      <ol class="steps">
+        <li>Virksomhed (CVR, adresse, evt. EAN til e-faktura).</li>
+        <li>Kontaktpersoner — Kontakt 1's mail bliver portal-login.</li>
+        <li>Fakturering — modtagere af ordrebekræftelse, faktura, kreditnota, kontoudtog, følgeseddel og prisliste.</li>
+        <li>Leverandørservice (hvis valgt i BC).</li>
+        <li>Selvskyldnerkaution (hvis valgt i BC — springes over for I/S og enkeltmandsvirksomheder).</li>
+        <li>Vilkår og underskrift på skærmen.</li>
+      </ol>
+      <p>Når kunden sender, lander oplysningerne i BC med status <em>Afventer</em>, og kunden og fisk@ får en PDF. Godkend i BC på <strong>Kunde onboarding</strong>-listen. Kunden kan rette og sende igen indtil godkendelsen.</p>
+    </section>
+
+    <section class="blk" id="leverandoer">
+      <p class="eyebrow">Leverandører</p>
+      <h2>Leverandørerklæring</h2>
+      <p>Leverandører udfylder egenkontrol, HACCP og certificeringer via et personligt link (8 sprog). Send det fra kreditorkortet (<span class="btn">Send erklæringslink</span>) eller portal-admin → Leverandørerklæringer.</p>
+      <ul class="clean">
+        <li>Indsendt erklæring godkendes eller returneres i portal-admin. Status følger med til BC.</li>
+        <li><strong>Fornyelse:</strong> 45 dage før udløb sendes et nyt link automatisk, derefter ugentlige rykkere. Fra 3. rykker får kvalitetschefen kopi. Udløber den, sættes status til Udløbet.</li>
+        <li>Uploadede dokumenter med udløbsdato giver påmindelse 30 dage før.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="auktion">
+      <p class="eyebrow">Salg af partier</p>
+      <h2>Auktioner</h2>
+      <p>Kontoret opretter auktioner i portal-admin → Auktioner (totalpris eller pr. kg, minimumspris, billeder). Kunderne byder med maksbud — systemet byder automatisk op for dem.</p>
+      <ul class="clean">
+        <li>Bud i de sidste 2 minutter forlænger auktionen med 5 minutter.</li>
+        <li>Vinderen får besked på portalen, og fisk@ får mail.</li>
+        <li><strong>Der oprettes ingen ordre i BC</strong> — salget skal tastes manuelt.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="admin">
+      <p class="eyebrow">Kontorets side</p>
+      <h2>Portal-admin</h2>
+      <p>Log ind på <span class="k">portal.venmark.dk/admin</span>.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Menu</th><th>Bruges til</th></tr></thead>
+          <tbody>
+            <tr><td>Kunder</td><td>Portalbrugere, aktiv/inaktiv, se portalen som kunden.</td></tr>
+            <tr><td>Ordrer</td><td>Portalordrer de sidste 30 dage — og dem der fejlede mod BC (kan gensendes).</td></tr>
+            <tr><td>Salgsliste</td><td>Summeret salg pr. vare for en afsendelsesdato.</td></tr>
+            <tr><td>Beskeder / Reklamationer</td><td>Svar til kunderne.</td></tr>
+            <tr><td>Anbefalinger</td><td>Dagens anbefalede varer, 7 dage frem.</td></tr>
+            <tr><td>Notifikationer</td><td>Push-beskeder til kunderne (fx “Priser opdateret”).</td></tr>
+            <tr><td>Kalender</td><td>Husets Outlook-kalendere, 3 måneder frem.</td></tr>
+            <tr><td>Leveringer / Historik / Chauffører / Leveringskoder</td><td>Ruter og egne biler — se <a href="/haandbog/drift.html#chauffoer">Drift</a>.</td></tr>
+            <tr><td>Kassefoto</td><td>Billeder af pakkede kasser, søg på ordrenr.</td></tr>
+            <tr><td>Skærme / Tidslinjer / Portal-brug</td><td>Se <a href="/haandbog/drift.html">Drift</a>.</td></tr>
+            <tr><td>Leverandørerklæringer / Certifikater</td><td>Se <a href="#leverandoer">Leverandørerklæring</a>.</td></tr>
+            <tr><td>Udseende</td><td>Portalens farve, banner og kvalitetschefens mail.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Kundeportalen</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

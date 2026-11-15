@@ -5,7 +5,7 @@ import { getItemsByNumbers, getPortalPrices, pickPriceBySource, getItemsAttribut
 import { hentKurv } from '@/lib/kurv'
 import type { BCPortalPrice, BCItemAttributeValue, BCItemUoM } from '@/lib/businesscentral'
 import OrderList from '@/components/portal/OrderList'
-import { aabneOrdrerPrDato } from '@/lib/aabenOrdre'
+import { aabneOrdrerPrAfsendelsesdag, afsendelsesdagForLevering, ymdLokal, type AabenOrdre } from '@/lib/aabenOrdre'
 import { addBusinessDays, nextBusinessDays, getDeliveryDatesForMethod } from '@/lib/dateUtils'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT } from '@/lib/i18n/portal/lang'
@@ -311,13 +311,23 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
   // Vi sender bare varenumrene uden pris; OrderList henter estimaterne efter render.
   const zeroPriceNos = allNumbers.filter(n => (itemMap.get(n)?.unitPrice ?? 0) === 0)
 
-  // Åbne ordrer pr. leveringsdato på kundens leveringsform. Bruges til at sige det
-  // ALLEREDE ved datovalget: det kunden lægger i kurven, havner på en ordre hun har
-  // i forvejen. At opdage det først på kvitteringen ville være en ubehagelig
-  // overraskelse — og hun ville have bestilt i den tro at det blev en ny ordre.
-  const aabneOrdrer = Object.fromEntries(
-    await aabneOrdrerPrDato(customerNo, customerMethod?.code ?? '').catch(() => new Map()),
-  )
+  // Åbne ordrer på kundens leveringsform. Bruges til at sige det ALLEREDE ved
+  // datovalget: det kunden lægger i kurven, havner på en ordre hun har i forvejen.
+  // At opdage det først på kvitteringen ville være en ubehagelig overraskelse — og
+  // hun ville have bestilt i den tro at det blev en ny ordre.
+  //
+  // Ordrerne er nøglet på AFSENDELSESdagen (det er den dato BC har), mens kunden
+  // vælger en LEVERINGSdato. Vi regner derfor hver vist leveringsdag om til sin
+  // afsendelsesdag — den vej er entydig, den modsatte er ikke: én fredagsafsendelse
+  // kan dække både lørdags- og mandagslevering.
+  const afsendKort = await aabneOrdrerPrAfsendelsesdag(
+    customerNo, customerMethod?.code ?? '', customerMethod,
+  ).catch(() => new Map())
+  const aabneOrdrer: Record<string, AabenOrdre> = {}
+  for (const dag of deliveryDays) {
+    const ordre = afsendKort.get(afsendelsesdagForLevering(dag, customerMethod))
+    if (ordre) aabneOrdrer[ymdLokal(dag)] = ordre
+  }
 
   return (
     <div className="space-y-4">

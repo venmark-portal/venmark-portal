@@ -143,6 +143,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 quantity={line.quantity}
                 uom={line.uom}
                 unitPrice={line.unitPrice}
+                qtyPerUom={bcLine?.unitOfMeasureCode === line.uom ? bcLine.qtyPerUom : 1}
+                baseUom={bcLine?.baseUom ?? ''}
                 portalLineStatus={bcLine?.portalLineStatus ?? null}
                 portalCustomerNote={bcLine?.portalCustomerNote ?? null}
               />

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+import { updatePortalDriver } from '@/lib/businesscentral'
 
 export const runtime = 'nodejs'
 
@@ -20,8 +21,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const now    = new Date().toISOString()
   const vLabel = defaultVehicleLabel || 'Bil 1'
 
+  try {
+  // PIN + standardbil styres begge steder: skriv til BC FØRST, ellers overskriver næste
+  // "Sync fra BC" det der lige er gemt her. Chauffører uden BC-kode findes kun i portalen.
+  const rk = await prisma.$queryRaw<{ bcDriverCode: string | null }[]>`
+    SELECT "bcDriverCode" FROM "DriverUser" WHERE "id" = ${params.id} LIMIT 1
+  `
+  const bcCode = rk[0]?.bcDriverCode
+  if (bcCode) {
+    const vNr = Number(/(\d+)/.exec(vLabel)?.[1] ?? 1)
+    await updatePortalDriver(bcCode, {
+      defaultVehicle: vNr,
+      ...(pin && String(pin).length >= 4 ? { pinCode: String(pin) } : {}),
+    })
+  }
   if (pin && pin.length >= 4) {
-    const pinHash = await bcrypt.hash(pin, 10)
+    const pinHash = await bcrypt.hash(String(pin), 10)
     await prisma.$executeRaw`
       UPDATE "DriverUser"
       SET "pinHash"             = ${pinHash},
@@ -38,6 +53,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
           "updatedAt"           = ${now}::timestamp
       WHERE "id" = ${params.id}
     `
+  }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[chauffoer] gem ${params.id} fejlede:`, msg)
+    return new NextResponse(msg.slice(0, 200), { status: 500 })
   }
 
   return NextResponse.json({ ok: true })

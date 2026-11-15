@@ -276,6 +276,30 @@ export function getDispatchDateForMethodDelivery(
   return dispatch
 }
 
+/**
+ * Den modsatte vej: LEVERINGSdagen for en afsendelsesdag = afsendelse + transitdage, rykket
+ * frem til første ugedag leveringsformen kører (mon…sun-flagene). Uden flagene ville en
+ * fredagsafsendelse med én transitdag både kunne være lørdag og mandag — flagene afgør det.
+ * Bruges til at VISE leveringsdato på BC-tastede ordrer, som kun har linjernes afsendelsesdato.
+ * (Ordre 284792, 12-11-2026: afsendelse torsdag med LOGI 13.31 blev vist som "Levering
+ * torsdag", men bilen er fremme fredag.)
+ */
+export function getDeliveryDateForMethodDispatch(
+  dispatchDate: Date,
+  method: BCShipmentMethod,
+): Date {
+  const transit  = method.sameDay ? 0 : (method.transitDays ?? 1)
+  const delivery = new Date(dispatchDate)
+  delivery.setHours(0, 0, 0, 0)
+  delivery.setDate(delivery.getDate() + transit)
+  const korer = [method.sun, method.mon, method.tue, method.wed, method.thu, method.fri, method.sat]
+  // Ingen flag sat = ukendt kørselsplan → tag datoen som den er.
+  if (korer.some(Boolean)) {
+    for (let i = 0; i < 7 && !korer[delivery.getDay()]; i++) delivery.setDate(delivery.getDate() + 1)
+  }
+  return delivery
+}
+
 /** Parser BC Time STRENGT — null for blank/00:00 (modsat parseCutoffTime's 14:00-default). */
 function parseTimeStrict(s: string | null | undefined): { hour: number; minute: number } | null {
   if (!s || s.startsWith('00:00') || s === 'PT0S') return null

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { createCustomer, updateCustomer, toggleCustomerActive } from '@/app/admin/(protected)/kunder/actions'
-import { UserPlus, Pencil, ToggleLeft, ToggleRight, X, Loader2, CheckCircle2, Eye } from 'lucide-react'
+import { UserPlus, Pencil, ToggleLeft, ToggleRight, X, Loader2, CheckCircle2, Eye, Search } from 'lucide-react'
 
 type Customer = {
   id:                  string
@@ -26,6 +26,15 @@ export default function CustomerManager({ initialCustomers }: { initialCustomers
   const [editing,    setEditing]    = useState<Customer | null>(null)
   const [form,       setForm]       = useState(EMPTY_FORM)
   const [error,      setError]      = useState<string | null>(null)
+  const [soeg,       setSoeg]       = useState('')
+
+  // Alle søgeord skal findes i navn/email/BC-nr./prisgruppe/sales code (fx "kbh 1023").
+  const ord = soeg.toLowerCase().split(/\s+/).filter(Boolean)
+  const viste = ord.length === 0 ? customers : customers.filter((c) => {
+    const tekst = [c.name, c.email, c.bcCustomerNumber, c.bcPriceGroup, c.bcStandardSalesCode]
+      .filter(Boolean).join(' ').toLowerCase()
+    return ord.every((o) => tekst.includes(o))
+  })
   const [isPending,  startTransition] = useTransition()
 
   function openCreate() {
@@ -91,7 +100,22 @@ export default function CustomerManager({ initialCustomers }: { initialCustomers
   return (
     <>
       {/* ── Handlingsbar ── */}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full max-w-sm">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            id="kunde-soeg"
+            type="search"
+            autoFocus
+            value={soeg}
+            onChange={(e) => setSoeg(e.target.value)}
+            placeholder="Søg navn, email, BC-nr. eller prisgruppe"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+        {soeg.trim() && (
+          <span className="text-sm text-gray-500">{viste.length} af {customers.length}</span>
+        )}
         <button
           onClick={openCreate}
           className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
@@ -117,7 +141,10 @@ export default function CustomerManager({ initialCustomers }: { initialCustomers
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {customers.map((c) => (
+            {viste.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">Ingen kunder matcher &quot;{soeg}&quot;.</td></tr>
+            )}
+            {viste.map((c) => (
               <tr key={c.id} className={`hover:bg-gray-50 ${!c.isActive ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                 <td className="px-4 py-3 text-gray-500">{c.email}</td>

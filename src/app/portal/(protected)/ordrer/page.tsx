@@ -8,20 +8,14 @@ import {
   getPortalLineStatuses,
   getPortalOrderAccesses,
   getPortalShipmentMethods,
-  getPortalCalendarDays,
   BCPortalLine,
   BCCustomerOrder,
   type BCShipmentMethod,
-  type BCCalendarDay,
 } from '@/lib/businesscentral'
-import { getDeadlineForMethodDelivery, getDeadlineForDelivery } from '@/lib/dateUtils'
+import { bcOrdreLevering, bcOrdreFrist } from '@/lib/tilfoejOrdre'
 import { getParentCustomerNo } from '@/lib/activeCustomer'
 import { prisma } from '@/lib/prisma'
 
-/** Lokal YYYY-MM-DD — ikke toISOString, der skifter dato ved midnat. */
-function ymdLokal(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 import OrderLineStatus, { LINE_COLS, LINE_GRID_CLS } from '@/components/portal/OrderLineStatus'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT, localeOf, type Lang, type TFunc } from '@/lib/i18n/portal/lang'
@@ -118,19 +112,17 @@ export default async function MyOrdersPage() {
   const portalOrigin = new Set(portalRows.map(r => r.bcOrderNumber).filter(Boolean) as string[])
 
   // Ordrer tastet i BC (tlf/mail) har ingen portalrække og dermed ingen gemt frist.
-  // Den regnes her af leveringsformen — ellers kunne kunden ikke tilføje til en ordre
-  // hun selv har ringet ind, hvilket set fra hendes side er samme ordre.
-  const om90 = new Date(); om90.setDate(om90.getDate() + 90)
-  const [shipMethods, calDays] = await Promise.all([
-    getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[]),
-    getPortalCalendarDays(ymdLokal(new Date()), ymdLokal(om90)).catch(() => [] as BCCalendarDay[]),
-  ])
-  function bcFrist(o: BCCustomerOrder): Date | null {
-    if (!o.requestedDeliveryDate) return null
-    const lev = new Date(`${o.requestedDeliveryDate}T00:00:00`)
-    const m = shipMethods.find(x => x.code === o.shipmentMethodCode)
-    return m ? getDeadlineForMethodDelivery(lev, m, calDays) : getDeadlineForDelivery(lev)
-  }
+  // Den regnes her — ellers kunne kunden ikke tilføje til en ordre hun selv har ringet
+  // ind, hvilket set fra hendes side er samme ordre.
+  const shipMethods = await getPortalShipmentMethods().catch(() => [] as BCShipmentMethod[])
+  // Leveringsdato: ønsket leveringsdato, ellers linjernes afsendelsesdato + transitdage
+  // (samme funktion som tilføj-siden, så knap og side er enige).
+  const deliveryOf = (o: BCCustomerOrder) =>
+    bcOrdreLevering(o, (lineMap.get(o.number) ?? []).map(l => l.shipmentDate), shipMethods)
+  // Frist på en BC-tastet ordre = hele afsendelsesdagen (kontoret overrider klokkeslættet i
+  // telefonen) — samme funktion som tilføj-siden.
+  const bcFrist = (o: BCCustomerOrder): Date | null =>
+    bcOrdreFrist(o, (lineMap.get(o.number) ?? []).map(l => l.shipmentDate), shipMethods)
 
   // Kun grupper med ordrer; login-kunden først, derefter butikker alfabetisk
   const groups = perCustomer
@@ -167,11 +159,6 @@ export default async function MyOrdersPage() {
         <div className="space-y-8">
           {groups.map(({ customer, orders }) => {
             const storeTotal = orders.reduce((s, o) => s + (o.amountIncludingTax || 0), 0)
-            // Leveringsdato = ordrens Requested Delivery Date, ellers TIDLIGSTE linje-afsendelsesdato
-            // (fanger BC-tastede ordrer der ikke har header-leveringsdato → ikke "Ingen leveringsdato").
-            const deliveryOf = (o: BCCustomerOrder) =>
-              o.requestedDeliveryDate ||
-              ((lineMap.get(o.number) ?? []).map(l => l.shipmentDate).filter(Boolean).sort()[0] ?? '')
             // Nærmeste levering ØVERST (i dag først, sen september nederst); udaterede nederst.
             const sortedOrders = orders.slice().sort((a, b) => {
               const da = deliveryOf(a), db = deliveryOf(b)
@@ -320,6 +307,8 @@ function OrderCard({ order, lines, fromBc, deliveryDate, tilfoejId, deadline, t,
                 quantity={line.quantity}
                 uom={line.unitOfMeasureCode}
                 unitPrice={line.unitPrice}
+                qtyPerUom={line.qtyPerUom}
+                baseUom={line.baseUom}
                 portalLineStatus={line.portalLineStatus ?? null}
                 portalCustomerNote={line.portalCustomerNote ?? null}
                 packedBy={line.packedBy ?? ''}

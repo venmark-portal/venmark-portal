@@ -1361,6 +1361,7 @@ export async function createBCSalesOrder(
     orderBody.shipmentMethodCode = shipmentMethodCode.trim()
   }
 
+  const tHoved   = Date.now()
   const orderRes = await fetchBcDeadlockRetry(`${portalBase}/portalSalesOrders`, {
     method:  'POST',
     headers: {
@@ -1378,10 +1379,51 @@ export async function createBCSalesOrder(
 
   const order    = await orderRes.json()
   const orderId  = order.id as string
+  // Tidsmåling pr. kald → pm2-log [ordre-tid-bc]; finder hvilke varer/trin BC er langsom på.
+  const tStart   = Date.now()
+  const tider: string[] = [`hoved ${tStart - tHoved}ms`]
 
-  // 2. Opret linjer via standard v2.0 API — fejl samles og returneres
   const lineErrors: string[] = []
-  for (const line of lines) {
+
+  // 2a. HURTIG VEJ: alle linjer i ÉT kald (BC cu 50477 via bound action addLines, v.504+).
+  //     Hele kaldet er én BC-transaktion: svarer BC med en fejlstatus, er intet gemt, og vi
+  //     falder trygt tilbage til linje-for-linje nedenfor (fx før Force Sync af .504).
+  //     Netværksfejl/timeout: BC kan have gemt linjerne → tjek før vi evt. sender dem igen.
+  let bulkOk = false
+  let bulkInserted: number | null = null
+  const tBulk = Date.now()
+  const linesJson = JSON.stringify(lines.map(l => ({
+    itemNumber: l.itemNumber, quantity: l.quantity, uomCode: l.uomCode || '', note: l.note?.trim().slice(0, 30) || '',
+  })))
+  try {
+    const bulkRes = await fetchBcDeadlockRetry(`${portalBase}/portalSalesOrders(${orderId})/Microsoft.NAV.addLines`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body:    JSON.stringify({ linesJson }),
+    })
+    if (bulkRes.ok) {
+      const svar = JSON.parse((await bulkRes.json())?.value ?? '{}')
+      for (const e of (svar.errors ?? []) as string[]) lineErrors.push(`Vare ${e}`)
+      bulkOk = true
+      if (typeof svar.inserted === 'number') bulkInserted = svar.inserted
+      tider.push(`samlet ${Date.now() - tBulk}ms (${svar.inserted ?? '?'} ok, ${lineErrors.length} fejl)`)
+    } else {
+      tider.push(`samlet afvist ${bulkRes.status} ${Date.now() - tBulk}ms → linje-for-linje`)
+      console.warn(`[ordre-tid-bc] addLines ${bulkRes.status}: ${(await bulkRes.text()).slice(0, 300)}`)
+    }
+  } catch (e: any) {
+    try {
+      const chk = await fetch(`${stdBase}/salesOrders(${orderId})/salesOrderLines?$select=id`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store' })
+      const n = chk.ok ? ((await chk.json()).value?.length ?? 0) : 0
+      if (n > 0) bulkOk = true   // BC nåede at gemme — send ikke linjerne igen (dubletter)
+      tider.push(`samlet kastede (${e?.message ?? e}) — ${n} linjer fundet`)
+    } catch { /* tjek fejlede → linje-for-linje */ }
+  }
+
+  // 2b. Reserve: opret linjer én ad gangen via standard v2.0 API — fejl samles og returneres
+  for (const line of (bulkOk ? [] : lines)) {
+    const tLinje = Date.now()
     const lineRes = await fetchBcDeadlockRetry(`${stdBase}/salesOrderLines`, {
       method:  'POST',
       headers: {
@@ -1426,14 +1468,23 @@ export async function createBCSalesOrder(
         }
       } catch { /* bemærkning er best-effort */ }
     }
+    tider.push(`${line.itemNumber}/${line.uomCode || '-'} ${Date.now() - tLinje}ms`)
   }
+  console.log(`[ordre-tid-bc] ${order.number ?? orderId} linjer ${Date.now() - tStart}ms · ${tider.join(' · ')}`)
 
   // 3. Verifikation: GET ordren tilbage fra BC og taeller linjer der faktisk er der.
   //    Bekraefter at POST'erne ikke bare returnerede 201 uden at gemme i databasen.
   let verified = false
   let verifyError: string | undefined
   let bcLineCount: number | undefined
-  try {
+  // Samlet kald: BC's eget svar ER verifikationen — linjerne blev indsat i samme transaktion
+  // som svaret, så et ekstra GET (v2.0 beregner alle felter pr. linje, ~3,5 s) spares.
+  if (bulkInserted !== null) {
+    bcLineCount = bulkInserted
+    const expected = lines.length - lineErrors.length
+    if (bulkInserted < expected) verifyError = `Forventede ${expected} linje(r) i BC, BC meldte ${bulkInserted}`
+    else verified = true
+  } else try {
     const verifyRes = await fetch(
       `${stdBase}/salesOrders(${orderId})/salesOrderLines?$select=id&$top=500`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
@@ -1483,12 +1534,39 @@ export async function createBCSalesOrder(
  */
 export async function addLinesToBCOrder(
   bcOrderId: string,
-  lines: Array<{ itemNumber: string; quantity: number; uomCode: string }>,
+  lines: Array<{ itemNumber: string; quantity: number; uomCode: string; note?: string }>,
 ): Promise<{ success: number; errors: string[] }> {
   const token  = await getAccessToken()
   const base   = bcBaseUrl()
   let success  = 0
   const errors: string[] = []
+
+  // Hurtig vej: alle linjer i ÉT kald (samme BC-action som ny ordre, cu 50477). 7 linjer
+  // tog 28 s linje-for-linje. Afviser BC (fx ordren er slettet → 404), er intet gemt, og
+  // vi falder tilbage til linje-for-linje nedenfor — som også giver den fejltekst kalderen
+  // genkender ("No document with the specified ID exists") og så opretter en ny ordre.
+  const t0 = Date.now()
+  try {
+    const bulkRes = await fetchBcDeadlockRetry(`${bcPortalBaseUrl()}/portalSalesOrders(${bcOrderId})/Microsoft.NAV.addLines`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body:    JSON.stringify({ linesJson: JSON.stringify(lines.map(l => ({
+        itemNumber: l.itemNumber, quantity: l.quantity, uomCode: l.uomCode || '', note: l.note?.trim().slice(0, 30) || '',
+      }))) }),
+    })
+    if (bulkRes.ok) {
+      const svar = JSON.parse((await bulkRes.json())?.value ?? '{}')
+      for (const e of (svar.errors ?? []) as string[]) errors.push(`Vare ${e}`)
+      success = typeof svar.inserted === 'number' ? svar.inserted : lines.length - errors.length
+      console.log(`[ordre-tid-bc] læg-på ${bcOrderId} samlet ${Date.now() - t0}ms (${success} ok, ${errors.length} fejl)`)
+      return { success, errors }
+    }
+    console.warn(`[ordre-tid-bc] læg-på addLines ${bulkRes.status} → linje-for-linje: ${(await bulkRes.text()).slice(0, 200)}`)
+  } catch (e: any) {
+    // Netværksfejl: BC kan have gemt linjerne — send dem ikke igen (dubletter). Meld fejl.
+    console.error('[ordre-tid-bc] læg-på addLines kastede:', e?.message ?? e)
+    return { success: 0, errors: [`Forbindelsen til BC fejlede (${e?.message ?? e}) — tjek ordren i BC`] }
+  }
 
   for (const line of lines) {
     const lineRes = await fetchBcDeadlockRetry(`${base}/salesOrderLines`, {
@@ -1519,6 +1597,56 @@ export async function addLinesToBCOrder(
   return { success, errors }
 }
 
+// ─── KBH-levering: flyt varer på lager i København til kundens XVEN-ordre ────
+
+export interface BCKbhSplit {
+  xvenCustomerNo:   string
+  xvenOrderNo:      string
+  deliveryDate:     string   // YYYY-MM-DD ('0001-01-01' = ingen)
+  movedLines:       number
+  partialLines:     number
+  mainOrderDeleted: boolean
+  /** Alle linjer (helt eller delvist) der kom på XVEN-ordren. */
+  moved:   { itemNo: string; qty: number; uom: string }[]
+  /** Linjer KBH kun havde en del af: kbhQty fra København, restQty bliver på Hirtshals. */
+  partial: { itemNo: string; kbhQty: number; restQty: number; uom: string }[]
+  errorText: string
+}
+
+/**
+ * Kører BC's KBH-opsplitning (cu 50476 via API-siden kbhSplits) på en salgsordre: varer der er
+ * disponible på XVEN-KØB flyttes til debitorens XVEN-ordre med samme leveringsdag. Kun linjer
+ * portal-appen selv har oprettet og som ikke er vurderet før, røres. Debitorer uden XVEN-konto
+ * får et tomt svar (movedLines 0). Kaster ved HTTP-fejl — så er intet ændret i BC.
+ */
+export async function splitKbhOrder(orderNo: string, allowDeleteEmptyMain: boolean): Promise<BCKbhSplit> {
+  const token = await getAccessToken()
+  const res = await fetchBcDeadlockRetry(`${bcPortalBaseUrl()}/kbhSplits`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body:    JSON.stringify({ orderNo, allowDeleteEmptyMain }),
+    cache:   'no-store',
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`kbhSplits ${orderNo} → ${res.status}: ${body.slice(0, 500)}`)
+  }
+  const j = await res.json()
+  const num = (s: string) => Number(s) || 0
+  const parts = (s: string) => String(s ?? '').split('|').filter(Boolean).map(p => p.split(';'))
+  return {
+    xvenCustomerNo:   j.xvenCustomerNo ?? '',
+    xvenOrderNo:      j.xvenOrderNo ?? '',
+    deliveryDate:     j.deliveryDate ?? '',
+    movedLines:       Number(j.movedLines ?? 0),
+    partialLines:     Number(j.partialLines ?? 0),
+    mainOrderDeleted: !!j.mainOrderDeleted,
+    moved:   parts(j.movedItems).map(([itemNo, qty, uom]) => ({ itemNo, qty: num(qty), uom: uom ?? '' })),
+    partial: parts(j.partialItems).map(([itemNo, kbh, rest, uom]) => ({ itemNo, kbhQty: num(kbh), restQty: num(rest), uom: uom ?? '' })),
+    errorText: j.errorText ?? '',
+  }
+}
+
 // ─── Hent linjestatus fra Sales-warehouse-facade API ─────────────────────────
 
 // ─── Åbne salgsordrer pr. kunde (til "Mine ordrer" — inkl. BC-oprettede) ─────
@@ -1545,12 +1673,21 @@ export interface BCCustomerOrder {
  * OPRETTE ordrer, og læse/skrive må ikke entangles. Bogførte/leverede ordrer forsvinder
  * fra Sales Header og vises i stedet under Fakturaer.
  */
-export async function getCustomerOrders(customerNo: string): Promise<BCCustomerOrder[]> {
+/**
+ * kunDato (YYYY-MM-DD): kun ordrer med DEN ønskede leveringsdato eller ingen (BC-tastede).
+ * Målt 09-11-2026: customerNumber-filteret alene tog 9-10 s (v2.0 salesOrders er en buffer-
+ * side) selv med 3 ordrer; med datofilteret 1,7 s. Bruges af bestillingens åben-ordre-opslag.
+ */
+export async function getCustomerOrders(customerNo: string, kunDato?: string): Promise<BCCustomerOrder[]> {
   if (!customerNo) return []
   try {
     const token  = await getAccessToken()
     const base   = bcBaseUrl()
-    const filter = encodeURIComponent(`customerNumber eq '${customerNo}'`)
+    const filter = encodeURIComponent(
+      /^\d{4}-\d{2}-\d{2}$/.test(kunDato ?? '')
+        ? `customerNumber eq '${customerNo}' and (requestedDeliveryDate eq ${kunDato} or requestedDeliveryDate eq 0001-01-01)`
+        : `customerNumber eq '${customerNo}'`,
+    )
     const select = encodeURIComponent(
       'id,number,customerNumber,customerName,requestedDeliveryDate,orderDate,status,totalAmountIncludingTax,externalDocumentNumber',
     )
@@ -1589,7 +1726,9 @@ export interface BCPortalLine {
   description:        string
   quantity:           number
   unitOfMeasureCode:  string
-  unitPrice:          number
+  unitPrice:          number   // pr. linjeenhed (kasse/spand …)
+  qtyPerUom:          number   // Antal pr. enhed; 1 = basisenhed
+  baseUom:            string   // varens basisenhed (KG/STK); tom på basis-linjer
   portalLineStatus:   'Afventer' | 'Godkendt' | 'Afvist'
   portalCustomerNote: string
   packedBy:           string   // initialer; tom = ikke pakket
@@ -1607,6 +1746,13 @@ export interface BCPortalLine {
  */
 export async function getPortalLineStatuses(
   bcOrderNumber: string,
+  /**
+   * Frisk = uden Next's datacache. Cachen er stale-while-revalidate: er svaret udløbet,
+   * leveres det GAMLE én gang til (uanset alder) og opdateres først bagefter. Fint til
+   * visning, men ikke når der skal TRÆFFES en beslutning — "læg på åben ordre" fik et
+   * gammelt billede af telefonordre 285776 og oprettede W0000224 til samme bil (12-11-2026).
+   */
+  opts?: { frisk?: boolean },
 ): Promise<BCPortalLine[] | null> {
   try {
     const token = await getAccessToken()
@@ -1622,7 +1768,7 @@ export async function getPortalLineStatuses(
         Authorization: `Bearer ${token}`,
         Accept:        'application/json',
       },
-      next: { revalidate: 30 },   // cache 30 sekunder
+      ...(opts?.frisk ? { cache: 'no-store' as const } : { next: { revalidate: 30 } }),   // ellers cache 30 sekunder
     })
 
     if (!res.ok) return null   // Extension ikke deployed endnu
@@ -1637,6 +1783,8 @@ export async function getPortalLineStatuses(
       quantity:           l.quantity ?? 0,
       unitOfMeasureCode:  l.unitOfMeasureCode ?? '',
       unitPrice:          l.unitPrice ?? 0,
+      qtyPerUom:          Number(l.qtyPerUnitOfMeasure ?? 1) || 1,
+      baseUom:            (l.baseUnitOfMeasure ?? '').trim(),
       portalLineStatus:   l.portalLineStatus ?? 'Afventer',
       portalCustomerNote: l.portalKundebemærkning ?? l.portalCustomerNote ?? '',
       packedBy:           (l.packedBy ?? '').trim(),
@@ -1712,6 +1860,7 @@ export interface BCItemUoM {
   displayName:         string
   qtyPerUnitOfMeasure: number
   baseUnitOfMeasure:   boolean
+  salesUnit?:          boolean  // varekortets Salgsenhed i BC — forvalgt når kunden ikke selv har valgt
 }
 
 /**
@@ -1772,6 +1921,7 @@ export async function getItemsUoMs(
         displayName:         row.code ?? '',
         qtyPerUnitOfMeasure: typeof row.qtyPerUnitOfMeasure === 'number' ? row.qtyPerUnitOfMeasure : 1,
         baseUnitOfMeasure:   false, // sættes korrekt i uomByCode-merge i page.tsx
+        salesUnit:           row.isSalesUnit === true,
       })
     }
 
@@ -1985,9 +2135,13 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
 
     const res = await fetch(`${base}/portalDrivers?$top=200`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      next: { revalidate: 300 },
+      // "Sync fra BC" skal se BC NU — en 5-min. cache gav synk på gamle data.
+      cache: 'no-store',
     })
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.error(`[chauffoer] portalDrivers ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`)
+      return []
+    }
     const data = await res.json()
     return (data.value ?? []).map((d: any) => ({
       code:                      d.code                      ?? '',
@@ -1999,6 +2153,25 @@ export async function getPortalDrivers(): Promise<BCPortalDriver[]> {
       defaultVehicle:            d.defaultVehicle            ?? 1,
     }))
   } catch { return [] }
+}
+
+/**
+ * Skriv PIN og/eller standardbil tilbage til BC's Portal Driver — begge styres fra både BC og
+ * portalen, og "Sync fra BC" overskriver portalens værdier med BC's. Kaster ved fejl.
+ */
+export async function updatePortalDriver(code: string, patch: { pinCode?: string; defaultVehicle?: number }): Promise<void> {
+  const token = await getAccessToken()
+  const res = await fetch(`${bcPortalBaseUrl()}/portalDrivers('${encodeURIComponent(code.replace(/'/g, "''"))}')`, {
+    method:  'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json', 'If-Match': '*' },
+    body:    JSON.stringify(patch),
+    cache:   'no-store',
+  })
+  if (!res.ok) {
+    const body = (await res.text().catch(() => '')).slice(0, 300)
+    console.error(`[chauffoer] BC-opdatering af ${code} → ${res.status}: ${body}`)
+    throw new Error(`BC afviste ændringen (${res.status})`)
+  }
 }
 
 // ─── Hent varetilgængelighed fra BC (Portal Item Avail API, page 50373) ──────

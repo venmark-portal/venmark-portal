@@ -30,7 +30,7 @@ export default async function AdminLayout({
   return (
     <SessionProvider session={session}>
       <div className="min-h-screen bg-gray-50">
-        <header className="border-b border-gray-200 bg-white">
+        <header className="border-b border-gray-200 bg-white print:hidden">
           <div className="mx-auto max-w-7xl px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex items-center gap-3 shrink-0">
@@ -55,6 +55,8 @@ export default async function AdminLayout({
                 <a href="/admin/kunder"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kunder</a>
                 <a href="/admin/ordrer"        className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Ordrer</a>
                 <a href="/admin/salgsliste"    className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Salgsliste</a>
+                <a href="/admin/portal-brug"   className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Portal-brug</a>
+                <a href="/admin/robot"         className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Robot</a>
                 <a href="/admin/tidslinjer"    className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Tidslinjer</a>
                 <a href="/admin/kalender"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kalender</a>
                 <a href="/admin/beskeder"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Beskeder</a>
@@ -84,7 +86,7 @@ export default async function AdminLayout({
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-4 py-8 md:px-6">
+        <main className="mx-auto max-w-6xl px-4 py-8 md:px-6 print:max-w-none print:p-0">
           {children}
         </main>
       </div>

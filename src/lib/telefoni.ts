@@ -21,7 +21,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { ensureSignageSchema } from '@/lib/signage/schema'
-import { hentKundeNumre, normaliserNummer } from '@/lib/telefonKunder'
+import { hentKundeNumre, normaliserNummer, type KundeOpslag } from '@/lib/telefonKunder'
 
 export interface TelefoniPerson {
   navn:     string
@@ -237,6 +237,10 @@ export interface TelefonNummer {
   /** Debitor nummeret er slået op på — tom når det ikke findes i BC. */
   kunde:    string
   kundeNr:  string
+  /** Personen bag nummeret, når det ikke er firmaets eget (kontaktperson, Kontakt 1-3). */
+  kontakt?: string
+  /** Leverandør frem for debitor — vises, så man ikke leder efter dem i kundelisten. */
+  leverandoer?: boolean
 }
 
 export interface TelefonTidslinje {
@@ -345,7 +349,7 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
     prNummer.set(nr, n)
   }
   // Kun maskerede numre kan ikke slås op — de sidste cifre mangler jo.
-  const kunder = await hentKundeNumre().catch(() => new Map<string, { kundeNr: string; navn: string }>())
+  const kunder = await hentKundeNumre().catch(() => new Map<string, KundeOpslag>())
   const numre: TelefonNummer[] = Array.from(prNummer.entries())
     .map(([nummer, n]) => {
       const k = n.fuldt ? kunder.get(normaliserNummer(nummer)) : undefined
@@ -353,6 +357,7 @@ export async function telefonTidslinje(fra: string, til: string): Promise<Telefo
         nummer, opkald: n.ind + n.ud, ind: n.ind, ud: n.ud,
         minutter: Math.round(n.sek / 60), sidst: n.sidst, fuldt: n.fuldt,
         kunde: k?.navn ?? '', kundeNr: k?.kundeNr ?? '',
+        kontakt: k?.kontakt, leverandoer: k?.slags === 'Leverandør',
       }
     })
     .sort((a, b) => b.opkald - a.opkald || b.minutter - a.minutter)

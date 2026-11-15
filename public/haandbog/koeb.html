@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Køb &amp; modtagelse · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html" aria-current="page">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Indkøb · modtagelse</p>
+    <h1 class="title">Køb &amp; modtagelse</h1>
+    <p class="lede">Hurtig købsindtastning, bestillingsmail til leverandøren, varemodtagelse med kvalitetskontrol, auktionsimport og automatisk bogføring af leverandørfakturaer.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#hurtig">Hurtig købsindtastning</a></li>
+      <li><a href="#mail">Bestilling til leverandør</a></li>
+      <li><a href="#modtag">Varemodtagelse &amp; kvalitet</a></li>
+      <li><a href="#lagerrolle">Lager på købslinjer</a></li>
+      <li><a href="#auktion">Auktionsimport</a></li>
+      <li><a href="#expense">Expense720 auto-bogføring</a></li>
+      <li><a href="#nulbilag">Købsordrer på 0 kr.</a></li>
+      <li><a href="#hvem">Indkøber &amp; Modtaget af</a></li>
+      <li><a href="#arkiv">Faktura-arkivet</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="hurtig">
+      <p class="eyebrow">Bestil hurtigt</p>
+      <h2>Hurtig købsindtastning</h2>
+      <p>Knappen <span class="btn">Hurtig købsindtastning</span> på købsordren åbner leverandørens favoritter med lager, salg i dag, salg i alt, i indkøb, netto og disponibelt side om side.</p>
+      <ol class="steps">
+        <li>Tast <span class="k">Antal til køb</span>. Bemærkningen huskes pr. leverandør og vare.</li>
+        <li>Tryk <span class="btn">Sæt linjer ind</span> (F9).</li>
+      </ol>
+      <ul class="clean">
+        <li>Ændrer du <strong>Bogføringsdato</strong> øverst, ændres købsordrens dato og linjernes forventede modtagelse med.</li>
+        <li>Faktaboksene viser salgsstatistik, de sidste 5 køb, lagerdetaljer og åbne lots.</li>
+        <li><span class="btn">Prislistelinjer</span> (Shift+F7), <span class="btn">Beregn disponibel (alle)</span>, <span class="btn">Alle varer</span>, <span class="btn">Nulstil antal</span>.</li>
+      </ul>
+      <p>Fra <strong>Venmark Vareliste</strong> kan du også taste <span class="k">Antal til købsordre</span> og trykke <span class="btn">Opret købsordre af antal (leverandør på linjen)</span>.</p>
+    </section>
+
+    <section class="blk" id="mail">
+      <p class="eyebrow">Til leverandøren</p>
+      <h2>Bestilling til leverandør</h2>
+      <p><span class="btn">Send bestilling til leverandør</span> på købsordren åbner en mail med en tabel over varerne (“Bestilling … fra Venmark Fisk”). Du kan rette teksten før du sender.</p>
+      <div class="msg">
+        <q>Leverandør … mangler e-mail.</q>
+        <span class="do">Udfyld e-mail på kreditorkortet.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="modtag">
+      <p class="eyebrow">Når varen kommer</p>
+      <h2>Varemodtagelse &amp; kvalitet</h2>
+      <p>På købsordren, gruppen <strong>Varemodtagelse</strong>: <span class="k">Temperatur OK</span>, <span class="k">Visuelt godkendt</span> og <span class="k">Korrigerende handling udført</span>.</p>
+      <ol class="steps">
+        <li>Tjek temperatur og udseende, og sæt fluebenene.</li>
+        <li>Udfyld <strong>Antal at modtage</strong> og sporbarhed (fangstredskab/-område) på linjerne. Print modtagelseslabels.</li>
+        <li>Tryk <span class="btn">Modtaget</span> og bekræft.</li>
+      </ol>
+      <ul class="clean">
+        <li>En linje bogføres kun, hvis <strong>Antal at modtage = restantal</strong> og sporbarheden er udfyldt. Afvigende linjer bogføres ikke — antallet bliver stående.</li>
+        <li>Alt matcher: <em>“Ordre … er modtaget og frigivet.”</em></li>
+        <li>Afvigelse: <em>“… modtaget med uoverensstemmelse …”</em> — ordren frigives <strong>ikke</strong>, og salg adviseres pr. mail.</li>
+        <li>Er temperatur eller visuelt ikke OK, skal <em>Korrigerende handling udført</em> være sat. Modtagelsen tillades, og salg + kvalitet får mail.</li>
+        <li>Modtaget-labelen printes automatisk.</li>
+      </ul>
+      <div class="msg">
+        <q>Din bruger (…) har ingen Sælger-/indkøbskode i Brugeropsætning. Den skal sættes før du kan registrere modtagelse.</q>
+        <span class="do">Bed administrator sætte din kode i Brugeropsætning.</span>
+      </div>
+      <div class="msg">
+        <q>Actual Quantity Received cannot exceed …</q>
+        <span class="why">Du har modtaget mere end bestilt + tolerancen (<em>Modtagelsesantal tolerance %</em> i Køb &amp; gæld-opsætning).</span>
+        <span class="do">Ret antallet — eller få indkøber til at rette ordren.</span>
+      </div>
+      <p>Knapper på købslinjerne: <span class="btn">Tildel modtagelsesnr. og print</span>, <span class="btn">Print modtagelseslabel</span>, <span class="btn">Print alle modtagelseslabels</span>, <span class="btn">Udtræk sporbarhed fra dokument</span> (AI læser fakturaen).</p>
+    </section>
+
+    <section class="blk" id="lagerrolle">
+      <p class="eyebrow">Roller</p>
+      <h2>Lager på købslinjer</h2>
+      <p>Brugere med rollen <strong>Lager</strong> må sætte sporbarhed, bemærkning og antal at modtage — og indsætte nye linjer. De må <strong>ikke</strong> ændre vare, antal eller pris på indkøbers linjer, og ikke slette linjer.</p>
+    </section>
+
+    <section class="blk" id="auktion">
+      <p class="eyebrow">Fiskeauktionen</p>
+      <h2>Auktionsimport</h2>
+      <p>Auktionskøb hentes automatisk hvert 5. minut på hverdage kl. 7–11 og bliver til købsordrer. Indkøber på ordrerne er robotkoden (WEB).</p>
+      <ol class="steps">
+        <li><strong>Om morgenen</strong> oprettes købsordren — uden sporbarhed.</li>
+        <li><strong>Efter auktionen:</strong> tryk <span class="btn">Opdater sporbarhed efter auktion</span> på siden <strong>Auction Import</strong>. Så kommer redskab, område og kasser på.</li>
+      </ol>
+      <ul class="clean">
+        <li>Ukendte varer får varenr. <strong>XXX</strong> og kommer ikke med på købsordren. Der sendes mail til fisk@venmark.dk. Tilføj varen på <strong>Auction Item No. Conversion</strong>.</li>
+        <li>Ukendt auktionshus: <em>“Auction house … is not mapped to vendor.”</em> — tilføj det på <strong>Auction Vendor Mapping</strong>.</li>
+        <li><span class="btn">Hent fra fiskeauktion nu</span> henter med det samme. <span class="btn">Genopret planlagt opgave</span> hvis jobbet er væk.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="expense">
+      <p class="eyebrow">Leverandørfakturaer</p>
+      <h2>Expense720 auto-bogføring</h2>
+      <p>Fakturaer fra Expense720 kan bogføres automatisk mod købsordren. Slås til pr. leverandør på kreditorkortet: <span class="k">Auto-bogfør faktura fra Expense720</span> og <span class="k">Auto-bogfør maks. beløb inkl. moms (RV)</span>.</p>
+      <p>Fakturaen bogføres kun, hvis:</p>
+      <ul class="clean">
+        <li>købsordren er <strong>frigivet</strong>, fuldt modtaget og ikke faktureret,</li>
+        <li>beløbet passer på øren, valutaen matcher, og fakturanummeret ikke er brugt før,</li>
+        <li>leverandørens bankkonto ikke er ændret de sidste 30 dage.</li>
+      </ul>
+      <p>Status ses på siden <strong>Expense720 auto-bogføring</strong>: Bogført, Sprunget over, Afventer OK (over grænsen — tryk <span class="btn">OK – bogfør alligevel</span>) eller Fejl.</p>
+      <div class="note">
+        <p class="note-h">Modtaget med afvigelse = ingen auto-bogføring</p>
+        <p>En modtagelse med uoverensstemmelse lader ordren stå ikke-frigivet. Så venter fakturaen, til ordren er rettet og frigivet.</p>
+      </div>
+      <div class="msg">
+        <q>Flere købsordrer matcher (…) — knyt fakturaen til den rigtige i Expense720.</q>
+        <span class="do">Vælg købsordren på fakturaen i Expense720.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="nulbilag">
+      <p class="eyebrow">Bilag</p>
+      <h2>Købsordrer på 0 kr.</h2>
+      <p>Lov om digitalt bilag kræver et bilag. På købsordrer og -fakturaer hvor summen er 0 kr., vedhæfter BC selv et “Nul-bilag” lige før bogføring, hvis der ikke allerede er et.</p>
+    </section>
+
+    <section class="blk" id="hvem">
+      <p class="eyebrow">Hvem</p>
+      <h2>Indkøber &amp; Modtaget af</h2>
+      <ul class="clean">
+        <li>Nye købsordrer får <strong>din</strong> indkøberkode automatisk.</li>
+        <li>Bogførte modtagelser viser <strong>Modtaget af</strong> pr. linje, og hvem der trykkede Modtaget. Fakturalinjerne arver det.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="arkiv">
+      <p class="eyebrow">Gamle fakturaer</p>
+      <h2>Faktura-arkivet</h2>
+      <p>Leverandørfakturaer fra 2021 og frem kan åbnes som PDF med <span class="btn">Åbn leverandørfaktura (arkiv)</span> på bogført købsfaktura, listen over bogførte købsfakturaer og Kreditorposter.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Køb &amp; modtagelse</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

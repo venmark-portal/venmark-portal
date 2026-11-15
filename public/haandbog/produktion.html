@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Produktion &amp; montage · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html" aria-current="page">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Produktion · disponenter</p>
+    <h1 class="title">Produktion &amp; montage</h1>
+    <p class="lede">Fra montageordre til bogført produktion: start, vejning og kasser, familieproduktion, procedureskemaer, P-assistenten — og hvad du gør når en ordre “forsvinder”.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#flow">Produktionens gang</a></li>
+      <li><a href="#start">Opret og start</a></li>
+      <li><a href="#oversigt">Produktionsoversigten</a></li>
+      <li><a href="#vejning">Vejning &amp; kasser</a></li>
+      <li><a href="#familie">Familieproduktion</a></li>
+      <li><a href="#skema">Procedureskemaer</a></li>
+      <li><a href="#passistent">P-assistent &amp; bogføring</a></li>
+      <li><a href="#kaviar">Kaviarlabel</a></li>
+      <li><a href="#redning">Når noget er galt</a></li>
+      <li><a href="#historik">Historik &amp; udbytte</a></li>
+      <li><a href="#dagsdispo">Dagsdisponering</a></li>
+      <li><a href="#dantime">Dan-Time</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="flow">
+      <p class="eyebrow">Overblikket</p>
+      <h2>Produktionens gang</h2>
+      <ol class="steps">
+        <li><strong>Montageordre oprettes</strong> — fra Dagsdisponering (<span class="btn">Ny montageordre</span>) eller direkte. Et procedureskema laves automatisk, hvis varen har en skabelon.</li>
+        <li><strong>Start produktion</strong> på montageordren. Råvaren trækkes fra lager, og ordren dukker op på Produktionsoversigten.</li>
+        <li><strong>Kasser vejes</strong> på Produktionsoversigten. Hver kasse får label og lotnummer.</li>
+        <li><strong>Afslut ordre</strong> — ordren forsvinder fra oversigten og går til P-assistenten.</li>
+        <li><strong>Procedureskemaet udfyldes</strong>.</li>
+        <li><strong>P-assistenten bogfører</strong> — outputtet lægges på lager, og produktionen gemmes i historikken.</li>
+      </ol>
+    </section>
+
+    <section class="blk" id="start">
+      <p class="eyebrow">Montageordren</p>
+      <h2>Opret og start en produktion</h2>
+      <p>På montageordren hedder antallet <strong>Antal råvare (kg)</strong> — det er input, ikke output, både for familier og almindelige ordrer.</p>
+      <h3 id="start-knap">Start produktion</h3>
+      <ol class="steps">
+        <li>Udfyld <strong>Antal råvare (kg)</strong>. Start med 0 kg er tilladt.</li>
+        <li>Tjek sporbarhed: <span class="k">Fangstredskab</span> og <span class="k">Fangstområde</span>. Mangler de, hentes de automatisk — eller tryk <span class="btn">Hent sporbarhedsdata</span>.</li>
+        <li>Tryk <span class="btn">Start produktion</span>. Ordren frigives, råvaren bogføres som forbrug, og produktionslabel printes.</li>
+      </ol>
+      <p>Ændrer du råvaremængden og starter igen, bogføres kun forskellen. Start kan derfor køres flere gange.</p>
+      <div class="msg">
+        <q>Fangstområde er påkrævet for råvare … Udfyld fangstområde på montageordren inden start.</q>
+        <span class="why">Råvarens varekort kræver sporbarhed, og den kunne ikke findes automatisk.</span>
+        <span class="do">Udfyld feltet på montageordren — eller scan modtagelseslabel på Produktionsoversigten.</span>
+      </div>
+      <div class="msg">
+        <q>Ingen varekladde-skabelon fundet. Opret en af typen “Vare” under Lagerstyring &gt; Kladder.</q>
+        <span class="do">Kontakt administrator — det er en opsætningsfejl.</span>
+      </div>
+      <p>Andre knapper på montageordren: <span class="btn">Registrer kasse</span> (F5), <span class="btn">Subtotal label</span>, <span class="btn">Slet sidste kasse</span>, <span class="btn">Opret råvarelinje</span>, <span class="btn">Print produktionslabel</span>, <span class="btn">Lås sporbarhed</span>.</p>
+    </section>
+
+    <section class="blk" id="oversigt">
+      <p class="eyebrow">Gulvet</p>
+      <h2>Produktionsoversigten</h2>
+      <p>Siden <strong>Produktionsoversigt — alle åbne</strong> viser alle startede, ikke-afsluttede produktlinjer med forventet og produceret kg. Faktaboksene viser dagens salgslinjer, kasser og råvarelots.</p>
+      <h3 id="scan">Scanfelterne</h3>
+      <ul class="clean">
+        <li><strong>Scan modtagelseslabel</strong> (Modtagelses-ID) — sætter redskab, område og fangstperiode på ordren fra købsmodtagelsen.</li>
+        <li><strong>Scan produktionslabel</strong> — stregkoden afgør hvad der sker:
+          <ul class="clean">
+            <li><span class="k">ordrenr-varenr</span> → vej og registrér en kasse af varen</li>
+            <li><span class="k">ordrenr-0000</span> → afslut ordren</li>
+            <li><span class="k">ordrenr-SCAN</span> → startlabel, gør ingenting</li>
+          </ul>
+        </li>
+      </ul>
+      <p>Scanneren sender nogle gange “+” i stedet for “-” — det rettes automatisk.</p>
+      <h3 id="oversigt-knapper">Knapper</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Knap</th><th>Gør</th></tr></thead>
+          <tbody>
+            <tr><td><span class="btn">▶ REGISTRER KASSE (MANUEL)</span></td><td>Indtast vægt, registrér én kasse, print label.</td></tr>
+            <tr><td><span class="btn">▶ REGISTRER MANGE KASSER</span></td><td>Samme vægt × antal kasser, ét samlet labeljob.</td></tr>
+            <tr><td><span class="btn">Subtotal label</span> / <span class="btn">Total label (vare)</span></td><td>Label med akkumuleret / samlet vægt for varen. Tæller ikke med som produceret.</td></tr>
+            <tr><td><span class="btn">Afslut ordre</span></td><td>Ordren går til P-assistenten.</td></tr>
+            <tr><td><span class="btn">Vis billede</span></td><td>Varebilledet (luk med Esc).</td></tr>
+            <tr><td><span class="btn">Find skjulte produktioner</span></td><td>Se <a href="#redning">Når noget er galt</a>.</td></tr>
+            <tr><td><span class="btn">Vis alle (inkl. ikke-startede)</span></td><td>Fjerner filteret. Genåbn siden for at få det tilbage.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Forfaldsdato</strong> kan rettes direkte i listen og skrives tilbage til montageordren.</p>
+    </section>
+
+    <section class="blk" id="vejning">
+      <p class="eyebrow">Vægten</p>
+      <h2>Vejning &amp; kasser</h2>
+      <p>Marel-vægten er koblet til siden. Vægtfeltet viser <em>Stabil</em> eller <em>Ustabil…</em>. Står der <em>Bridge ikke startet</em>, kører vægtprogrammet på pc'en ikke.</p>
+      <ul class="clean">
+        <li><span class="btn">✔ Registrer kasse</span> bruger den markerede linje — medmindre du lige har scannet en label; så vinder scanningen.</li>
+        <li>Hver kasse får lotnummer <span class="k">ordrenr-001</span>, <span class="k">-002</span> osv.</li>
+        <li><strong>Kassetyper:</strong> Normal (rigtige kasser), Subtotal og Total (kun labels). Kun <strong>Normal</strong> tæller som produceret.</li>
+      </ul>
+      <h3 id="sammevaegt">Samme vægt som sidste kasse</h3>
+      <p>Vejer en kasse præcis det samme som den forrige, spørger BC: <em>“Er det en ny kasse?”</em></p>
+      <ul class="clean">
+        <li><strong>Ja — det er en ny kasse</strong></li>
+        <li><strong>Nej — genudskriv sidste label</strong></li>
+        <li><strong>Nej — fejl (registrér intet)</strong> — standardvalget, så et utilsigtet Enter fra scanneren ikke giver en dublet.</li>
+      </ul>
+      <h3 id="automode">Auto-mode</h3>
+      <p>Med <span class="k">Auto-mode</span> slået til registreres og printes en kasse af sig selv, når vægten har ligget stabilt inden for tolerancen (standard −5 %/+10 % af mål-vægten) i “Stabil tid” (standard 3 sek). Vægten skal tømmes mellem hver kasse. I auto-mode spørges der ikke om samme vægt.</p>
+      <div class="msg">
+        <q>Vægten er 0 — læg varen på vægten og prøv igen.</q>
+        <span class="do">Læg kassen på vægten. Står vægten fast på 0, tjek at vægtprogrammet kører.</span>
+      </div>
+      <div class="msg">
+        <q>Montageordren er ikke frigivet endnu — frigiv den først.</q>
+        <span class="do">Tryk Start produktion på montageordren.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="familie">
+      <p class="eyebrow">Én råvare, flere produkter</p>
+      <h2>Familieproduktion</h2>
+      <p>En <strong>familie</strong> er én råvare der bliver til flere produkter (fx filet + biprodukter). Familien er <strong>én montageordre</strong> — aldrig en ordre pr. produkt.</p>
+      <h3 id="familie-opsaet">Opsætning</h3>
+      <ul class="clean">
+        <li>Siden <strong>Familier</strong> → kortet <strong>Familie</strong>: <span class="k">Råvare varenr.</span> (skal være forskelligt fra familiens nummer) og produktlinjerne.</li>
+        <li>På hver linje: <span class="k">Udbytte (kg pr. kg råvare)</span> — fx 0,45 = 45 kg pr. 100 kg råvare — og <span class="k">Kategori</span> (Hoved eller Biprodukt).</li>
+        <li><span class="btn">Tjek opsætning</span> finder fejl: manglende råvare, ingen Hoved-linje, linjer med udbytte 0 m.m.</li>
+        <li>Familien skal have en vare med samme nummer. Mangler den: <span class="btn">Opret manglende Item-placeholders</span>.</li>
+      </ul>
+      <h3 id="familie-ordre">På ordren</h3>
+      <p>Sæt varenr. = familienummeret. Produktlinjerne hentes fra familien med forventet udbytte. Rettes råvaremængden, skaleres de forventede kg med. <span class="btn">Genindlæs familielinjer</span> henter linjerne igen (fx hvis udbyttet stod som 0).</p>
+      <div class="note warn">
+        <p class="note-h">Bogfør aldrig en familie med F9</p>
+        <p>F9 ville lægge hele vægten på én vare. BC stopper det: <em>“Montageordre … er en FAMILIEordre og må ikke bogføres med F9 … Brug P-assistenten.”</em></p>
+      </div>
+      <p><strong>Familieproduktionsoversigt</strong> viser alle familielinjer; <span class="btn">Slet markerede ordrer</span> sletter kun ikke-startede ordrer uden kasser.</p>
+    </section>
+
+    <section class="blk" id="skema">
+      <p class="eyebrow">Egenkontrol</p>
+      <h2>Procedureskemaer</h2>
+      <p>Hver montageordre får automatisk et procedureskema (HACCP/egenkontrol), hvis varen — eller varegruppen — har en <strong>Procedure-skabelon</strong>. Skemaet <strong>skal være udfyldt</strong>, før produktionen kan bogføres.</p>
+      <ol class="steps">
+        <li>Åbn skemaet fra montageordren: <span class="btn">Åbn procedureskema</span>.</li>
+        <li>Udfyld <span class="k">Værdi</span> på hvert punkt. Ja/Nej: skriv Ja, Nej, x, ✓, 1 eller 0. Tal: bare tallet. Vare + lot: brug <span class="btn">Detaljer</span>.</li>
+        <li>Ligger en værdi uden for grænsen (⚠ OOR), skriv en <span class="k">Afvigelses-note</span>.</li>
+        <li><span class="btn">Marker som udfyldt</span>.</li>
+      </ol>
+      <div class="note warn">
+        <p class="note-h">0 tæller som tom</p>
+        <p>Et talpunkt med værdien <strong>0</strong> regnes som ikke udfyldt — fx en temperatur på 0 °C. Skriv 0,1 eller notér det i afvigelses-noten.</p>
+      </div>
+      <div class="msg">
+        <q>Procedureskema kan ikke bogføres: … påkrævet(de) punkt(er) mangler udfyldelse (fx “…”).</q>
+        <span class="do">Udfyld det nævnte punkt og bogfør igen.</span>
+      </div>
+      <div class="msg">
+        <q>Procedureskema kan ikke bogføres: … punkt(er) er Out Of Range uden afvigelses-note.</q>
+        <span class="do">Skriv en afvigelses-note på punkterne uden for grænsen.</span>
+      </div>
+      <p>Har ordren intet skema (varen manglede skabelon), kan det oprettes bagefter med <span class="btn">Opret procedureskema</span>. Bogførte skemaer ses på <strong>Bogførte procedureskemaer</strong>, og CCP-punkter samlet på <strong>Procedure-statistik</strong>.</p>
+      <details class="tech"><summary>Til administrator</summary><div>Skabeloner: Procedure-skabeloner → “Kopier til ny version” laver &lt;kode&gt;-NY som inaktiv. Kun aktive skabeloner bruges på nye ordrer. Skemaet slettes med montageordren og gemmes som snapshot ved bogføring (også familier).</div></details>
+    </section>
+
+    <section class="blk" id="passistent">
+      <p class="eyebrow">Bogføring</p>
+      <h2>P-assistent &amp; bogføring</h2>
+      <p>Siden <strong>P-assistent — afsluttede montager</strong> viser alle afsluttede ordrer, klar til bogføring. <span class="k">Gruppe klar</span> er grøn, når alle ordrer i en produktionsgruppe er afsluttet.</p>
+      <ol class="steps">
+        <li>Sæt flueben i <span class="k">Bogfør</span> — eller <span class="btn">Marker gruppe til bogføring</span>.</li>
+        <li>Tryk <span class="btn">Bogfør markerede</span> og bekræft. Kan ikke fortrydes.</li>
+        <li>Resultatet viser hvor mange der blev bogført, og den første fejl hvis nogen fejlede. De andre ordrer bogføres stadig.</li>
+      </ol>
+      <p>Faktaboksen <strong>Mulige labelfejl</strong> viser kasser med præcis samme vægt som den forrige på samme vare — tjek dem før bogføring. <span class="btn">Genåbn</span> sender en ordre tilbage til Produktionsoversigten.</p>
+      <div class="msg">
+        <q>Vare … mangler Produktbogføringsgruppe. Udfyld den på varekortet (Bogføring) før montagen kan bogføres.</q>
+        <span class="do">Udfyld feltet på varekortet (eller bed administrator) og bogfør igen.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="kaviar">
+      <p class="eyebrow">Uden vejning</p>
+      <h2>Kaviarlabel</h2>
+      <p>Kaviar produceres i dåser og vejes ikke. På Produktionsoversigten: marker linjen og tryk <span class="btn">Kaviarlabel</span>.</p>
+      <ol class="steps">
+        <li>Lotnummer = montagenummeret, antal = forventede dåser. Ret evt. og print.</li>
+        <li>BC spørger: <em>“Registrér … dåser som produceret?”</em> Svar <strong>Ja</strong> — så kan ordren afsluttes og bogføres som andre. Svar Nej, hvis du kun printede ekstra labels.</li>
+      </ol>
+      <ul class="clean">
+        <li>CITES-linjen bliver <span class="k">CITES-kode/år/DK0002/lotnr</span>. Varen skal have <span class="k">CITES-kode (art/kilde/land)</span>, fx GUE/C/CN.</li>
+        <li><span class="btn">Kaviarlabel</span> på montageordren printer kun — den registrerer ikke dåser.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="redning">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Når en produktion er væk eller forkert</h2>
+      <p>Siden <strong>Find skjulte produktioner</strong> viser produktioner der ikke vises på oversigten, og hvorfor:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Årsag</th><th>Gør</th></tr></thead>
+          <tbody>
+            <tr><td>Startet men ikke frigivet</td><td><span class="btn">Frigiv (vis i “I gang”)</span></td></tr>
+            <tr><td>Linjeflag usynk med header</td><td><span class="btn">Synk linjeflag</span></td></tr>
+            <tr><td>Blank forfaldsdato</td><td>Sæt forfaldsdato på montageordren.</td></tr>
+            <tr><td>Forældreløs linje (header slettet)</td><td><span class="btn">Genskab montageordre</span> — eller slet produktionen.</td></tr>
+            <tr><td>Startet uden kasser / afsluttet uden output</td><td>Tjek ordren; slet den hvis den aldrig blev kørt.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="genskab">Genskab montageordre</h3>
+      <p>Er montageordren slettet, men produktionen kørt, genskaber knappen den med samme nummer — <strong>råvaren trækkes ikke igen</strong>. Tryk derefter <span class="btn">Afslut ordre</span>, så P-assistenten kan bogføre.</p>
+      <h3 id="noedknap">Bogført to gange</h3>
+      <p><span class="btn">Fjern fejlbogført output (nødknap)</span> på montageordren fjerner <strong>alt</strong> bogført output for ordren fra lager (råvaren forbliver forbrugt). Bogfør derefter produktionen én gang. Er noget af outputtet allerede solgt, kan det ikke tilbageføres automatisk — ret det i en varekladde.</p>
+      <h3 id="tilbagefoer">Tilbagefør en bogført produktion</h3>
+      <p>På <strong>Produktionshistorik</strong>: <span class="btn">Tilbagefør produktion</span> fjerner produkternes antal fra lager. Råvaren forbliver forbrugt, og der oprettes ikke en ny ordre. Kan ikke fortrydes.</p>
+      <h3 id="kasser">Forældreløse kasser</h3>
+      <p>På <strong>Produktionskasser</strong>: <span class="btn">Find/ryd forældreløse kasser</span> sletter ikke-færdigmeldte kasser hvis montageordre ikke findes længere. De tæller ellers med som “Produceret” på Dagsdisponering.</p>
+    </section>
+
+    <section class="blk" id="historik">
+      <p class="eyebrow">Opfølgning</p>
+      <h2>Historik, udbytte &amp; kostpris</h2>
+      <p><strong>Produktionshistorik</strong> viser hver bogført produktion med råvare-kg, produceret kg, udbytte % (hoved og biprodukt), forventet udbytte og afvigelse (positiv = bedre end forventet).</p>
+      <ul class="clean">
+        <li>Faktaboksen <strong>Udbytte &amp; kostpris pr. produkt</strong> viser reel kostpris pr. kg mod Kostpris 1. <strong>Afvigelse/kg</strong>: rød = dyrere end beregnet, grøn = billigere.</li>
+        <li><span class="btn">Ret råvarepris &amp; genberegn</span> retter kostprisen, hvis råvareprisen var forkert.</li>
+        <li><strong>Produktionsstatistik</strong> viser forventet og faktisk udbytte U1 (hovedprodukter) og U2 (alle).</li>
+        <li><strong>Historiske udbytter</strong> viser udbytte pr. vare fra NAV-tiden (2022 til go-live). Udbytter under 0 % eller over 150 % regnes som fejlregistreringer og tæller ikke med.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="dagsdispo">
+      <p class="eyebrow">Planlægning</p>
+      <h2>Dagsdisponering</h2>
+      <p>Pr. vare for en periode: lager, <strong>Produceret</strong> (kasser der ikke er færdigmeldt), <strong>Rest montage</strong>, indkøb og salg — fordelt på rutetider (kolonnerne “Kl HH:MM”). <strong>Netto</strong> er rød ved underdækning.</p>
+      <ul class="clean">
+        <li>Standardfilter: <em>Stykliste = Ja</em>. Fjern det for også at se handelsvarer.</li>
+        <li>Klik på <strong>Produceret</strong> for at se kasserne.</li>
+        <li>Tallene opdateres hvert 5. minut. <span class="btn">Genberegn</span> regner forfra.</li>
+      </ul>
+    </section>
+
+    <section class="blk" id="dantime">
+      <p class="eyebrow">Hvem arbejdede</p>
+      <h2>Dan-Time</h2>
+      <p>Portalen aflæser Dan-Time hvert par minutter og viser hvem der er stemplet ind på hvilken produktionslinje (fx på produktionsskærmen). For at koble en produktion til en linje skal montageordren have <span class="k">Dan-Time jobnr. (linje)</span>.</p>
+      <p>Feltet udfyldes automatisk fra familien, varen eller råvaren. Sæt det på <strong>Familier</strong>-listen, så klarer du alle familier på én gang. Mangler det, viser montageordren en påmindelse — den blokerer ikke.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Produktion &amp; montage</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>
