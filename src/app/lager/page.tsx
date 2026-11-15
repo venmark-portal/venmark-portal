@@ -1,9 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import {
-  AlertTriangle, Check, CloudOff, Database, LogOut, PackageSearch, RotateCcw, Tag, X,
+  AlertTriangle, Check, ClipboardList, CloudOff, Database, LogOut, PackageSearch, RotateCcw, Tag, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import {
@@ -165,8 +166,19 @@ export default function LagerForside() {
       <ScanFelt onScan={scan} travl={travl} />
 
       <p className="mt-2 text-xs text-gray-500">
-        Fundament-test: scan en kasse, en EAN eller et varenr. Ukendte koder kan knyttes til en vare med det samme.
+        Fri scanning: scan en kasse, en EAN eller et varenr. Ukendte koder kan knyttes til en vare med det samme.
       </p>
+
+      <Link
+        href="/lager/optaelling"
+        className="mt-4 flex items-center justify-between rounded-2xl bg-gray-900 px-4 py-4 text-white"
+      >
+        <span>
+          <span className="block font-semibold">Lageroptælling</span>
+          <span className="block text-sm text-gray-300">Blind tælling pr. hylde — BC får totalen</span>
+        </span>
+        <ClipboardList size={22} />
+      </Link>
 
       <ul className="mt-4 space-y-2">
         {scanninger.map(s => (

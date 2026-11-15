@@ -827,3 +827,51 @@ model LagerIdempotency {
 
   @@index([createdAt])
 }
+
+// ─── Lageroptælling ──────────────────────────────────────────────────────────
+// Tælleprocessen lever her, så en halvfærdig tælling ikke ligger i BC og larmer.
+// BC får ÉN linje pr. vare når tællingen sendes — summen af hylderne.
+
+model LagerCount {
+  id            String   @id @default(cuid())
+  no            String   @unique            // OPT-261115-01, samme nr. i BC
+  locationCode  String
+  // aaben | sendt | kladde | bogfoert | annulleret
+  status        String   @default("aaben")
+  startedAt     DateTime @default(now())
+  closedAt      DateTime?
+  createdById   String?
+  createdByName String   @default("")
+  note          String?
+  // Svaret fra BC da tællingen blev sendt — hvor mange linjer, og hvor mange der afveg.
+  bcLinesWritten Int?
+  bcDiffLines    Int?
+  bcError        String?
+
+  lines LagerCountLine[]
+
+  @@index([status, startedAt])
+}
+
+// Rå linjer, én pr. registrering. Samme vare kan optræde på flere hylder; summen
+// laves når tællingen sendes. Her er sporet tilbage til hvem der scannede hvad hvor.
+model LagerCountLine {
+  id          String   @id @default(cuid())
+  count       LagerCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  countId     String
+  itemNo      String
+  description String   @default("")
+  qty         Decimal  @db.Decimal(18, 5)   // ALTID i varens basisenhed
+  uom         String   @default("")
+  // Anslået: der vejes ikke, så ved tvivl gætter optælleren. Skal kunne ses bagefter.
+  estimated   Boolean  @default(false)
+  // "Stemmer": BC's tal godkendt uden at tælle. Gemmes som bekræftet, ikke talt.
+  confirmed   Boolean  @default(false)
+  shelfCode   String?
+  lotNo       String?
+  barcode     String?
+  countedBy   String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([countId, itemNo])
+}

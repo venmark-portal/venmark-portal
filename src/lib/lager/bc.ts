@@ -105,6 +105,122 @@ export async function resolveBarcode(
   }
 }
 
+export interface CountHoved {
+  no: string
+  locationCode: string
+  countedBy: string
+  note: string
+}
+
+export interface CountLinje {
+  itemNo: string
+  total: number
+  uom: string
+  estimated: boolean
+  antal: number
+  shelves: string
+  lotNo: string
+}
+
+/**
+ * Sender en færdig optælling til BC: hovedet, én linje pr. vare, og til sidst besked
+ * om at skrive lageropgørelseskladden (writeJournal).
+ *
+ * Rækkefølgen er vigtig: hovedet SKAL ligge før linjerne, og writeJournal til sidst —
+ * ellers skriver BC en kladde af en halv tælling. Fejler en linje, stopper vi og lader
+ * hovedet stå som Modtaget, så den kan sendes igen uden at der er skrevet en kladde.
+ */
+export async function sendCountToBC(
+  hoved: CountHoved,
+  linjer: CountLinje[],
+): Promise<{ ok: boolean; linjer?: number; afvigelser?: number; fejl?: string }> {
+  const token = await getAccessToken()
+  const base = bcPortalBaseUrl()
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  }
+
+  // 1) Hovedet. Findes det allerede (gensendelse), er det fint — vi fortsætter.
+  const hRes = await fetch(`${base}/lagerCounts`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      no: hoved.no,
+      locationCode: hoved.locationCode,
+      countedBy: hoved.countedBy.slice(0, 100),
+      note: (hoved.note ?? '').slice(0, 250),
+    }),
+    cache: 'no-store',
+  } as any)
+  if (!hRes.ok && hRes.status !== 409) {
+    const body = await hRes.text().catch(() => '')
+    console.error(`[lager optaelling] hoved ${hoved.no} fejlede ${hRes.status}: ${body}`)
+    return { ok: false, fejl: `BC afviste optællingen (${hRes.status})` }
+  }
+
+  // 2) Linjerne. Linjenummeret er vores eget og stabilt, så en gensendelse rammer
+  //    samme række i stedet for at lave en ny.
+  let lineNo = 10000
+  for (const l of linjer) {
+    const res = await fetch(`${base}/lagerCountLines`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        countNo: hoved.no,
+        lineNo,
+        itemNo: l.itemNo,
+        quantity: l.total,
+        unitOfMeasureCode: l.uom,
+        estimated: l.estimated,
+        shelves: (l.shelves ?? '').slice(0, 250),
+        countedBy: hoved.countedBy.slice(0, 100),
+        scanCount: l.antal,
+        lotNo: (l.lotNo ?? '').slice(0, 50),
+      }),
+      cache: 'no-store',
+    } as any)
+    if (!res.ok && res.status !== 409) {
+      const body = await res.text().catch(() => '')
+      console.error(`[lager optaelling] linje ${l.itemNo} fejlede ${res.status}: ${body}`)
+      return { ok: false, fejl: `BC afviste linjen ${l.itemNo} (${res.status})` }
+    }
+    lineNo += 10000
+  }
+
+  // 3) Skriv kladden. Det er her BC henter sin egen beholdning og regner afvigelsen ud.
+  const pRes = await fetch(`${base}/lagerCounts('${encodeURIComponent(hoved.no)}')`, {
+    method: 'PATCH',
+    headers: { ...headers, 'If-Match': '*' },
+    body: JSON.stringify({ writeJournal: true }),
+    cache: 'no-store',
+  } as any)
+  if (!pRes.ok) {
+    const body = await pRes.text().catch(() => '')
+    console.error(`[lager optaelling] writeJournal ${hoved.no} fejlede ${pRes.status}: ${body}`)
+    // BC's egen fejltekst er den brugbare her — fx at kladden ikke var tom.
+    return { ok: false, fejl: bcFejltekst(body) || `Kladden kunne ikke skrives (${pRes.status})` }
+  }
+
+  const data = await pRes.json().catch(() => ({}))
+  return {
+    ok: true,
+    linjer: Number(data.linesWritten ?? linjer.length),
+    afvigelser: Number(data.diffLines ?? 0),
+  }
+}
+
+/** Plukker den læsbare besked ud af BC's fejlsvar, så lageret ser årsagen og ikke et tal. */
+function bcFejltekst(body: string): string {
+  try {
+    const j = JSON.parse(body)
+    return String(j?.error?.message ?? '').split('CorrelationId')[0].trim()
+  } catch {
+    return ''
+  }
+}
+
 export interface Lokation {
   kode: string
   navn: string
