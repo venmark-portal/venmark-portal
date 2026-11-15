@@ -4,9 +4,71 @@ import { compare } from 'bcryptjs'
 import { prisma } from './prisma'
 import { getPortalOrderAccesses } from './businesscentral'
 import { indloesAdgang } from './impersonation'
+import {
+  medarbejderMedEmail, medarbejderForPinBruger, medarbejderFelter, hentMedarbejder,
+  brugerForRolle, startBruger, huskRolle, ROLLER, type Rolle,
+} from './medarbejder'
+
+/** Login-brugerens felter → tokenet. Bruges ved login og ved rolleskift (alt skrives forfra). */
+function fyldToken(token: any, user: any) {
+  token.sub                   = user.id
+  token.name                  = user.name
+  token.email                 = user.email ?? null
+  token.role                  = user.role
+  token.bcCustomerNumber      = user.bcCustomerNumber
+  token.bcPriceGroup          = user.bcPriceGroup
+  token.bcChainPriceGroup     = user.bcChainPriceGroup ?? ''
+  token.requirePoNumber       = user.requirePoNumber ?? false
+  token.bcDebitorBookingGroup = user.bcDebitorBookingGroup ?? ''
+  token.isContact             = user.isContact ?? false
+  // Tom for en rigtig kunde — kun sat når en admin kigger med.
+  token.impersonatedBy = user.impersonatedBy ?? ''
+  // Lager-appen: hvem scanner, hvor, og hvad må han.
+  token.lagerInitials   = user.lagerInitials ?? ''
+  token.lagerLocation   = user.lagerLocation ?? ''
+  token.lagerCanCount   = user.lagerCanCount ?? false
+  token.lagerCanPack    = user.lagerCanPack ?? false
+  token.lagerBcUserName = user.lagerBcUserName ?? ''
+  // Medarbejder med flere roller (tom = almindeligt login).
+  token.medarbejderId     = user.medarbejderId ?? ''
+  token.medarbejderNavn   = user.medarbejderNavn ?? ''
+  token.medarbejderRoller = user.medarbejderRoller ?? []
+  token.medarbejderRolle  = user.medarbejderRolle ?? ''
+  // "Bestil på vegne af": aktiv kunde starter som login-kunden selv.
+  // active* = valgt butik; token.bcCustomerNumber/bcPriceGroup/... forbliver
+  // login-kundens EGET (parent) og bruges kun til adgangs-validering.
+  token.activeCustomerNumber  = user.bcCustomerNumber
+  token.activeCustomerName    = user.name ?? ''
+  token.activePriceGroup      = user.bcPriceGroup ?? ''
+  token.activeChainPriceGroup = user.bcChainPriceGroup ?? ''
+  token.activePostingGroup    = user.bcDebitorBookingGroup ?? ''
+}
+
+/** PIN-login: er brugeren koblet til en medarbejder, kommer rolleskiftet med. */
+async function medMedarbejder<T extends Record<string, any>>(rolle: 'lager' | 'chauffoer', b: T): Promise<T> {
+  const m = await medarbejderForPinBruger(rolle, b.id).catch(() => null)
+  return m ? { ...b, ...medarbejderFelter(m, rolle) } : b
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Medarbejder: e-mail + kode → den rolle man sidst brugte (se src/lib/medarbejder.ts).
+    CredentialsProvider({
+      id: 'medarbejder',
+      name: 'Medarbejder',
+      credentials: {
+        email:    { label: 'Email', type: 'email' },
+        password: { label: 'Adgangskode', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null
+        const m = await medarbejderMedEmail(credentials.email).catch(() => null)
+        if (!m || !m.aktiv || !m.passwordHash) return null
+        if (!(await compare(credentials.password, m.passwordHash))) return null
+        return (await startBruger(m)) as any
+      },
+    }),
+
     CredentialsProvider({
       id: 'customer',
       name: 'Kunde',
@@ -154,7 +216,7 @@ export const authOptions: NextAuthOptions = {
         if (!driver) return null
         const valid = await compare(credentials.pin, driver.pinHash)
         if (!valid) return null
-        return { id: driver.id, name: driver.name, role: 'driver' as const }
+        return medMedarbejder('chauffoer', { id: driver.id, name: driver.name, role: 'driver' as const })
       },
     }),
 
@@ -178,7 +240,7 @@ export const authOptions: NextAuthOptions = {
         if (!u) return null
         const valid = await compare(credentials.pin, u.pinHash)
         if (!valid) return null
-        return {
+        return (await medMedarbejder('lager', {
           id:              u.id,
           name:            u.name,
           role:            'lager' as const,
@@ -187,7 +249,7 @@ export const authOptions: NextAuthOptions = {
           lagerCanCount:   !!u.canCount,
           lagerCanPack:    !!u.canPack,
           lagerBcUserName: u.bcUserName ?? '',
-        } as any
+        })) as any
       },
     }),
   ],
@@ -196,30 +258,20 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async jwt({ token, user, trigger, session }) {
-      if (user) {
-        token.role                  = (user as any).role
-        token.bcCustomerNumber      = (user as any).bcCustomerNumber
-        token.bcPriceGroup          = (user as any).bcPriceGroup
-        ;(token as any).bcChainPriceGroup = (user as any).bcChainPriceGroup ?? ''
-        token.requirePoNumber       = (user as any).requirePoNumber ?? false
-        token.bcDebitorBookingGroup = (user as any).bcDebitorBookingGroup ?? ''
-        token.isContact             = (user as any).isContact ?? false
-        // Tom for en rigtig kunde — kun sat når en admin kigger med.
-        ;(token as any).impersonatedBy = (user as any).impersonatedBy ?? ''
-        // Lager-appen: hvem scanner, hvor, og hvad må han.
-        ;(token as any).lagerInitials   = (user as any).lagerInitials ?? ''
-        ;(token as any).lagerLocation   = (user as any).lagerLocation ?? ''
-        ;(token as any).lagerCanCount   = (user as any).lagerCanCount ?? false
-        ;(token as any).lagerCanPack    = (user as any).lagerCanPack ?? false
-        ;(token as any).lagerBcUserName = (user as any).lagerBcUserName ?? ''
-        // "Bestil på vegne af": aktiv kunde starter som login-kunden selv.
-        // active* = valgt butik; token.bcCustomerNumber/bcPriceGroup/... forbliver
-        // login-kundens EGET (parent) og bruges kun til adgangs-validering.
-        ;(token as any).activeCustomerNumber = (user as any).bcCustomerNumber
-        ;(token as any).activeCustomerName   = (user as any).name ?? ''
-        ;(token as any).activePriceGroup     = (user as any).bcPriceGroup ?? ''
-        ;(token as any).activeChainPriceGroup = (user as any).bcChainPriceGroup ?? ''
-        ;(token as any).activePostingGroup   = (user as any).bcDebitorBookingGroup ?? ''
+      if (user) fyldToken(token, user)
+
+      // Rolleskift: update({ rolle }). Rollen slås ALTID op i databasen igen — klienten
+      // kan kun bede om en rolle medarbejderen faktisk har.
+      if (trigger === 'update' && session && 'rolle' in (session as any)) {
+        const mid  = (token as any).medarbejderId as string
+        const ny   = String((session as any).rolle) as Rolle
+        const m    = mid && ROLLER.some(r => r.rolle === ny) ? await hentMedarbejder(mid).catch(() => null) : null
+        const bruger = m ? await brugerForRolle(m, ny) : null
+        if (bruger) {
+          fyldToken(token, bruger)
+          await huskRolle(m!.id, ny)
+        }
+        return token
       }
 
       // Klienten beder om at skifte aktiv kunde (kunde-vælger). Vi VALIDERER altid
@@ -263,6 +315,15 @@ export const authOptions: NextAuthOptions = {
         ;(session.user as any).lagerCanPack         = (token as any).lagerCanPack ?? false
         ;(session.user as any).lagerBcUserName      = (token as any).lagerBcUserName ?? ''
         ;(session.user as any).requirePoNumber      = token.requirePoNumber ?? false
+        // Medarbejder med flere roller → rolleskiftet (components/RolleSkift.tsx).
+        ;(session.user as any).medarbejder = (token as any).medarbejderId
+          ? {
+              id:     (token as any).medarbejderId,
+              navn:   (token as any).medarbejderNavn,
+              roller: (token as any).medarbejderRoller ?? [],
+              rolle:  (token as any).medarbejderRolle,
+            }
+          : null
 
         // Login-kundens EGET nr. (parent) — bevares til adgangs-validering
         ;(session.user as any).parentCustomerNumber = token.bcCustomerNumber

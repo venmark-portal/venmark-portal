@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import SessionProvider from '@/components/portal/SessionProvider'
+import RolleSkift from '@/components/RolleSkift'
 import NyVersion from '@/components/lager/NyVersion'
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default async function LagerLayout({ children }: { children: React.ReactN
     <SessionProvider session={session}>
       <div className="min-h-screen bg-gray-100">
         <NyVersion />
+        <RolleSkift flydende />
         {children}
       </div>
     </SessionProvider>

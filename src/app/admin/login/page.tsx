@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { skiftRolle } from '@/lib/rolleSkiftKlient'
 
 // useSearchParams kræver en Suspense-grænse, ellers kan siden ikke forrenderes og
 // byggeriet fejler med "Export encountered errors on /admin/login".
@@ -29,11 +30,14 @@ function AdminLoginForm() {
     setLoading(true)
     setError('')
 
-    const res = await signIn('admin', {
-      email:    email.trim().toLowerCase(),
-      password,
-      redirect: false,
-    })
+    const creds = { email: email.trim().toLowerCase(), password, redirect: false }
+    let res = await signIn('admin', creds)
+
+    // Medarbejder med admin-rollen: log ind og skift til admin.
+    if (!res?.ok) {
+      const med = await signIn('medarbejder', creds)
+      if (med?.ok && (await skiftRolle('admin')) === 'admin') res = med
+    }
 
     if (res?.ok) {
       // Kom man hertil fra et link (fx "Åbn portal som kunde" på debitorkortet i BC),

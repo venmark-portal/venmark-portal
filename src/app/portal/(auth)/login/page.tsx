@@ -27,6 +27,18 @@ function LoginForm() {
 
     const creds = { email: email.trim().toLowerCase(), password, redirect: false }
 
+    // Medarbejder først: samme e-mail kan også være en kundekonto (medarbejderens egen debitor),
+    // og så skal man ind som medarbejder med rolleskiftet — i den rolle man sidst brugte.
+    const medRes = await signIn('medarbejder', creds)
+    if (medRes?.ok) {
+      const s = await fetch('/api/auth/session', { cache: 'no-store' }).then(r => r.json()).catch(() => null)
+      const rolle = s?.user?.role
+      const start = rolle === 'admin' ? '/admin' : rolle === 'lager' ? '/lager' : rolle === 'driver' ? '/chauffeur'
+        : (callbackUrl.startsWith('/portal/login') ? '/portal' : callbackUrl)
+      window.location.href = start
+      return
+    }
+
     const res = await signIn('customer', creds)
     if (res?.ok) {
       router.push(callbackUrl.startsWith('/portal/login') ? '/portal' : callbackUrl)

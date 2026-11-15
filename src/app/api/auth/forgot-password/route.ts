@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { sendPasswordResetEmail } from '@/lib/email'
+import { medarbejderMedEmail } from '@/lib/medarbejder'
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
@@ -17,7 +18,8 @@ export async function POST(req: Request) {
   const contacts = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "ContactUser" WHERE email = ${email} AND "isActive" = true LIMIT 1
   `
-  const exists = !!customer || !!admin || contacts.length > 0
+  const medarbejder = await medarbejderMedEmail(email).catch(() => null)
+  const exists = !!customer || !!admin || contacts.length > 0 || !!medarbejder?.aktiv
 
   if (exists) {
     // Slet eksisterende ubrugte tokens for denne email

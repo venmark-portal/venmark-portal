@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { hash } from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { medarbejderMedEmail } from '@/lib/medarbejder'
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
@@ -22,6 +23,12 @@ export async function POST(req: Request) {
   const email        = resetToken.email
   const passwordHash = await hash(password, 12)
 
+  // Medarbejder-login (samme e-mail kan også være en kundekonto — begge får den nye kode).
+  const medarbejder = await medarbejderMedEmail(email).catch(() => null)
+  if (medarbejder) {
+    await prisma.$executeRaw`UPDATE "Medarbejder" SET "passwordHash" = ${passwordHash}, "updatedAt" = NOW() WHERE id = ${medarbejder.id}`
+  }
+
   // Opdater adgangskode i den rigtige tabel
   const customer = await prisma.customer.findUnique({ where: { email }, select: { id: true } })
   if (customer) {
@@ -30,7 +37,7 @@ export async function POST(req: Request) {
     const admin = await prisma.adminUser.findUnique({ where: { email }, select: { id: true } })
     if (admin) {
       await prisma.adminUser.update({ where: { email }, data: { passwordHash } })
-    } else {
+    } else if (!medarbejder) {
       // ContactUser — bruger raw SQL da model måske ikke er i generated client
       await prisma.$executeRaw`UPDATE "ContactUser" SET "passwordHash" = ${passwordHash} WHERE email = ${email}`
     }

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import { isLimitedUser } from '@/lib/signage/screens'
 import SessionProvider from '@/components/portal/SessionProvider'
+import RolleSkift from '@/components/RolleSkift'
 
 export default async function AdminLayout({
   children,
@@ -57,6 +58,7 @@ export default async function AdminLayout({
                 <a href="/admin/salgsliste"    className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Salgsliste</a>
                 <a href="/admin/portal-brug"   className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Portal-brug</a>
                 <a href="/admin/robot"         className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Robot</a>
+                <a href="/admin/medarbejdere"  className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Medarbejdere</a>
                 <a href="/admin/tidslinjer"    className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Tidslinjer</a>
                 <a href="/admin/kalender"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Kalender</a>
                 <a href="/admin/beskeder"      className="rounded px-2 py-1 hover:bg-gray-100 hover:text-gray-900">Beskeder</a>
@@ -77,6 +79,7 @@ export default async function AdminLayout({
                 </>
                 )}
               </nav>
+              <RolleSkift />
               <a
                 href="/api/auth/signout"
                 className="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import SessionProvider from '@/components/portal/SessionProvider'
+import RolleSkift from '@/components/RolleSkift'
 import ChauffeurNav from '@/components/chauffeur/ChauffeurNav'
 import SwRegister from '@/components/chauffeur/SwRegister'
 
@@ -20,6 +21,7 @@ export default async function ChauffeurLayout({ children }: { children: React.Re
   return (
     <SessionProvider session={session}>
       <div className="min-h-screen bg-gray-50 pb-16">
+        <RolleSkift flydende />
         {children}
         <ChauffeurNav />
       </div>

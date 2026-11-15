@@ -13,6 +13,7 @@ import TicketNotifier from '@/components/portal/TicketNotifier'
 import PushSubscribeButton from '@/components/portal/PushSubscribeButton'
 import SprogSkifter from '@/components/portal/SprogSkifter'
 import RobotChat from '@/components/portal/RobotChat'
+import RolleSkift from '@/components/RolleSkift'
 import { LangProvider } from '@/lib/i18n/portal/LangProvider'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT } from '@/lib/i18n/portal/lang'
@@ -111,6 +112,7 @@ export default async function PortalLayout({
             </nav>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{session.user?.name}</span>
+              <RolleSkift />
               <SprogSkifter />
               <a
                 href="/api/auth/signout"
@@ -131,6 +133,7 @@ export default async function PortalLayout({
             </span>
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-sm text-gray-500">{session.user?.name}</span>
+              <RolleSkift />
               <SprogSkifter />
             </div>
           </div>
