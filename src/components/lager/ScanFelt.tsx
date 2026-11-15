@@ -39,6 +39,12 @@ export default function ScanFelt({
     // Windows og ikke i Safari. Derfor skjuler vi knappen i stedet for at vise en
     // knap der fejler, og tilbyder tastaturet som vej ind i stedet.
     setKanKamera(typeof window !== 'undefined' && 'BarcodeDetector' in window)
+    // Valget huskes PR. ENHED: en telefon uden scanner skal ikke bede om tastaturet
+    // hver eneste gang, og en håndterminal skal ikke have et tastatur hen over
+    // skærmen ved hvert scan.
+    try {
+      setTast(localStorage.getItem('lager-tastemode') === '1')
+    } catch { /* privat vindue — så bare uden */ }
   }, [])
 
   // Hold fokus. Terminalen "taster" ind i det felt der har fokus — mister vi det,
@@ -110,7 +116,10 @@ export default function ScanFelt({
         <button
           type="button"
           onClick={() => {
-            setTast(t => !t)
+            setTast(t => {
+              try { localStorage.setItem('lager-tastemode', t ? '0' : '1') } catch { /* ingen */ }
+              return !t
+            })
             // Skærmtastaturet kommer først når feltet får fokus igen med den nye tilstand.
             setTimeout(() => inputRef.current?.focus(), 0)
           }}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { lagerBruger } from '@/lib/lager/auth'
 import {
-  fortrydSidste, hentOptaelling, kasseAlleredeTalt, saetAntal, tilfoejLinje,
+  fortrydSidste, hentOptaelling, kasseAlleredeTalt, kasseKonflikt, saetAntal, tilfoejLinje,
 } from '@/lib/lager/optaelling'
 import { gemIdempotentSvar, hentIdempotentSvar } from '@/lib/lager/db'
 
@@ -42,6 +42,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     )
   }
 
+  // Samlekasse og enkeltkasse fra samme produktion må ALDRIG tælles begge: så tælles
+  // vægten to gange. Reglen håndhæves her, ikke kun i skærmen.
+  const boxType = String(body?.boxType ?? '')
+  const productionNo = String(body?.productionNo ?? '')
+  if (boxType && productionNo) {
+    const konflikt = await kasseKonflikt(params.id, productionNo, boxType)
+    if (konflikt) return NextResponse.json({ error: konflikt, konflikt: true }, { status: 409 })
+  }
+
   // saet = et TASTET antal: det sætter antallet på varen i stedet for at lægge til.
   // Scanner man en vare (1 stk.) og taster 43, skal der stå 43 — ikke 44.
   const gem = body?.saet ? saetAntal : tilfoejLinje
@@ -59,6 +68,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // BC's beholdning kom med fra opslaget — gem den, så oversigten kan vise
       // afvigelsen uden et nyt BC-kald pr. vare.
       bcQty: Number.isFinite(Number(body?.bcQty)) ? Number(body.bcQty) : null,
+      boxType: boxType || undefined,
+      productionNo: productionNo || undefined,
     },
     bruger.navn,
   )

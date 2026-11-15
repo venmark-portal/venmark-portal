@@ -29,6 +29,11 @@ export interface ScanResult {
   blocked: boolean
   gtin: string
   netWeight: number
+  /** 'normal' = én fysisk kasse. 'subtotal'/'total' = en SAMLEkasse der dækker flere
+   *  kasser på samme produktion. Tom når koden ikke er en kasse. */
+  boxType: string
+  productionNo: string
+  boxEntryNo: number
   errorText: string
 }
 
@@ -101,6 +106,9 @@ export async function resolveBarcode(
     blocked: !!row.blocked,
     gtin: row.gtin ?? '',
     netWeight: Number(row.netWeight ?? 0),
+    boxType: row.boxType ?? '',
+    productionNo: row.productionNo ?? '',
+    boxEntryNo: Number(row.boxEntryNo ?? 0),
     errorText: row.errorText ?? '',
   }
 }

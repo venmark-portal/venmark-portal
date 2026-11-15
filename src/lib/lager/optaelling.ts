@@ -61,6 +61,9 @@ export async function ensureOptaellingSchema() {
   await prisma.$executeRaw`ALTER TABLE "LagerCount" ADD COLUMN IF NOT EXISTS "blind" BOOLEAN NOT NULL DEFAULT false`
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "bcQty" DECIMAL(18,5)`
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "remark" TEXT`
+  // Kassetype og produktion: værnet mod at tælle en samlekasse OG dens enkeltkasser.
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "boxType" TEXT`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "productionNo" TEXT`
   ensured = true
 }
 
@@ -142,6 +145,9 @@ export interface NyLinje {
   /** Optællerens egen bemærkning, skrevet eller indtalt ved hylden. Maks 150 tegn —
    *  det er hvad der er plads til på kladdelinjen, og hvad nogen gider læse. */
   remark?: string
+  /** 'normal' | 'subtotal' | 'total' — kun på produktionskasser. */
+  boxType?: string
+  productionNo?: string
   /** BC-beholdningen som opslaget gav. Gemmes, så oversigten kan vise forskellen
    *  uden et nyt BC-kald pr. vare. */
   bcQty?: number | null
@@ -160,12 +166,13 @@ export async function tilfoejLinje(
   const id = `cl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   await prisma.$executeRaw`
     INSERT INTO "LagerCountLine"
-      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark")
+      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark","boxType","productionNo")
     VALUES
       (${id}, ${countId}, ${linje.itemNo.toUpperCase()}, ${linje.description ?? ''}, ${linje.qty},
        ${linje.uom ?? ''}, ${!!linje.estimated}, ${!!linje.confirmed},
        ${linje.shelfCode ?? null}, ${linje.lotNo ?? null}, ${linje.barcode ?? null}, ${brugerNavn},
-       ${linje.bcQty ?? null}, ${linje.remark?.slice(0, 150) ?? null})
+       ${linje.bcQty ?? null}, ${linje.remark?.slice(0, 150) ?? null},
+       ${linje.boxType ?? null}, ${linje.productionNo ?? null})
   `
   return vareTotal(countId, linje.itemNo)
 }
@@ -210,6 +217,44 @@ export async function saetAntal(
     `
   }
   return tilfoejLinje(countId, linje, brugerNavn)
+}
+
+/**
+ * Værnet mod dobbelt vægt på egenproducerede varer.
+ *
+ * En SAMLEkasse (subtotal/total) dækker flere enkeltkasser på samme produktion.
+ * Scanner man både samlekassen og dens enkeltkasser, tæller man det samme to gange —
+ * det er præcis den fejl der gav dobbelt udbytte i produktionen. Reglen er derfor
+ * enkel og til at forklare på gulvet: **pr. produktion scanner man enten
+ * samlekasser eller enkeltkasser. Aldrig begge.**
+ *
+ * Returnerer en forklaring hvis scanningen bryder reglen, ellers tom tekst.
+ */
+export async function kasseKonflikt(
+  countId: string,
+  productionNo: string,
+  boxType: string,
+): Promise<string> {
+  if (!productionNo || !boxType) return ''
+  const samle = boxType !== 'normal'
+  const rows = await prisma.$queryRaw<any[]>`
+    SELECT DISTINCT COALESCE("boxType",'') AS t
+    FROM "LagerCountLine"
+    WHERE "countId" = ${countId} AND COALESCE("productionNo",'') = ${productionNo}
+  `
+  const typer = rows.map(r => r.t).filter(Boolean)
+  const harSamle = typer.some(t => t !== 'normal')
+  const harEnkelt = typer.includes('normal')
+
+  if (samle && harEnkelt) {
+    return `Produktion ${productionNo} er allerede talt med enkeltkasser. ` +
+           'Scan ikke også samlekassen — så tæller du vægten to gange.'
+  }
+  if (!samle && harSamle) {
+    return `Produktion ${productionNo} er allerede talt med en samlekasse. ` +
+           'Scan ikke også enkeltkasserne — så tæller du vægten to gange.'
+  }
+  return ''
 }
 
 export async function vareTotal(

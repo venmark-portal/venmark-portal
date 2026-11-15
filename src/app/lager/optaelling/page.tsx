@@ -44,6 +44,11 @@ export default function OptaellingSide() {
   const [travl, setTravl] = useState(false)
   const [stemmerDialog, setStemmerDialog] = useState(false)
   const [bemaerkVare, setBemaerkVare] = useState('')
+  // "Scan lager": man går rækken igennem og scanner KASSER i stedet for at tælle
+  // varer. Egne producerede varer har variabel vægt, så hver kasse bærer sin egen
+  // vægt — der er ikke noget at taste.
+  const [scanLager, setScanLager] = useState(false)
+  const [kasser, setKasser] = useState(0)
 
   const lydRef = useRef<AudioContext | null>(null)
   const bip = useCallback((hz: number, ms: number) => {
@@ -137,7 +142,9 @@ export default function OptaellingSide() {
         body: JSON.stringify({
           itemNo: v.itemNo, description: v.description, qty: v.quantity,
           uom: v.baseUnitOfMeasure, shelfCode: hylde || undefined, lotNo: v.lotNo || undefined,
-          barcode: kode, unikKasse, bcQty: v.inventory, idempotencyKey: nyNoegle(),
+          barcode: kode, unikKasse, bcQty: v.inventory,
+          boxType: v.boxType || undefined, productionNo: v.productionNo || undefined,
+          idempotencyKey: nyNoegle(),
         }),
       })
       const data = await res.json()
@@ -149,6 +156,7 @@ export default function OptaellingSide() {
       }
 
       bip(880, 80)
+      if (v.boxType) setKasser(k => k + 1)
       setAktiv({
         itemNo: v.itemNo, navn: v.description, uom: v.baseUnitOfMeasure,
         total: data.total, antal: data.antal,
@@ -387,10 +395,44 @@ export default function OptaellingSide() {
             </div>
           </div>
 
+          {/* To måder at tælle på. Man vælger den der passer til hylden man står ved. */}
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setScanLager(false)}
+              className={
+                'rounded-xl py-2.5 text-sm font-semibold ring-1 ' +
+                (!scanLager ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white text-gray-600 ring-gray-300')
+              }
+            >
+              Tæl varer
+            </button>
+            <button
+              onClick={() => setScanLager(true)}
+              className={
+                'rounded-xl py-2.5 text-sm font-semibold ring-1 ' +
+                (scanLager ? 'bg-gray-900 text-white ring-gray-900' : 'bg-white text-gray-600 ring-gray-300')
+              }
+            >
+              Scan lager
+            </button>
+          </div>
+
+          {scanLager && (
+            <div className="mb-3 rounded-2xl bg-sky-50 p-3 text-sm text-sky-900 ring-1 ring-sky-200">
+              <p className="font-semibold">Scan hver kasse — vægten følger med kassen.</p>
+              <p className="mt-1">
+                Pr. produktion scanner du <strong>enten samlekasser eller enkeltkasser</strong>, aldrig
+                begge. Gør du begge dele, tælles den samme vægt to gange — appen stopper dig, men
+                det er hurtigst at vide det på forhånd.
+              </p>
+              <p className="mt-1 font-semibold tabular-nums">{kasser} kasse{kasser === 1 ? '' : 'r'} scannet</p>
+            </div>
+          )}
+
           <ScanFelt
             onScan={scan}
             travl={travl}
-            placeholder="Scan vare eller kasse"
+            placeholder={scanLager ? 'Scan kasse' : 'Scan vare eller kasse'}
             pause={stemmerDialog || !!bemaerkVare}
           />
 
@@ -479,8 +521,9 @@ export default function OptaellingSide() {
           )}
 
           {/* Taltastaturet ligger FAST så længe der er en vare i gang — ikke i en
-              dialog man skal åbne. Tallet SÆTTER antallet på varen. */}
-          {aktiv && (
+              dialog man skal åbne. Tallet SÆTTER antallet på varen.
+              I "Scan lager" er der intet at taste: vægten følger med kassen. */}
+          {aktiv && !scanLager && (
             <Taltastatur
               enhed={aktiv.uom}
               nuvaerende={aktiv.total}

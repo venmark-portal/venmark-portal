@@ -879,6 +879,9 @@ model LagerCountLine {
   bcQty       Decimal? @db.Decimal(18, 5)
   // Optaellerens egen bemaerkning fra hylden. Foelger med til kladdelinjen i BC.
   remark      String?
+  // Kassetype og produktion: vaernet mod at taelle en samlekasse OG dens enkeltkasser.
+  boxType      String?
+  productionNo String?
   createdAt   DateTime @default(now())
 
   @@index([countId, itemNo])
