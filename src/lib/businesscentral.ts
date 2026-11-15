@@ -1532,6 +1532,38 @@ export async function createBCSalesOrder(
  * Tilføjer ordrelinjer til en allerede oprettet BC-salgsordre.
  * Bruges til at retry fejlede linjer på eksisterende ordrer.
  */
+/** Svar fra BC-handlingen changeDeliveryDate (cu 50482 "VM Portal Order Date"). */
+export interface BCFlytSvar {
+  ok:               boolean
+  fejl?:            string
+  ordre?:           string
+  leveringsdato?:   string
+  afsendelsesdato?: string
+  /** Varer der ikke kan leveres den nye dag — antal og maks i basisenheden. */
+  problemer?:       { varenr: string; navn: string; antal: number; maks: number; enhed: string }[]
+  priserOpdateret?: number
+}
+
+/**
+ * Flyt en åben ordres leveringsdag i BC (dryRun = kun tjek). BC genberegner afsendelses-/
+ * bogføringsdato ud fra ordrens leveringsform og priserne til dagens; disponibel tjekkes pr. vare.
+ * Frister og leveringsdage skal kalderen have tjekket (src/lib/flytLevering.ts).
+ */
+export async function changeBCOrderDeliveryDate(bcOrderId: string, newDate: string, dryRun: boolean): Promise<BCFlytSvar> {
+  const token = await getAccessToken()
+  const res = await fetchBcDeadlockRetry(`${bcPortalBaseUrl()}/portalSalesOrders(${bcOrderId})/Microsoft.NAV.changeDeliveryDate`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body:    JSON.stringify({ newDate, dryRun }),
+  })
+  if (!res.ok) {
+    const tekst = (await res.text()).slice(0, 300)
+    console.error(`[flyt-levering] BC ${res.status} for ${bcOrderId} → ${newDate}: ${tekst}`)
+    throw new Error(`BC ${res.status}: ${tekst}`)
+  }
+  return JSON.parse((await res.json())?.value ?? '{}') as BCFlytSvar
+}
+
 export async function addLinesToBCOrder(
   bcOrderId: string,
   lines: Array<{ itemNumber: string; quantity: number; uomCode: string; note?: string }>,

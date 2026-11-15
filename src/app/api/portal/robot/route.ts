@@ -93,7 +93,8 @@ export async function POST(req: NextRequest) {
           customerId: k.customerId, samtaleId, rolle: 'robot', tekst: svar, vaerktoejer: r.vaerktoejer.join(','),
           inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheTokens: r.cacheTokens, somAdmin: k.somAdmin,
         })
-        if (ctx.kurvAendret) send('kurv')
+        if (ctx.kurvAendret) send('kurv', ctx.kurvDato ?? '')
+        if (ctx.ordreAendret) send('ordre')
         send('slut', String(svarId))   // id → kunden kan give 👍/👎 på netop dette svar
       } catch (err: any) {
         console.error('[robot] samtale fejlede', err)

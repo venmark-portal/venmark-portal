@@ -17,6 +17,7 @@ interface Tur {
   vurdering?: 1 | -1
   kommentarSendt?: boolean
   kurv?: boolean            // robotten ændrede kurven i dette svar → "Se kurven"
+  kurvDato?: string         // leveringsdagen robotten lagde i kurven til (YYYY-MM-DD) → vælges på bestillingssiden
 }
 
 const NOEGLE = 'venmark-robot'
@@ -32,6 +33,11 @@ function laes(): { samtaleId: string; ture: Tur[]; aaben: boolean } {
     if (v?.samtaleId && Array.isArray(v.ture)) return v
   } catch {}
   return { samtaleId: nyId(), ture: [], aaben: false }
+}
+
+/** Bestillingssiden med robottens leveringsdag valgt. */
+function bestilUrl(dato?: string): string {
+  return dato && /^d{4}-d{2}-d{2}$/.test(dato) ? `/portal/bestil?dato=${dato}` : '/portal/bestil'
 }
 
 /** **fed** og linjeskift — mere markdown skriver robotten ikke. */
@@ -117,6 +123,8 @@ export default function RobotChat() {
         return
       }
       let kurvAendret = false
+      let kurvDato = ''
+      let ordreAendret = false
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let buf = ''
@@ -140,12 +148,14 @@ export default function RobotChat() {
           else if (h.t === 'fejl') tilfoej(h.v ?? t('fejl'))
           else if (h.t === 'kurv') {
             kurvAendret = true
+            kurvDato = h.v ?? ''
             setTure(prev => {
               const kopi = prev.slice()
-              kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], kurv: true }
+              kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], kurv: true, kurvDato: kurvDato || undefined }
               return kopi
             })
           }
+          else if (h.t === 'ordre') ordreAendret = true
           else if (h.t === 'slut' && h.v) {
             const id = Number(h.v)
             setTure(prev => {
@@ -159,6 +169,10 @@ export default function RobotChat() {
       // Står kunden på bestillingssiden, viser den stadig den gamle kurv — og ville gemme den
       // oven i robottens ved næste ændring. Genindlæs (samtalen ligger i sessionStorage).
       if (kurvAendret && window.location.pathname.startsWith('/portal/bestil')) {
+        setTimeout(() => { window.location.href = bestilUrl(kurvDato) }, 600)
+      }
+      // Flyttet leveringsdag: ordresiden viser stadig den gamle dag.
+      if (ordreAendret && window.location.pathname.startsWith('/portal/ordrer')) {
         setTimeout(() => window.location.reload(), 600)
       }
     } catch {
@@ -278,7 +292,7 @@ export default function RobotChat() {
                     ? <Tekst s={tur.tekst} />
                     : <span className="text-gray-500">{opslagTekst}</span>}
                   {tur.kurv && (
-                    <a href="/portal/bestil" className="mt-2 block w-fit rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+                    <a href={bestilUrl(tur.kurvDato)} className="mt-2 block w-fit rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
                       {t('seKurven')}
                     </a>
                   )}

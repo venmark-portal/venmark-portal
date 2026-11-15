@@ -367,6 +367,7 @@ export default async function BestilPage({ searchParams }: { searchParams?: Prom
         estimatedPrices={{}}
         zeroPriceNos={zeroPriceNos}
         aabneOrdrer={aabneOrdrer as any}
+        initialDato={typeof _sp?.dato === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(_sp.dato) ? _sp.dato : undefined}
       />
     </div>
   )

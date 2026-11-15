@@ -36,7 +36,8 @@ export const KURV_VAERKTOEJER: Tool[] = [
     name: 'laeg_i_kurv',
     description:
       'Læg varer i kundens kurv på bestillingssiden (eller ret antallet). Lægger til det der allerede ligger, medmindre ' +
-      'erstat=true. Brug kun varenumre fra et opslag. Sender IKKE ordren — kunden gennemser og sender selv under "Bestil". ' +
+      'erstat=true. Brug kun varenumre fra et opslag. Angiv leveringsdato (den dag kunden har sagt) — så tjekkes varerne til den dag, ' +
+      'og bestillingssiden åbner på den. Sender IKKE ordren — kunden gennemser og sender selv under "Bestil". ' +
       'Har kunden ikke selv bedt om at få lagt i kurven, så vis forslaget og få et ja først.',
     input_schema: {
       type: 'object',
@@ -54,6 +55,7 @@ export const KURV_VAERKTOEJER: Tool[] = [
           },
         },
         erstat: { type: 'boolean', description: 'true = sæt antallet i stedet for at lægge til' },
+        leveringsdato: { type: 'string', description: 'YYYY-MM-DD — en af kundens leveringsdage' },
       },
       required: ['linjer'],
     },
@@ -182,9 +184,12 @@ async function laegIKurv(input: any, ctx: RobotKontekst) {
   await gemKurv(ctx.kunde.customerId, Array.from(linjer.values()))
   ctx.kurvAendret = true
 
-  // Advar om det der ikke kan leveres næste leveringsdag — bestillingssiden skærer det ned.
-  const [lok, dage, { kundens }] = await Promise.all([ctx.lokation(), ctx.leveringsdage(), ctx.metoder()])
-  const dag = dage[0]?.dato
+  // Advar om det der ikke kan leveres på dagen — bestillingssiden skærer det ned.
+  const [lok, dage, { kundens }] = await Promise.all([ctx.lokation(), ctx.leveringsdage(20), ctx.metoder()])
+  const oensketDag = typeof input?.leveringsdato === 'string' ? input.leveringsdato : ''
+  const gyldig = dage.find(d => d.dato === oensketDag)
+  const dag = gyldig?.dato ?? dage[0]?.dato
+  if (dag) ctx.kurvDato = dag
   const tjek = resultat.filter(r => r.iKurven).map(r => r.varenr)
   if (dag && tjek.length) {
     const d = await getCartCoverage(ctx.kunde.customerNo, lok, dag, kundens?.code ?? '', tjek).catch(() => null)
@@ -197,7 +202,10 @@ async function laegIKurv(input: any, ctx: RobotKontekst) {
   return {
     linjer: resultat,
     kurvenNu: Array.from(linjer.values()).length + ' linjer',
-    besked: 'Lagt i kurven. Kunden skal selv åbne "Bestil", vælge leveringsdag og sende bestillingen.',
+    leveringsdato: dag,
+    ...(dag ? { bestilSenest: dage.find(d => d.dato === dag)!.frist.toLocaleString('da-DK', { timeZone: 'Europe/Copenhagen', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) } : {}),
+    ...(oensketDag && !gyldig ? { advarsel: `${oensketDag} er ikke en af kundens leveringsdage — tjekket til ${dag} i stedet. Sig det til kunden.` } : {}),
+    besked: 'Lagt i kurven. Bestillingssiden åbner på leveringsdatoen; kunden gennemser og sender selv under "Bestil".',
   }
 }
 

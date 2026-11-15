@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { ArrowLeft, RefreshCw, PlusCircle } from 'lucide-react'
 import { getPortalLineStatuses } from '@/lib/businesscentral'
 import OrderLineStatus from '@/components/portal/OrderLineStatus'
+import SkiftLeveringsdag from '@/components/portal/SkiftLeveringsdag'
 import Link from 'next/link'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT, localeOf } from '@/lib/i18n/portal/lang'
@@ -116,15 +117,18 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         )}
       </div>
 
-      {/* Tilføj vare */}
+      {/* Tilføj vare / skift leveringsdag */}
       {withinDeadline && (
-        <Link
-          href={`/portal/ordrer/${order.id}/tilfoej`}
-          className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800"
-        >
-          <PlusCircle size={15} />
-          {t('tilfoejVareDenne')}
-        </Link>
+        <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
+          <Link
+            href={`/portal/ordrer/${order.id}/tilfoej`}
+            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800"
+          >
+            <PlusCircle size={15} />
+            {t('tilfoejVareDenne')}
+          </Link>
+          {order.bcOrderNumber && <SkiftLeveringsdag ordrenr={order.bcOrderNumber} />}
+        </div>
       )}
 
       {/* Ordrelinjer */}

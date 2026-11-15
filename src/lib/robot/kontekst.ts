@@ -31,6 +31,10 @@ export class RobotKontekst {
 
   /** Sat når robotten har ændret kurven — chatten genindlæser så bestillingssiden. */
   kurvAendret = false
+  /** Leveringsdagen robotten lagde i kurven til — bestillingssiden åbner på den. */
+  kurvDato: string | null = null
+  /** Sat når robotten har flyttet en ordre — chatten genindlæser ordresiden. */
+  ordreAendret = false
 
   private memo = new Map<string, Promise<any>>()
   private husk<T>(k: string, f: () => Promise<T>): Promise<T> {

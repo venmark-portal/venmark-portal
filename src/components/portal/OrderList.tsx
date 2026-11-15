@@ -146,6 +146,8 @@ interface Props {
   addToOrderId?:     string
   addBcOrderNumber?: string
   addDeadline?:      string   // ISO — ordrens frist (bruges til pastDeadline i add-mode)
+  /** Leveringsdag at åbne på (YYYY-MM-DD, fx fra svar-robotten) — bruges kun hvis fristen ikke er passeret. */
+  initialDato?:      string
 }
 
 type StandingQtys = { qtyMonday: number; qtyTuesday: number; qtyWednesday: number; qtyThursday: number; qtyFriday: number }
@@ -1303,7 +1305,7 @@ export default function OrderList({
   estimatedPrices: initialEst = {} as Record<string, number>,
   zeroPriceNos = [],
   aabneOrdrer = {},
-  addToOrderId, addBcOrderNumber, addDeadline,
+  addToOrderId, addBcOrderNumber, addDeadline, initialDato,
 }: Props) {
   const addMode = !!addToOrderId
   const t = useT(bestilDict)
@@ -1452,10 +1454,19 @@ export default function OrderList({
 
   const deadlineFn = (d: Date) => selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod, calendarDays) : getDeadlineForDelivery(d)
   const firstValid = deliveryDays.findIndex(d => new Date() <= deadlineFn(d))
-  const [selectedDay, setSelectedDay] = useState(Math.max(0, firstValid))
+  // ?dato= (svar-robotten lagde i kurven til en bestemt dag) vinder over første gyldige dag — én gang.
+  const ymdDag = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const oenskedeDag = () => initialDato ? deliveryDays.findIndex(d => ymdDag(d) === initialDato && new Date() <= deadlineFn(d)) : -1
+  const datoBrugt = useRef(false)
+  const [selectedDay, setSelectedDay] = useState(() => { const i = oenskedeDag(); return i >= 0 ? i : Math.max(0, firstValid) })
 
   // Nulstil selectedDay til første gyldige dag når leveringsdage eller metode ændres
   useEffect(() => {
+    if (!datoBrugt.current) {
+      datoBrugt.current = true
+      const i = oenskedeDag()
+      if (i >= 0) { setSelectedDay(i); return }
+    }
     const now = new Date()
     const fv = deliveryDays.findIndex(d => now <= (selectedMethod ? getDeadlineForMethodDelivery(d, selectedMethod, calendarDays) : getDeadlineForDelivery(d)))
     setSelectedDay(Math.max(0, fv))

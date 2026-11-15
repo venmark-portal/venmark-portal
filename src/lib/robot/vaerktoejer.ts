@@ -8,13 +8,12 @@
 // Svarene er kompakt JSON. Robotten får dem ordret, så hold dem korte: hver ekstra
 // linje betales ved hvert efterfølgende kald i samme svar.
 
-import { randomUUID } from 'crypto'
 import type { Tool } from '@anthropic-ai/sdk/resources/messages'
 import { prisma } from '@/lib/prisma'
 import {
   getItemsByNumbers, getItemAvailabilities, getCartCoverage, getItemsUoMs,
   getItemsAttributeValues, getCustomerOrders, getPortalLineStatuses, getCustomerFavorites,
-  getStandingOrderLines, getItemCutoffs, pushBeskedTilBC, flagBeskedUlaest,
+  getStandingOrderLines, getItemCutoffs,
   type BCItem, type BCItemAvailability,
 } from '@/lib/businesscentral'
 import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
@@ -24,6 +23,8 @@ import { addBusinessDays } from '@/lib/dateUtils'
 import { RobotKontekst, prisFor, trappeFor } from './kontekst'
 import { soegKatalog } from '@/lib/katalogSoeg'
 import { KURV_VAERKTOEJER, koerKurvVaerktoej } from './kurv'
+import { sendKontorBesked } from '@/lib/kontorBesked'
+import { flytLeveringsdag } from '@/lib/flytLevering'
 
 const MAX_VARER = 12
 
@@ -103,6 +104,22 @@ export const VAERKTOEJER: Tool[] = [
       required: ['besked'],
     },
   },
+  {
+    name: 'flyt_leveringsdag',
+    description:
+      'Flyt leveringsdagen på en af kundens åbne ordrer (ordrenr fra mine_ordrer). Kald FØRST med bekraeftet=false: så tjekkes det ' +
+      'kun (frist, leveringsdag, om alle varer kan leveres den dag, ny afsendelsesdag). Fortæl kunden resultatet og få et ja; ' +
+      'kald så igen med bekraeftet=true for at flytte. Priserne genberegnes til dagens priser, og kontoret får besked.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ordrenr:    { type: 'string' },
+        nyDato:     { type: 'string', description: 'Ny leveringsdato YYYY-MM-DD' },
+        bekraeftet: { type: 'boolean', description: 'true = kunden har sagt ja — flyt ordren' },
+      },
+      required: ['ordrenr', 'nyDato', 'bekraeftet'],
+    },
+  },
   ...KURV_VAERKTOEJER,
 ]
 
@@ -118,6 +135,7 @@ export async function koerVaerktoej(navn: string, input: any, ctx: RobotKontekst
     case 'mine_ordrer':         return mineOrdrer(ctx)
     case 'mine_favoritter':     return mineFavoritter(ctx)
     case 'send_til_kontoret':   return sendTilKontoret(String(input?.besked ?? ''), ctx)
+    case 'flyt_leveringsdag':   return flytOrdre(String(input?.ordrenr ?? ''), String(input?.nyDato ?? ''), input?.bekraeftet === true, ctx)
     default:                    return (await koerKurvVaerktoej(navn, input, ctx)) ?? { fejl: `Ukendt værktøj: ${navn}` }
   }
 }
@@ -350,20 +368,20 @@ async function sendTilKontoret(besked: string, ctx: RobotKontekst) {
   const tekst = besked.trim().slice(0, 2000)
   if (!tekst) return { fejl: 'Tom besked.' }
   if (ctx.kunde.somAdmin) return { sendt: false, besked: 'Admin kigger med som kunden — beskeden er IKKE sendt (test).' }
-  const body = `[Sendt via portal-robotten] ${tekst}`
-  const id = randomUUID()
-  const udloeb = new Date(); udloeb.setDate(udloeb.getDate() + 30)
-  await prisma.$executeRaw`
-    INSERT INTO "Message" (id, "customerId", sender, "senderName", body, "readByAdmin", "readByCustomer", "createdAt", "expiresAt")
-    VALUES (${id}, ${ctx.kunde.customerId}, 'customer', ${ctx.kunde.navn}, ${body}, false, true, NOW(), ${udloeb})
-  `
-  const nu = new Date()
-  const tz = 'Europe/Copenhagen'
-  pushBeskedTilBC(ctx.kunde.customerNo, {
-    id, sender: 'customer', senderName: ctx.kunde.navn, body,
-    createdAtDK: nu.toLocaleTimeString('da-DK', { timeZone: tz, hour: '2-digit', minute: '2-digit' }) + ' ' +
-                 nu.toLocaleDateString('da-DK', { timeZone: tz, day: '2-digit', month: '2-digit' }),
-  }).catch(err => console.error('[robot] besked til BC fejlede', err))
-  flagBeskedUlaest(ctx.kunde.customerNo).catch(() => {})
+  await sendKontorBesked(ctx.kunde, `[Sendt via portal-robotten] ${tekst}`)
   return { sendt: true, besked: 'Sendt til kontoret. Kunden kan følge svaret under Beskeder.' }
+}
+
+// ── flyt_leveringsdag ─────────────────────────────────────────────────────────
+// Samme funktion som ordresidens "Skift leveringsdag" (src/lib/flytLevering.ts).
+
+async function flytOrdre(ordrenr: string, nyDato: string, bekraeftet: boolean, ctx: RobotKontekst) {
+  const r = await flytLeveringsdag(ctx.kunde, ordrenr, nyDato, bekraeftet)
+  if (r.flyttet) ctx.ordreAendret = true
+  const { frist, ...rest } = r
+  return {
+    ...rest,
+    ...(frist ? { aendrSenest: fristTekst(new Date(frist)) } : {}),
+    ...(r.ok && !bekraeftet ? { naeste: 'Kan flyttes. Fortæl kunden det og få et ja, før du kalder igen med bekraeftet=true.' } : {}),
+  }
 }
