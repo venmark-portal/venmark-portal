@@ -27,6 +27,8 @@ export function robotKonfigureret(): boolean {
 export interface MotorHaendelser {
   tekst: (bid: string) => void
   vaerktoej: (navn: string) => void
+  /** Tekst skrevet i en runde der endte med et opslag, skal væk igen (se nedenfor). */
+  ryd: () => void
 }
 
 export interface MotorResultat {
@@ -67,7 +69,8 @@ export async function koerSamtale(
       tools: TOOLS,
       messages,
     } as any)
-    stream.on('text', (bid: string) => { svar += bid; on.tekst(bid) })
+    let rundeTekst = ''
+    stream.on('text', (bid: string) => { rundeTekst += bid; on.tekst(bid) })
     const msg = await stream.finalMessage()
 
     inputTokens  += msg.usage.input_tokens + (msg.usage.cache_creation_input_tokens ?? 0)
@@ -76,7 +79,12 @@ export async function koerSamtale(
 
     // Assistent-turen sendes uændret tilbage (inkl. tænke-blokke) — kræves ved værktøjskald.
     messages.push({ role: 'assistant', content: msg.content as any })
-    if (msg.stop_reason !== 'tool_use') break
+    if (msg.stop_reason !== 'tool_use') { svar = rundeTekst; break }
+
+    // Tekst før et opslag er robottens arbejdsnoter ("Check Friday availability …" — første
+    // test 15-11 var endda på engelsk). Den vises kun, mens den skrives, og fjernes så igen;
+    // kunden og loggen får kun det endelige svar.
+    if (rundeTekst) on.ryd()
 
     const resultater: ToolResultBlockParam[] = []
     for (const blok of msg.content) {
@@ -93,8 +101,6 @@ export async function koerSamtale(
       resultater.push({ type: 'tool_result', tool_use_id: blok.id, content: indhold })
     }
     messages.push({ role: 'user', content: resultater })
-    // Tekst før et værktøjskald ("Jeg slår lige op …") og svaret efter skal ikke klistre sammen.
-    if (svar && !svar.endsWith('\n')) { svar += '\n\n'; on.tekst('\n\n') }
   }
 
   return { svar: svar.trim(), vaerktoejer: brugte, inputTokens, outputTokens, cacheTokens }

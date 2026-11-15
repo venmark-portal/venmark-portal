@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
         const r = await koerSamtale(historik, tekst, ctx, {
           tekst:     bid  => send('tekst', bid),
           vaerktoej: navn => send('vaerktoej', navn),
+          ryd:       ()   => send('ryd'),
         })
         const svar = r.svar || 'Det kunne jeg ikke finde ud af lige nu. Prøv at spørge på en anden måde, eller skriv til os under Beskeder.'
         if (!r.svar) send('tekst', svar)

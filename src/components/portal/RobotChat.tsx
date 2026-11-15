@@ -96,6 +96,12 @@ export default function RobotChat() {
           const h = JSON.parse(d.slice(6)) as { t: string; v?: string }
           if (h.t === 'tekst' && h.v) { setOpslag(''); tilfoej(h.v) }
           else if (h.t === 'vaerktoej') setOpslag(h.v ?? '')
+          else if (h.t === 'ryd') setTure(prev => {
+            // Robottens arbejdsnoter før et opslag — kun det endelige svar bliver stående.
+            const kopi = prev.slice()
+            kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], tekst: '' }
+            return kopi
+          })
           else if (h.t === 'fejl') tilfoej(h.v ?? t('fejl'))
         }
       }
