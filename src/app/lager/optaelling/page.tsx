@@ -600,9 +600,21 @@ export default function OptaellingSide() {
                 </p>
               </div>
               {!laast && (
-                <button onClick={() => fortryd(v.itemNo)} className="shrink-0 text-gray-300" aria-label="Fortryd">
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex shrink-0 gap-1">
+                  {/* Bemærkningen skal kunne nås på HVER vare i listen, ikke kun på
+                      den man står med — ellers skal man scanne varen igen for at
+                      skrive noget til kontoret. */}
+                  <button
+                    onClick={() => setBemaerkVare(v.itemNo)}
+                    className={v.remark ? 'text-amber-600' : 'text-gray-300'}
+                    aria-label="Bemærkning"
+                  >
+                    <MessageSquare size={16} />
+                  </button>
+                  <button onClick={() => fortryd(v.itemNo)} className="text-gray-300" aria-label="Fortryd">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               )}
             </div>
           </li>

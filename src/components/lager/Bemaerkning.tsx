@@ -30,6 +30,7 @@ export default function Bemaerkning({
   const [tekst, setTekst] = useState(start)
   const [lytter, setLytter] = useState(false)
   const [kanTale, setKanTale] = useState(false)
+  const [talefejl, setTalefejl] = useState('')
   const genkenderRef = useRef<any>(null)
 
   useEffect(() => {
@@ -56,11 +57,34 @@ export default function Bemaerkning({
       // Læg til det der allerede står, så man kan tale i flere omgange.
       setTekst(t => (t ? `${t} ${ny}` : ny).trim().slice(0, MAKS))
     }
-    g.onerror = () => setLytter(false)
+    // Fejl må ALDRIG være tavse her. Mikrofon-adgang kan være nægtet, og
+    // talegenkendelsen kræver netværk — begge dele ser ud som "der sker ingenting",
+    // og så leder man efter fejlen et helt forkert sted.
+    g.onerror = (e: any) => {
+      setLytter(false)
+      const kode = String(e?.error ?? '')
+      if (kode === 'not-allowed' || kode === 'service-not-allowed') {
+        setTalefejl('Browseren må ikke bruge mikrofonen. Giv adgang i låse-ikonet ved adressen.')
+      } else if (kode === 'no-speech') {
+        setTalefejl('Hørte ingenting — prøv igen og tal tæt på telefonen.')
+      } else if (kode === 'network') {
+        setTalefejl('Talegenkendelsen kunne ikke nå nettet.')
+      } else if (kode === 'audio-capture') {
+        setTalefejl('Ingen mikrofon fundet på enheden.')
+      } else if (kode) {
+        setTalefejl(`Talegenkendelsen fejlede (${kode}).`)
+      }
+    }
     g.onend = () => setLytter(false)
     genkenderRef.current = g
+    setTalefejl('')
     setLytter(true)
-    try { g.start() } catch { setLytter(false) }
+    try {
+      g.start()
+    } catch (e: any) {
+      setLytter(false)
+      setTalefejl(`Kunne ikke starte: ${e?.message ?? 'ukendt fejl'}`)
+    }
   }
 
   return (
@@ -108,6 +132,10 @@ export default function Bemaerkning({
             </button>
           )}
         </div>
+
+        {talefejl && (
+          <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{talefejl}</p>
+        )}
 
         <div className="mt-3 flex gap-2">
           <button
