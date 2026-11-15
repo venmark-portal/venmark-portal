@@ -1,0 +1,115 @@
+// Svar-robottens egne tabeller i portal-databasen. Oprettes selv første gang, ligesom
+// PortalKurv — ingen migration at huske ved deploy.
+//
+//   "RobotKunde"  hvem der har robotten, og om den selv tager initiativet.
+//                 Ingen række = robotten er slået fra for kunden.
+//   "RobotBesked" hver tur i hver samtale. Det er både robottens hukommelse inden for
+//                 en samtale (historikken sendes med til Claude) og kontorets log.
+
+import { prisma } from '@/lib/prisma'
+
+let ensured: Promise<void> | null = null
+
+async function run(): Promise<void> {
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "RobotKunde" (
+      "customerId" TEXT PRIMARY KEY,
+      aktiv        BOOLEAN NOT NULL DEFAULT true,
+      initiativ    BOOLEAN NOT NULL DEFAULT false,
+      "updatedAt"  TIMESTAMP(3) NOT NULL DEFAULT NOW()
+    )
+  `
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "RobotBesked" (
+      id             BIGSERIAL PRIMARY KEY,
+      "customerId"   TEXT NOT NULL,
+      "samtaleId"    TEXT NOT NULL,
+      rolle          TEXT NOT NULL,
+      tekst          TEXT NOT NULL,
+      vaerktoejer    TEXT NOT NULL DEFAULT '',
+      "inputTokens"  INTEGER NOT NULL DEFAULT 0,
+      "outputTokens" INTEGER NOT NULL DEFAULT 0,
+      "cacheTokens"  INTEGER NOT NULL DEFAULT 0,
+      "somAdmin"     TEXT,
+      "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT NOW()
+    )
+  `
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "RobotBesked_samtale" ON "RobotBesked" ("samtaleId", id)
+  `
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "RobotBesked_kunde_tid" ON "RobotBesked" ("customerId", "createdAt")
+  `
+}
+
+export function ensureRobotSkema(): Promise<void> {
+  if (!ensured) ensured = run().catch(err => { ensured = null; throw err })
+  return ensured
+}
+
+export interface RobotStatus { aktiv: boolean; initiativ: boolean }
+
+export async function hentRobotStatus(customerId: string): Promise<RobotStatus> {
+  if (!customerId) return { aktiv: false, initiativ: false }
+  await ensureRobotSkema()
+  const rows = await prisma.$queryRaw<{ aktiv: boolean; initiativ: boolean }[]>`
+    SELECT aktiv, initiativ FROM "RobotKunde" WHERE "customerId" = ${customerId}
+  `
+  return rows[0] ? { aktiv: rows[0].aktiv, initiativ: rows[0].initiativ } : { aktiv: false, initiativ: false }
+}
+
+/** Admin slår robotten til/fra. Initiativ bevares, når kun aktiv ændres. */
+export async function saetRobotAktiv(customerId: string, aktiv: boolean): Promise<void> {
+  await ensureRobotSkema()
+  await prisma.$executeRaw`
+    INSERT INTO "RobotKunde" ("customerId", aktiv, "updatedAt") VALUES (${customerId}, ${aktiv}, NOW())
+    ON CONFLICT ("customerId") DO UPDATE SET aktiv = ${aktiv}, "updatedAt" = NOW()
+  `
+}
+
+/** Kunden (eller admin) vælger, om robotten selv starter samtalen. */
+export async function saetRobotInitiativ(customerId: string, initiativ: boolean): Promise<void> {
+  await ensureRobotSkema()
+  await prisma.$executeRaw`
+    UPDATE "RobotKunde" SET initiativ = ${initiativ}, "updatedAt" = NOW() WHERE "customerId" = ${customerId}
+  `
+}
+
+export interface RobotTur { rolle: 'kunde' | 'robot'; tekst: string }
+
+/** Samtalens hidtidige tekst-ture, ældste først. Værktøjskald gentages ikke — robotten slår op igen. */
+export async function hentSamtale(customerId: string, samtaleId: string, max = 30): Promise<RobotTur[]> {
+  await ensureRobotSkema()
+  const rows = await prisma.$queryRaw<{ rolle: string; tekst: string }[]>`
+    SELECT rolle, tekst FROM (
+      SELECT id, rolle, tekst FROM "RobotBesked"
+      WHERE "customerId" = ${customerId} AND "samtaleId" = ${samtaleId} AND rolle IN ('kunde', 'robot')
+      ORDER BY id DESC LIMIT ${max}
+    ) t ORDER BY id ASC
+  `
+  return rows.map(r => ({ rolle: r.rolle as 'kunde' | 'robot', tekst: r.tekst }))
+}
+
+export async function logTur(t: {
+  customerId: string; samtaleId: string; rolle: 'kunde' | 'robot' | 'fejl'; tekst: string
+  vaerktoejer?: string; inputTokens?: number; outputTokens?: number; cacheTokens?: number; somAdmin?: string | null
+}): Promise<void> {
+  await ensureRobotSkema()
+  await prisma.$executeRaw`
+    INSERT INTO "RobotBesked" ("customerId", "samtaleId", rolle, tekst, vaerktoejer, "inputTokens", "outputTokens", "cacheTokens", "somAdmin")
+    VALUES (${t.customerId}, ${t.samtaleId}, ${t.rolle}, ${t.tekst}, ${t.vaerktoejer ?? ''},
+            ${t.inputTokens ?? 0}, ${t.outputTokens ?? 0}, ${t.cacheTokens ?? 0}, ${t.somAdmin ?? null})
+  `
+}
+
+/** Kundens spørgsmål i dag (dansk tid) — til dagsloftet. */
+export async function spoergsmaalIDag(customerId: string): Promise<number> {
+  await ensureRobotSkema()
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT COUNT(*) AS n FROM "RobotBesked"
+    WHERE "customerId" = ${customerId} AND rolle = 'kunde'
+      AND ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Copenhagen')::date
+        = (NOW() AT TIME ZONE 'Europe/Copenhagen')::date
+  `
+  return Number(rows[0]?.n ?? 0)
+}

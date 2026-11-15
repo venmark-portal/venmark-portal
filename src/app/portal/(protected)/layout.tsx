@@ -12,6 +12,7 @@ import CustomerSwitcher from '@/components/portal/CustomerSwitcher'
 import TicketNotifier from '@/components/portal/TicketNotifier'
 import PushSubscribeButton from '@/components/portal/PushSubscribeButton'
 import SprogSkifter from '@/components/portal/SprogSkifter'
+import RobotChat from '@/components/portal/RobotChat'
 import { LangProvider } from '@/lib/i18n/portal/LangProvider'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { makeT } from '@/lib/i18n/portal/lang'
@@ -161,6 +162,8 @@ export default async function PortalLayout({
         <TicketNotifier />
         <PushSubscribeButton />
         <VersionVagt />
+        {/* Svar-robotten — vises kun for kunder der er slået til under /admin/robot */}
+        {(session.user as any)?.role === 'customer' && <RobotChat />}
         {/* Mobil-bundnavigation */}
         <PortalNav />
       </div>
