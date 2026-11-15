@@ -24,6 +24,10 @@ export const robotDict = defineDict({
     loft: 'Du har stillet mange spørgsmål i dag. Skriv til os under Beskeder, eller ring på 98 94 59 65.',
     fejl: 'Robotten kunne ikke svare lige nu. Prøv igen om lidt.',
     forbehold: 'Assistenten kan tage fejl. Bestillingssiden er altid gældende.',
+    godtSvar: 'Godt svar', daarligtSvar: 'Dårligt svar', tak: 'Tak — det hjælper os med at gøre assistenten bedre.',
+    hvadForkert: 'Hvad var forkert? (valgfrit)',
+    seKurven: 'Se kurven og send bestillingen →',
+    vt_tidligere_koeb: 'Kigger på dine tidligere køb…', vt_se_kurv: 'Kigger i kurven…', vt_laeg_i_kurv: 'Lægger i kurven…',
   },
   en: {
     aabn: 'Ask the Venmark assistant',
@@ -47,6 +51,10 @@ export const robotDict = defineDict({
     loft: 'You have asked a lot of questions today. Write to us under Messages or call +45 98 94 59 65.',
     fejl: 'The assistant could not answer right now. Please try again shortly.',
     forbehold: 'The assistant can make mistakes. The order page always applies.',
+    godtSvar: 'Good answer', daarligtSvar: 'Bad answer', tak: 'Thanks — this helps us improve the assistant.',
+    hvadForkert: 'What was wrong? (optional)',
+    seKurven: 'View cart and send order →',
+    vt_tidligere_koeb: 'Checking your previous purchases…', vt_se_kurv: 'Checking your cart…', vt_laeg_i_kurv: 'Adding to cart…',
   },
   de: {
     aabn: 'Venmark-Assistent fragen',
@@ -70,5 +78,9 @@ export const robotDict = defineDict({
     loft: 'Sie haben heute viele Fragen gestellt. Schreiben Sie uns unter Nachrichten oder rufen Sie +45 98 94 59 65 an.',
     fejl: 'Der Assistent konnte gerade nicht antworten. Bitte versuchen Sie es gleich noch einmal.',
     forbehold: 'Der Assistent kann sich irren. Es gilt immer die Bestellseite.',
+    godtSvar: 'Gute Antwort', daarligtSvar: 'Schlechte Antwort', tak: 'Danke — das hilft uns, den Assistenten zu verbessern.',
+    hvadForkert: 'Was war falsch? (optional)',
+    seKurven: 'Warenkorb ansehen und Bestellung senden →',
+    vt_tidligere_koeb: 'Ihre früheren Käufe werden geprüft…', vt_se_kurv: 'Warenkorb wird geprüft…', vt_laeg_i_kurv: 'Wird in den Warenkorb gelegt…',
   },
 })

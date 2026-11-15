@@ -3,8 +3,30 @@ import { getItems, getItemsByNumbers, getItemsUoMs, getWebshopVisibleItemNos } f
 import type { BCItemUoM } from '@/lib/businesscentral'
 import { getPortalLang } from '@/lib/i18n/portal/server'
 import { getVarenavne, oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
+import { soegKatalog } from '@/lib/katalogSoeg'
+import type { Lang } from '@/lib/i18n/portal/lang'
 
 export const runtime = 'nodejs'
+
+/**
+ * Fritekstsøgning via hele kataloget (src/lib/katalogSoeg.ts) i stedet for BC's contains(),
+ * der skelner store/små bogstaver og kun søger på hele sætningen: "bakka" fandt ikke
+ * "Færøsk laksefilet … BAKKA", og "laks bakka" fandt intet (15-11-2026). Fejler kataloget,
+ * bruges den gamle BC-søgning.
+ */
+async function katalogSoegning(search: string, category: string | undefined, top: number, lang: Lang) {
+  try {
+    const nos = await soegKatalog(search, lang, Math.max(top * 4, 120))
+    let items = nos.length ? await getItemsByNumbers(nos) : []
+    if (category) items = items.filter(i => i.itemCategoryCode === category)
+    const orden = new Map(nos.map((n, i) => [n, i]))
+    items.sort((a, b) => (orden.get(a.number) ?? 1e9) - (orden.get(b.number) ?? 1e9))
+    return { '@odata.context': '', value: items.slice(0, Math.max(top * 2, 60)) }
+  } catch (err) {
+    console.error('[products] katalogsøgning fejlede — bruger BC-søgning', err)
+    return getItems({ search, category, top })
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
@@ -20,11 +42,16 @@ export async function GET(req: NextRequest) {
   try {
     // Søgning skal også respektere portal-synligheden (RangeringPrisliste = 99 = skjult).
     const [data, visible] = await Promise.all([
-      getItems({ search, category, top, skip }),
+      search?.trim()
+        ? katalogSoegning(search, category, top, lang)
+        : getItems({ search, category, top, skip }),
       getWebshopVisibleItemNos().catch(() => null),
     ])
     const d = data as any
-    if (lang !== 'da' && d && Array.isArray(d.value)) {
+    // Katalogsøgningen har selv søgt i de oversatte navne — kun oversættelsen mangler.
+    if (lang !== 'da' && d && Array.isArray(d.value) && search?.trim()) {
+      d.value = await oversaetVarenavne(d.value.map((i: any) => ({ ...i, navnDa: i.displayName })), lang)
+    } else if (lang !== 'da' && d && Array.isArray(d.value)) {
       // BC søger kun i det danske navn — "plaice" skal også finde rødspætte. Træf i de
       // oversatte navne hentes ekstra (kun første side, uden kategori-filter-tab).
       if (search?.trim() && !skip) {
@@ -45,6 +72,8 @@ export async function GET(req: NextRequest) {
     }
     if (visible && d && Array.isArray(d.value))
       d.value = d.value.filter((i: any) => visible.has(i.number))
+    // Katalogsøgningen henter ekstra, så der er nok tilbage efter synlighedsfilteret.
+    if (search?.trim() && d && Array.isArray(d.value)) d.value = d.value.slice(0, top)
     // Kundeportalens søgning skal kunne vælge enhed (kasse, spand …) ligesom varelisten.
     // Uden enhederne viste søgningen kun basisenheden (Claus 08-11-2026).
     if (isPortal && d && Array.isArray(d.value) && d.value.length) {

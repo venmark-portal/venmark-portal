@@ -29,6 +29,9 @@ export interface Leveringsdag { dato: string; frist: Date }
 export class RobotKontekst {
   constructor(public kunde: RobotKunde) {}
 
+  /** Sat når robotten har ændret kurven — chatten genindlæser så bestillingssiden. */
+  kurvAendret = false
+
   private memo = new Map<string, Promise<any>>()
   private husk<T>(k: string, f: () => Promise<T>): Promise<T> {
     if (!this.memo.has(k)) this.memo.set(k, f())
