@@ -2345,6 +2345,7 @@ export interface SalgslisteCustomer {
   customerNo:   string
   customerName: string
   qty:          number
+  shipmentDate: string     // YYYY-MM-DD — kunden summeres pr. afsendelsesdato
   // Bemærkninger fra kundens salgslinjer for varen (unikke, kun ikke-tomme)
   portalNotes:  string[]   // "Portal Kundebemærkning" (kundens egen tekst fra portalen)
   comments:     string[]   // salgslinjens "Bemærkning" (felt 50000, intern)
@@ -2373,7 +2374,8 @@ export async function getSalgsliste(
   // tabel end en fejlside. Info-skærmene har brug for det modsatte: de SKAL kunne se
   // forskel på "intet salg i dag" og "BC svarer ikke", ellers viser skærmen tomme tal
   // med fuld selvtillid i stedet for at falde tilbage på sidste gode data.
-  { throwOnError = false }: { throwOnError?: boolean } = {},
+  // tilDato: medtag afsendelsesdatoer salesDate..tilDato (admin-siden viser flere dage).
+  { throwOnError = false, tilDato }: { throwOnError?: boolean; tilDato?: string } = {},
 ): Promise<SalgslisteRow[]> {
   try {
     const token   = await getAccessToken()
@@ -2419,7 +2421,10 @@ export async function getSalgsliste(
 
     // 2) Åbne salgsordrelinjer for datoen → summér pr. vare + enhed + kunde
     const rows = new Map<string, SalgslisteRow>()   // key = itemNo|uom
-    const filter = encodeURIComponent(`type eq 'Item' and shipmentDate eq ${salesDate}`)
+    const dateFilter = tilDato && tilDato > salesDate
+      ? `shipmentDate ge ${salesDate} and shipmentDate le ${tilDato}`
+      : `shipmentDate eq ${salesDate}`
+    const filter = encodeURIComponent(`type eq 'Item' and ${dateFilter}`)
     let surl: string | null = `${base}/portalSalesLines?$filter=${filter}`   // intet $top
     while (surl) {
       const res: Response = await fetch(surl, { headers, cache: 'no-store' } as any)
@@ -2451,8 +2456,9 @@ export async function getSalgsliste(
         const qty = l.quantity ?? 0
         row.salg += qty
         const cNo = l.sellToCustomerNo ?? ''
-        let c = row.customers.find(x => x.customerNo === cNo)
-        if (!c) { c = { customerNo: cNo, customerName: l.sellToCustomerName || cNo, qty: 0, portalNotes: [], comments: [] }; row.customers.push(c) }
+        const sDate = String(l.shipmentDate ?? salesDate)
+        let c = row.customers.find(x => x.customerNo === cNo && x.shipmentDate === sDate)
+        if (!c) { c = { customerNo: cNo, customerName: l.sellToCustomerName || cNo, qty: 0, shipmentDate: sDate, portalNotes: [], comments: [] }; row.customers.push(c) }
         c.qty += qty
         const pNote = String(l.portalCustomerNote ?? '').trim()
         if (pNote && !c.portalNotes.includes(pNote)) c.portalNotes.push(pNote)
@@ -2475,7 +2481,7 @@ export async function getSalgsliste(
 
     const out = Array.from(rows.values())
     out.sort((a, b) => a.itemNo.localeCompare(b.itemNo, 'da'))
-    for (const r of out) r.customers.sort((a, b) => b.qty - a.qty)
+    for (const r of out) r.customers.sort((a, b) => a.shipmentDate.localeCompare(b.shipmentDate) || b.qty - a.qty)
     return out
   } catch (err) {
     if (throwOnError) throw err

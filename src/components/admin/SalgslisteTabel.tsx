@@ -12,10 +12,26 @@ function blank(n: number): string {
   return n ? fmt(n) : ''
 }
 
-// Alle kundens bemærkninger på varen samlet til ÉN linje (portal + intern).
-function noteLine(c: SalgslisteCustomer): string {
-  return [...c.portalNotes, ...c.comments].join(' · ')
+// Intern "Bemærkning" og kundens "Portalbemærkning" holdes adskilt, så man kan se hvem
+// der har skrevet hvad.
+function commentText(c: SalgslisteCustomer): string {
+  return c.comments.join(' · ')
 }
+function portalText(c: SalgslisteCustomer): string {
+  return c.portalNotes.join(' · ')
+}
+
+const UGEDAG = ['sø', 'ma', 'ti', 'on', 'to', 'fr', 'lø']
+// "ti 10-11" — kort afsendelsesdato til kundelinjerne når flere dage vises.
+function shortDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return `${UGEDAG[wd]} ${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}`
+}
+
+const RED = { color: '#d40000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as const
+const BLUE = { color: '#1d4ed8', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as const
 
 function hasNote(c: SalgslisteCustomer): boolean {
   return c.portalNotes.length + c.comments.length > 0
@@ -28,8 +44,21 @@ function cmpItemNo(a: string, b: string): number {
   return a.localeCompare(b, 'da')
 }
 
-export default function SalgslisteTabel({ rows, datoTekst }: { rows: SalgslisteRow[]; datoTekst: string }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+export default function SalgslisteTabel({
+  rows, datoTekst, idag, flereDage,
+}: {
+  rows: SalgslisteRow[]
+  datoTekst: string
+  idag: string
+  flereDage: boolean
+}) {
+  // Standard: varer med salg EFTER i dag er foldet ud (de skal planlægges), dagens står
+  // som totaler. Kan foldes ind/ud — og udskriften følger det der er foldet ud.
+  const defaultExpanded = useMemo(
+    () => new Set(rows.filter(r => r.customers.some(c => c.shipmentDate > idag)).map(r => `${r.itemNo}|${r.uom}`)),
+    [rows, idag],
+  )
+  const [expanded, setExpanded] = useState<Set<string>>(defaultExpanded)
   const [query, setQuery] = useState('')
   const [kunNoter, setKunNoter] = useState(false)
   const [fra, setFra] = useState('00000')
@@ -71,7 +100,7 @@ export default function SalgslisteTabel({ rows, datoTekst }: { rows: SalgslisteR
   function toggleKunNoter() {
     if (kunNoter) {
       setKunNoter(false)
-      setExpanded(new Set())
+      setExpanded(new Set(defaultExpanded))
     } else {
       setKunNoter(true)
       setExpanded(new Set(noteKeys))
@@ -187,6 +216,7 @@ export default function SalgslisteTabel({ rows, datoTekst }: { rows: SalgslisteR
                   isOpen={isOpen}
                   canDrill={canDrill}
                   kunNoter={kunNoter}
+                  flereDage={flereDage}
                   onToggle={() => canDrill && toggle(key)}
                 />
               )
@@ -195,18 +225,19 @@ export default function SalgslisteTabel({ rows, datoTekst }: { rows: SalgslisteR
         </table>
       </div>
 
-      <PrintVersion rows={printRows} datoTekst={datoTekst} fra={fra} til={til} />
+      <PrintVersion rows={printRows} datoTekst={datoTekst} fra={fra} til={til} expanded={expanded} flereDage={flereDage} />
     </div>
   )
 }
 
 function FragmentRow({
-  row, isOpen, canDrill, kunNoter, onToggle,
+  row, isOpen, canDrill, kunNoter, flereDage, onToggle,
 }: {
   row: SalgslisteRow
   isOpen: boolean
   canDrill: boolean
   kunNoter: boolean
+  flereDage: boolean
   onToggle: () => void
 }) {
   const noteCount = row.customers.filter(hasNote).length
@@ -249,16 +280,23 @@ function FragmentRow({
               <table className="w-full table-fixed text-sm">
                 <tbody>
                   {customers.map((c, i) => {
-                    const note = noteLine(c)
+                    const bem = commentText(c)
+                    const portal = portalText(c)
                     return (
-                      <tr key={c.customerNo} className={`${i > 0 ? 'border-t border-gray-100' : ''} align-top`}>
-                        {/* Kunde + bemærkning på SAMME linje — hele teksten ved mouse-over */}
+                      <tr key={`${c.customerNo}|${c.shipmentDate}`} className={`${i > 0 ? 'border-t border-gray-100' : ''} align-top`}>
+                        {/* Kunde + bemærkninger på SAMME linje — hele teksten ved mouse-over */}
                         <td className="px-3 py-1.5 text-gray-800">
                           <div className="flex min-w-0 gap-3">
+                            {flereDage && <span className="w-14 shrink-0 text-gray-500">{shortDate(c.shipmentDate)}</span>}
                             <span className="shrink-0">{c.customerName}</span>
-                            {note && (
-                              <span className="truncate font-bold text-red-600" title={note}>
-                                {note}
+                            {bem && (
+                              <span className="truncate font-bold text-red-600" title={`Bemærkning: ${bem}`}>
+                                {bem}
+                              </span>
+                            )}
+                            {portal && (
+                              <span className="truncate font-bold text-blue-700" title={`Portalbemærkning: ${portal}`}>
+                                Portal: {portal}
                               </span>
                             )}
                           </div>
@@ -278,15 +316,17 @@ function FragmentRow({
   )
 }
 
-// A4-udskrift i samme stil som BC's lageropgørelse: stående A4, store læsbare rækker,
-// totaler pr. vare og kun de kunder der har en bemærkning (én linje under varen).
+// A4-udskrift i samme stil som BC's lageropgørelse: stående A4, totaler pr. vare. Under
+// varen: ALLE kunder hvis varen er foldet ud på skærmen, ellers kun dem med bemærkning.
 function PrintVersion({
-  rows, datoTekst, fra, til,
+  rows, datoTekst, fra, til, expanded, flereDage,
 }: {
   rows: SalgslisteRow[]
   datoTekst: string
   fra: string
   til: string
+  expanded: Set<string>
+  flereDage: boolean
 }) {
   return (
     <div className="hidden print:block">
@@ -316,17 +356,24 @@ function PrintVersion({
             </tr>
           )}
           {rows.map(r => {
-            const noter = r.customers.filter(hasNote)
+            const kunder = expanded.has(`${r.itemNo}|${r.uom}`) ? r.customers : r.customers.filter(hasNote)
             return (
               <tr key={`${r.itemNo}|${r.uom}`} className="break-inside-avoid border-b border-gray-400 align-top">
                 <td className="py-px pr-2 font-semibold">{r.itemNo}</td>
                 <td className="py-px pr-2">
                   <div className="truncate">{r.description}</div>
-                  {noter.map(c => (
-                    <div key={c.customerNo} className="truncate text-[8pt] font-bold" style={{ color: '#d40000', WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
-                      {c.customerName} {fmt(c.qty)} {r.uom}: {noteLine(c)}
-                    </div>
-                  ))}
+                  {kunder.map(c => {
+                    const bem = commentText(c)
+                    const portal = portalText(c)
+                    return (
+                      <div key={`${c.customerNo}|${c.shipmentDate}`} className="truncate pl-2 text-[8pt]">
+                        {flereDage && <span className="mr-1">{shortDate(c.shipmentDate)}</span>}
+                        {c.customerName} {fmt(c.qty)} {r.uom}
+                        {bem && <span className="font-bold" style={RED}> {bem}</span>}
+                        {portal && <span className="font-bold" style={BLUE}> Portal: {portal}</span>}
+                      </div>
+                    )
+                  })}
                 </td>
                 <td className="py-px pr-2 text-right font-bold">{blank(r.salg)}</td>
                 <td className="py-px pr-2">{r.uom}</td>

@@ -8,22 +8,37 @@ function todayCopenhagen(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date())
 }
 
+// Næste hverdag efter iso (fredag → mandag), så "i dag og i morgen" også giver
+// mening om fredagen, hvor næste afsendelse er mandag.
+function nextWorkday(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  do d.setUTCDate(d.getUTCDate() + 1)
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+  return d.toISOString().slice(0, 10)
+}
+
 function formatDanish(iso: string): string {
   const [y, m, d] = iso.split('-')
   if (!y || !m || !d) return iso
   return `${d}-${m}-${y}`
 }
 
+const ISO = /^\d{4}-\d{2}-\d{2}$/
+
 export default async function SalgslistePage({
   searchParams,
 }: {
-  searchParams: { dato?: string }
+  searchParams: { dato?: string; fra?: string; til?: string }
 }) {
-  const dato = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.dato ?? '')
-    ? (searchParams.dato as string)
-    : todayCopenhagen()
+  const idag = todayCopenhagen()
+  // ?dato= (gamle links) = én dag. Ellers fra..til, standard i dag + næste hverdag.
+  const enkelt = ISO.test(searchParams.dato ?? '') ? (searchParams.dato as string) : ''
+  const fra = enkelt || (ISO.test(searchParams.fra ?? '') ? (searchParams.fra as string) : idag)
+  let til = enkelt || (ISO.test(searchParams.til ?? '') ? (searchParams.til as string) : nextWorkday(fra))
+  if (til < fra) til = fra
 
-  const rows = await getSalgsliste(dato)
+  const rows = await getSalgsliste(fra, { tilDato: til })
+  const datoTekst = fra === til ? formatDanish(fra) : `${formatDanish(fra)} – ${formatDanish(til)}`
 
   return (
     <div className="space-y-6">
@@ -31,18 +46,27 @@ export default async function SalgslistePage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Salgsliste</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Summeret salg pr. vare for afsendelsesdato {formatDanish(dato)} (alle kunder) ·
-            klik på en vare for kundesalg.
+            Summeret salg pr. vare for afsendelse {datoTekst} (alle kunder) ·
+            klik på en vare for kundesalg. Salg efter i dag er foldet ud.
           </p>
         </div>
 
         <form method="get" className="flex items-end gap-2">
           <label className="flex flex-col text-xs font-medium text-gray-500">
-            Afsendelsesdato
+            Fra afsendelse
             <input
               type="date"
-              name="dato"
-              defaultValue={dato}
+              name="fra"
+              defaultValue={fra}
+              className="mt-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col text-xs font-medium text-gray-500">
+            Til afsendelse
+            <input
+              type="date"
+              name="til"
+              defaultValue={til}
               className="mt-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -55,7 +79,7 @@ export default async function SalgslistePage({
         </form>
       </div>
 
-      <SalgslisteTabel rows={rows} datoTekst={formatDanish(dato)} />
+      <SalgslisteTabel key={`${fra}|${til}`} rows={rows} datoTekst={datoTekst} idag={idag} flereDage={fra !== til} />
     </div>
   )
 }
