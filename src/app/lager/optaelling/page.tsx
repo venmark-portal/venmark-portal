@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, Pencil, Plus, Send, Trash2,
+  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, Plus, Send, Trash2,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur from '@/components/lager/Taltastatur'
@@ -40,7 +40,6 @@ export default function OptaellingSide() {
   const [blind, setBlind] = useState(false)
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
   const [travl, setTravl] = useState(false)
-  const [anslaa, setAnslaa] = useState(false)
   const [stemmerDialog, setStemmerDialog] = useState(false)
 
   const lydRef = useRef<AudioContext | null>(null)
@@ -351,7 +350,7 @@ export default function OptaellingSide() {
             onScan={scan}
             travl={travl}
             placeholder="Scan vare eller kasse"
-            pause={anslaa || stemmerDialog}
+            pause={stemmerDialog}
           />
 
           {besked && (
@@ -411,10 +410,10 @@ export default function OptaellingSide() {
                   <Check size={15} className="mr-1 inline" /> Færdig med varen
                 </button>
                 <button
-                  onClick={() => setAnslaa(true)}
+                  onClick={() => fortryd(aktiv.itemNo)}
                   className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
                 >
-                  <Pencil size={15} className="mr-1 inline" /> Tast antal
+                  <Trash2 size={15} className="mr-1 inline" /> Fortryd sidste
                 </button>
               </div>
               {aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001 && (
@@ -428,29 +427,23 @@ export default function OptaellingSide() {
                   Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom} — brug BC&apos;s tal
                 </button>
               )}
-              <button
-                onClick={() => fortryd(aktiv.itemNo)}
-                className="mt-2 w-full rounded-xl py-2 text-sm text-gray-500"
-              >
-                <Trash2 size={14} className="mr-1 inline" /> Fortryd sidste registrering
-              </button>
             </div>
           )}
 
-          {anslaa && aktiv && (
+          {/* Taltastaturet ligger FAST så længe der er en vare i gang — ikke i en
+              dialog man skal åbne. Tallet SÆTTER antallet på varen. */}
+          {aktiv && (
             <Taltastatur
-              titel="Tast antal"
-              undertekst={`${aktiv.itemNo} · ${aktiv.navn}`}
               enhed={aktiv.uom}
-              onLuk={() => setAnslaa(false)}
+              nuvaerende={aktiv.total}
+              deaktiveret={travl}
               onGem={async (antal, anslaaet) => {
-                setAnslaa(false)
                 const res = await fetch(`/api/lager/optaelling/${optaelling.id}/linje`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
-                    estimated: anslaaet, shelfCode: hylde || undefined,
+                    estimated: anslaaet, shelfCode: hylde || undefined, saet: true,
                     bcQty: aktiv.bcAntal ?? undefined, idempotencyKey: nyNoegle(),
                   }),
                 })

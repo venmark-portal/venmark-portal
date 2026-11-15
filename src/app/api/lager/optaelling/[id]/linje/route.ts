@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { lagerBruger } from '@/lib/lager/auth'
-import { fortrydSidste, hentOptaelling, kasseAlleredeTalt, tilfoejLinje } from '@/lib/lager/optaelling'
+import {
+  fortrydSidste, hentOptaelling, kasseAlleredeTalt, saetAntal, tilfoejLinje,
+} from '@/lib/lager/optaelling'
 import { gemIdempotentSvar, hentIdempotentSvar } from '@/lib/lager/db'
 
 export const runtime = 'nodejs'
@@ -40,7 +42,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     )
   }
 
-  const svar = await tilfoejLinje(
+  // saet = et TASTET antal: det sætter antallet på varen i stedet for at lægge til.
+  // Scanner man en vare (1 stk.) og taster 43, skal der stå 43 — ikke 44.
+  const gem = body?.saet ? saetAntal : tilfoejLinje
+  const svar = await gem(
     params.id,
     {
       itemNo,

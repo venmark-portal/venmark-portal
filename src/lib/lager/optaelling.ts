@@ -177,6 +177,33 @@ export async function kasseAlleredeTalt(countId: string, barcode: string): Promi
   return rows.length > 0
 }
 
+/**
+ * SÆTTER antallet på en vare i stedet for at lægge til. Det er sådan et tastet tal
+ * skal opføre sig: scanner man en vare (1 stk.) og taster 43, skal der stå 43 — ikke 44.
+ *
+ * Er der valgt en hylde, røres kun den hyldes registreringer, så man kan sætte
+ * antallet på "Frys 1 reol A" uden at slette det der blev talt på en anden hylde.
+ */
+export async function saetAntal(
+  countId: string,
+  linje: NyLinje,
+  brugerNavn: string,
+): Promise<{ total: number; antal: number; bcAntal: number | null }> {
+  await ensureOptaellingSchema()
+  const itemNo = linje.itemNo.toUpperCase()
+  if (linje.shelfCode) {
+    await prisma.$executeRaw`
+      DELETE FROM "LagerCountLine"
+      WHERE "countId" = ${countId} AND "itemNo" = ${itemNo} AND COALESCE("shelfCode",'') = ${linje.shelfCode}
+    `
+  } else {
+    await prisma.$executeRaw`
+      DELETE FROM "LagerCountLine" WHERE "countId" = ${countId} AND "itemNo" = ${itemNo}
+    `
+  }
+  return tilfoejLinje(countId, linje, brugerNavn)
+}
+
 export async function vareTotal(
   countId: string,
   itemNo: string,
