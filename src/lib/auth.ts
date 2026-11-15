@@ -6,7 +6,7 @@ import { getPortalOrderAccesses } from './businesscentral'
 import { indloesAdgang } from './impersonation'
 import {
   medarbejderMedEmail, medarbejderForPinBruger, medarbejderFelter, hentMedarbejder,
-  brugerForRolle, startBruger, huskRolle, ROLLER, type Rolle,
+  brugerForRolle, startBruger, huskRolle, rolleFraRole, ROLLER, type Rolle,
 } from './medarbejder'
 
 /** Login-brugerens felter → tokenet. Bruges ved login og ved rolleskift (alt skrives forfra). */
@@ -259,6 +259,22 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       if (user) fyldToken(token, user)
+
+      // Logget ind ad en anden vej (kundelogin, admin-login, en session fra før medarbejderen
+      // blev oprettet)? Er brugeren koblet til en medarbejder, kommer rolleskiftet med.
+      // Tjekkes én gang pr. token — ikke ved hvert kald. "Som kunde" (admin kigger med) aldrig.
+      if (!(token as any).medarbejderTjekket && !(token as any).medarbejderId && !(token as any).impersonatedBy) {
+        ;(token as any).medarbejderTjekket = true
+        const r = rolleFraRole(token.role as string)
+        const m = r && token.sub ? await medarbejderForPinBruger(r, token.sub).catch(() => null) : null
+        if (m) {
+          const f = medarbejderFelter(m, r!)
+          ;(token as any).medarbejderId     = f.medarbejderId
+          ;(token as any).medarbejderNavn   = f.medarbejderNavn
+          ;(token as any).medarbejderRoller = f.medarbejderRoller
+          ;(token as any).medarbejderRolle  = f.medarbejderRolle
+        }
+      }
 
       // Rolleskift: update({ rolle }). Rollen slås ALTID op i databasen igen — klienten
       // kan kun bede om en rolle medarbejderen faktisk har.

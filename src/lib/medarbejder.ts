@@ -76,13 +76,22 @@ export async function medarbejderMedEmail(email: string): Promise<Medarbejder | 
   return r[0] ?? null
 }
 
-/** Medarbejderen bag en chauffør-/lager-PIN-bruger (til rolleskiftet efter PIN-login). */
-export async function medarbejderForPinBruger(rolle: 'lager' | 'chauffoer', id: string): Promise<Medarbejder | null> {
+/** Medarbejderen bag en almindelig login-bruger (PIN, kunde- eller admin-login) — så
+ *  rolleskiftet kommer med, uanset hvilken login-vej man brugte. */
+export async function medarbejderForPinBruger(rolle: Rolle, id: string): Promise<Medarbejder | null> {
+  if (!id) return null
   await ensureMedarbejderSkema()
-  const r = rolle === 'lager'
-    ? await prisma.$queryRaw<Medarbejder[]>`SELECT * FROM "Medarbejder" WHERE "lagerUserId" = ${id} AND aktiv = true LIMIT 1`
-    : await prisma.$queryRaw<Medarbejder[]>`SELECT * FROM "Medarbejder" WHERE "driverUserId" = ${id} AND aktiv = true LIMIT 1`
+  const r =
+    rolle === 'lager' ? await prisma.$queryRaw<Medarbejder[]>`SELECT * FROM "Medarbejder" WHERE "lagerUserId" = ${id} AND aktiv = true LIMIT 1`
+    : rolle === 'chauffoer' ? await prisma.$queryRaw<Medarbejder[]>`SELECT * FROM "Medarbejder" WHERE "driverUserId" = ${id} AND aktiv = true LIMIT 1`
+    : rolle === 'admin' ? await prisma.$queryRaw<Medarbejder[]>`SELECT * FROM "Medarbejder" WHERE "adminUserId" = ${id} AND aktiv = true LIMIT 1`
+    : await prisma.$queryRaw<Medarbejder[]>`SELECT * FROM "Medarbejder" WHERE "customerId" = ${id} AND aktiv = true LIMIT 1`
   return r[0] ?? null
+}
+
+/** next-auth-rolle → medarbejder-rolle. */
+export function rolleFraRole(role: string | undefined): Rolle | null {
+  return role === 'admin' ? 'admin' : role === 'lager' ? 'lager' : role === 'driver' ? 'chauffoer' : role === 'customer' ? 'kunde' : null
 }
 
 /** Det der lægges på login-brugeren, så sessionen kender medarbejderen og kan vise rolleskiftet. */
