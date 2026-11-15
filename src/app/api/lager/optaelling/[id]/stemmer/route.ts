@@ -26,7 +26,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: `Optællingen er ${optaelling.status}` }, { status: 409 })
   }
 
-  const svar = await bekraeftVare(params.id, itemNo, optaelling.locationCode, bruger.navn)
+  // erstat = "jeg har talt, men BC har ret": det talte slettes, så de to ikke lægges sammen.
+  const svar = await bekraeftVare(
+    params.id, itemNo, optaelling.locationCode, bruger.navn, !!body?.erstat,
+  )
   if (!svar.ok) return NextResponse.json(svar, { status: 400 })
 
   await gemIdempotentSvar(key, 'optaelling-stemmer', bruger.id, svar)

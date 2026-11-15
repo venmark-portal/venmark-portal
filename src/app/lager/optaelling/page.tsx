@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Check, CircleCheck, Hash, Layers, Pencil, Plus, Send, Trash2,
+  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, Pencil, Plus, Send, Trash2,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
+import Taltastatur from '@/components/lager/Taltastatur'
 import { nyNoegle } from '@/lib/lager/device'
 
 interface Hylde { id: string; locationCode: string; code: string; name: string; sortOrder: number }
@@ -40,6 +41,7 @@ export default function OptaellingSide() {
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
   const [travl, setTravl] = useState(false)
   const [anslaa, setAnslaa] = useState(false)
+  const [stemmerDialog, setStemmerDialog] = useState(false)
 
   const lydRef = useRef<AudioContext | null>(null)
   const bip = useCallback((hz: number, ms: number) => {
@@ -170,19 +172,23 @@ export default function OptaellingSide() {
     } finally { setTravl(false) }
   }
 
-  async function stemmer(itemNo: string) {
+  // erstat = "jeg har talt, men BC har ret": det talte slettes, så de to ikke lægges sammen.
+  async function stemmer(itemNo: string, erstat: boolean) {
     if (!optaelling) return
     setTravl(true)
     try {
       const r = await fetch(`/api/lager/optaelling/${optaelling.id}/stemmer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemNo, idempotencyKey: nyNoegle() }),
+        body: JSON.stringify({ itemNo, erstat, idempotencyKey: nyNoegle() }),
       })
       const data = await r.json()
       if (!r.ok) { setBesked({ slags: 'advar', tekst: data.fejl ?? data.error ?? 'Kunne ikke bekræftes' }); return }
       bip(660, 120)
-      setBesked({ slags: 'ok', tekst: `${itemNo} bekræftet uden optælling` })
+      setBesked({
+        slags: 'ok',
+        tekst: `${itemNo}: BC's tal${data.antal !== undefined ? ` (${tal(data.antal)})` : ''} brugt som talt`,
+      })
       setAktiv(null)
       await hentStatus(optaelling.id)
     } finally { setTravl(false) }
@@ -341,7 +347,12 @@ export default function OptaellingSide() {
             </div>
           </div>
 
-          <ScanFelt onScan={scan} travl={travl} placeholder="Scan vare eller kasse" />
+          <ScanFelt
+            onScan={scan}
+            travl={travl}
+            placeholder="Scan vare eller kasse"
+            pause={anslaa || stemmerDialog}
+          />
 
           {besked && (
             <p
@@ -362,7 +373,13 @@ export default function OptaellingSide() {
           {/* Den vare der tælles nu */}
           {aktiv && (
             <div className="mt-3 rounded-2xl bg-white p-4 ring-2 ring-emerald-600">
-              <p className="font-semibold text-gray-900">{aktiv.itemNo} · {aktiv.navn}</p>
+              <div className="flex gap-3">
+                <Varebillede itemNo={aktiv.itemNo} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-gray-900">{aktiv.itemNo}</p>
+                  <p className="text-sm text-gray-600">{aktiv.navn}</p>
+                </div>
+              </div>
               <div className="mt-1 flex items-end gap-4">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Talt</p>
@@ -397,9 +414,20 @@ export default function OptaellingSide() {
                   onClick={() => setAnslaa(true)}
                   className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
                 >
-                  <Pencil size={15} className="mr-1 inline" /> Anslå antal
+                  <Pencil size={15} className="mr-1 inline" /> Tast antal
                 </button>
               </div>
+              {aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001 && (
+                // "BC har ret": det talte slettes, så de to ikke lægges sammen.
+                <button
+                  onClick={() => stemmer(aktiv.itemNo, true)}
+                  disabled={travl}
+                  className="mt-2 w-full rounded-xl bg-sky-700 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  <CircleCheck size={15} className="mr-1 inline" />
+                  Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom} — brug BC&apos;s tal
+                </button>
+              )}
               <button
                 onClick={() => fortryd(aktiv.itemNo)}
                 className="mt-2 w-full rounded-xl py-2 text-sm text-gray-500"
@@ -410,17 +438,19 @@ export default function OptaellingSide() {
           )}
 
           {anslaa && aktiv && (
-            <AnslaaAntal
-              vare={aktiv}
+            <Taltastatur
+              titel="Tast antal"
+              undertekst={`${aktiv.itemNo} · ${aktiv.navn}`}
+              enhed={aktiv.uom}
               onLuk={() => setAnslaa(false)}
-              onGemt={async (antal) => {
+              onGem={async (antal, anslaaet) => {
                 setAnslaa(false)
                 const res = await fetch(`/api/lager/optaelling/${optaelling.id}/linje`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
-                    estimated: true, shelfCode: hylde || undefined,
+                    estimated: anslaaet, shelfCode: hylde || undefined,
                     bcQty: aktiv.bcAntal ?? undefined, idempotencyKey: nyNoegle(),
                   }),
                 })
@@ -475,7 +505,7 @@ export default function OptaellingSide() {
       {!laast && (
         <div className="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white/95 p-3 backdrop-blur">
           <div className="mx-auto flex max-w-lg items-center gap-2">
-            <StemmerKnap onVare={stemmer} />
+            <StemmerKnap onVare={nr => stemmer(nr, false)} aaben={stemmerDialog} setAaben={setStemmerDialog} />
             <button
               onClick={send}
               disabled={travl || varer.length === 0}
@@ -542,51 +572,93 @@ function NyHylde({ lokation, onOprettet }: { lokation: string; onOprettet: (h: H
   )
 }
 
-/** Der vejes ikke: ved tvivl anslår optælleren, og linjen mærkes ANSLÅET. */
-function AnslaaAntal({
-  vare, onLuk, onGemt,
-}: {
-  vare: { itemNo: string; navn: string; uom: string }
-  onLuk: () => void
-  onGemt: (antal: number) => void
-}) {
-  const [tekst, setTekst] = useState('')
-  const antal = Number(tekst.replace(',', '.'))
+/**
+ * Varens billede, slået op på varenummer. Kan skiftes fra terminalen: står man med
+ * varen i hånden, er det dér det rigtige billede bliver taget — ikke på kontoret.
+ * Billedet gemmes på varen i BC, så portalen og pakkeriet ser det samme.
+ */
+function Varebillede({ itemNo }: { itemNo: string }) {
+  const [version, setVersion] = useState(0)
+  const [fejlet, setFejlet] = useState(false)
+  const [sender, setSender] = useState(false)
+  const filRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setFejlet(false); setVersion(v => v + 1) }, [itemNo])
+
+  async function upload(fil: File) {
+    setSender(true)
+    try {
+      const data = new FormData()
+      data.append('fil', fil)
+      const res = await fetch(`/api/lager/varebillede/${encodeURIComponent(itemNo)}`, {
+        method: 'POST',
+        body: data,
+      })
+      if (res.ok) {
+        setFejlet(false)
+        setVersion(v => v + 1)
+      }
+    } finally {
+      setSender(false)
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40">
-      <div className="w-full max-w-lg rounded-t-3xl bg-white p-4">
-        <h2 className="text-lg font-bold text-gray-900">Anslå antal</h2>
-        <p className="mb-3 text-sm text-gray-500">
-          {vare.itemNo} · {vare.navn} — i {vare.uom}. Linjen bliver mærket <strong>anslået</strong>, så
-          kontoret kan se hvilke tal der er skøn.
-        </p>
-        <input
-          value={tekst}
-          onChange={e => setTekst(e.target.value)}
-          autoFocus
-          inputMode="decimal"
-          placeholder="0"
-          className="w-full rounded-xl border border-gray-300 px-3 py-4 text-center text-3xl font-bold tabular-nums"
-        />
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={() => onGemt(antal)}
-            disabled={!Number.isFinite(antal) || antal === 0}
-            className="flex-1 rounded-xl bg-emerald-700 py-3.5 font-semibold text-white disabled:opacity-40"
-          >
-            <Hash size={16} className="mr-1.5 inline" /> Gem som anslået
-          </button>
-          <button onClick={onLuk} className="rounded-xl px-4 text-gray-500">Fortryd</button>
-        </div>
-      </div>
+    <div className="shrink-0">
+      <button
+        type="button"
+        onClick={() => filRef.current?.click()}
+        className="relative block h-16 w-16 overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200"
+        title="Tryk for at tage eller vælge et nyt billede"
+      >
+        {!fejlet ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={version}
+            src={`/api/lager/varebillede/${encodeURIComponent(itemNo)}?v=${version}`}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={() => setFejlet(true)}
+          />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-gray-400">
+            <ImagePlus size={22} />
+          </span>
+        )}
+        {sender && (
+          <span className="absolute inset-0 flex items-center justify-center bg-white/70 text-[10px] font-semibold">
+            sender…
+          </span>
+        )}
+      </button>
+      <input
+        ref={filRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={e => {
+          const f = e.target.files?.[0]
+          if (f) upload(f)
+          e.target.value = ''
+        }}
+      />
     </div>
   )
 }
 
-/** "Stemmer": godkend BC's tal på en vare uden at tælle den. */
-function StemmerKnap({ onVare }: { onVare: (itemNo: string) => void }) {
-  const [aaben, setAaben] = useState(false)
+/**
+ * "Stemmer": godkend BC's tal på en vare uden at tælle den.
+ * Åben/luk styres UDEFRA, så siden kan sætte scannefeltets fokus-jagt på pause
+ * mens dialogen er fremme — ellers river scannefeltet tastaturet til sig igen.
+ */
+function StemmerKnap({
+  onVare, aaben, setAaben,
+}: {
+  onVare: (itemNo: string) => void
+  aaben: boolean
+  setAaben: (v: boolean) => void
+}) {
   const [nr, setNr] = useState('')
 
   if (!aaben) {

@@ -238,11 +238,20 @@ export async function bekraeftVare(
   itemNo: string,
   locationCode: string,
   brugerNavn: string,
-): Promise<{ ok: boolean; fejl?: string }> {
+  erstat = false,
+): Promise<{ ok: boolean; fejl?: string; antal?: number }> {
   const bc = await resolveBarcode(itemNo, locationCode, 'optaelling')
   if (!bc || !bc.found) return { ok: false, fejl: 'Varen kunne ikke slås op i BC' }
   const { antal } = await vareTotal(countId, itemNo)
-  if (antal > 0) return { ok: false, fejl: 'Varen er allerede talt på denne optælling' }
+  // "Stemmer på antal" midt i en optælling: man har talt noget, kigget på BC's tal
+  // og afgjort at BC har ret. Så skal det talte VÆK — ellers lægges de to sammen.
+  if (antal > 0 && erstat) {
+    await prisma.$executeRaw`
+      DELETE FROM "LagerCountLine" WHERE "countId" = ${countId} AND "itemNo" = ${itemNo.toUpperCase()}
+    `
+  } else if (antal > 0) {
+    return { ok: false, fejl: 'Varen er allerede talt på denne optælling' }
+  }
   await tilfoejLinje(
     countId,
     {
@@ -255,7 +264,7 @@ export async function bekraeftVare(
     },
     brugerNavn,
   )
-  return { ok: true }
+  return { ok: true, antal: bc.inventory }
 }
 
 export interface OptaellingLinje {

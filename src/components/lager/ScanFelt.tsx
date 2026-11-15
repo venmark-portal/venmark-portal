@@ -18,10 +18,15 @@ export default function ScanFelt({
   onScan,
   travl = false,
   placeholder = 'Scan stregkode',
+  pause = false,
 }: {
   onScan: (kode: string) => void
   travl?: boolean
   placeholder?: string
+  /** Slår fokus-jagten HELT fra. Sættes når en dialog er åben: at gætte på
+   *  document.activeElement er ikke nok, for på en telefon flytter skærmtastaturet
+   *  rundt på fokus af sig selv, og så stjal feltet indtastningen alligevel. */
+  pause?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [vaerdi, setVaerdi] = useState('')
@@ -43,7 +48,7 @@ export default function ScanFelt({
   // antal, river vi bogstaverne ud af hånden på dem — og det er præcis sådan
   // "Anslå antal" var umulig at udfylde.
   useEffect(() => {
-    if (kamera) return
+    if (kamera || pause) return
     const iBrug = () => {
       const a = document.activeElement as HTMLElement | null
       if (!a || a === document.body) return false
@@ -54,7 +59,7 @@ export default function ScanFelt({
     tag()
     const i = window.setInterval(tag, 1500)
     return () => window.clearInterval(i)
-  }, [kamera])
+  }, [kamera, pause])
 
   function send(kode: string) {
     const renset = kode.trim().replace(/\+/g, '-')
