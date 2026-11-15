@@ -2,8 +2,8 @@
 // kunde (RobotKontekst): kundens priser, kundens leveringsform, kundens ordrer. Robotten
 // kan ikke spørge til andre kunder, fordi kundenummeret aldrig er et input.
 //
-// Første trin er kun læsning + "send til kontoret". Robotten lægger ikke i kurven og
-// opretter ikke ordrer.
+// Robotten kan læse, sende en besked til kontoret og lægge i kurven (./kurv.ts). Den
+// opretter aldrig ordrer — kunden sender selv fra bestillingssiden.
 //
 // Svarene er kompakt JSON. Robotten får dem ordret, så hold dem korte: hver ekstra
 // linje betales ved hvert efterfølgende kald i samme svar.
@@ -23,6 +23,7 @@ import { ymdLokal } from '@/lib/aabenOrdre'
 import { addBusinessDays } from '@/lib/dateUtils'
 import { RobotKontekst, prisFor, trappeFor } from './kontekst'
 import { soegKatalog } from '@/lib/katalogSoeg'
+import { KURV_VAERKTOEJER, koerKurvVaerktoej } from './kurv'
 
 const MAX_VARER = 12
 
@@ -102,6 +103,7 @@ export const VAERKTOEJER: Tool[] = [
       required: ['besked'],
     },
   },
+  ...KURV_VAERKTOEJER,
 ]
 
 type VaerktoejSvar = Record<string, unknown> | unknown[]
@@ -116,7 +118,7 @@ export async function koerVaerktoej(navn: string, input: any, ctx: RobotKontekst
     case 'mine_ordrer':         return mineOrdrer(ctx)
     case 'mine_favoritter':     return mineFavoritter(ctx)
     case 'send_til_kontoret':   return sendTilKontoret(String(input?.besked ?? ''), ctx)
-    default:                    return { fejl: `Ukendt værktøj: ${navn}` }
+    default:                    return (await koerKurvVaerktoej(navn, input, ctx)) ?? { fejl: `Ukendt værktøj: ${navn}` }
   }
 }
 

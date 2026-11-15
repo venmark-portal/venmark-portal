@@ -16,6 +16,7 @@ interface Tur {
   id?: number              // robottens svar-id (fra 'slut') — bruges til 👍/👎
   vurdering?: 1 | -1
   kommentarSendt?: boolean
+  kurv?: boolean            // robotten ændrede kurven i dette svar → "Se kurven"
 }
 
 const NOEGLE = 'venmark-robot'
@@ -115,6 +116,7 @@ export default function RobotChat() {
         tilfoej(res.status === 429 ? t('loft') : t('fejl'))
         return
       }
+      let kurvAendret = false
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let buf = ''
@@ -136,6 +138,14 @@ export default function RobotChat() {
             return kopi
           })
           else if (h.t === 'fejl') tilfoej(h.v ?? t('fejl'))
+          else if (h.t === 'kurv') {
+            kurvAendret = true
+            setTure(prev => {
+              const kopi = prev.slice()
+              kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], kurv: true }
+              return kopi
+            })
+          }
           else if (h.t === 'slut' && h.v) {
             const id = Number(h.v)
             setTure(prev => {
@@ -145,6 +155,11 @@ export default function RobotChat() {
             })
           }
         }
+      }
+      // Står kunden på bestillingssiden, viser den stadig den gamle kurv — og ville gemme den
+      // oven i robottens ved næste ændring. Genindlæs (samtalen ligger i sessionStorage).
+      if (kurvAendret && window.location.pathname.startsWith('/portal/bestil')) {
+        setTimeout(() => window.location.reload(), 600)
       }
     } catch {
       tilfoej(t('fejl'))
@@ -262,6 +277,11 @@ export default function RobotChat() {
                   {tur.tekst
                     ? <Tekst s={tur.tekst} />
                     : <span className="text-gray-500">{opslagTekst}</span>}
+                  {tur.kurv && (
+                    <a href="/portal/bestil" className="mt-2 block w-fit rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+                      {t('seKurven')}
+                    </a>
+                  )}
                   {tur.rolle === 'robot' && tur.id && (
                     <Vurdering tur={tur} t={t} onVurder={(v, k) => vurder(i, v, k)} />
                   )}
