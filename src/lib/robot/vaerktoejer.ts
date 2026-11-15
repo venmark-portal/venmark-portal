@@ -12,16 +12,17 @@ import { randomUUID } from 'crypto'
 import type { Tool } from '@anthropic-ai/sdk/resources/messages'
 import { prisma } from '@/lib/prisma'
 import {
-  getItems, getItemsByNumbers, getItemAvailabilities, getCartCoverage, getItemsUoMs,
+  getItemsByNumbers, getItemAvailabilities, getCartCoverage, getItemsUoMs,
   getItemsAttributeValues, getCustomerOrders, getPortalLineStatuses, getCustomerFavorites,
   getStandingOrderLines, getItemCutoffs, pushBeskedTilBC, flagBeskedUlaest,
   type BCItem, type BCItemAvailability,
 } from '@/lib/businesscentral'
-import { oversaetVarenavne, getVarenavne } from '@/lib/i18n/portal/varenavne'
+import { oversaetVarenavne } from '@/lib/i18n/portal/varenavne'
 import { bcOrdreLevering } from '@/lib/tilfoejOrdre'
 import { ymdLokal } from '@/lib/aabenOrdre'
 import { addBusinessDays } from '@/lib/dateUtils'
 import { RobotKontekst, prisFor, trappeFor } from './kontekst'
+import { soegKatalog } from './katalog'
 
 const MAX_VARER = 12
 
@@ -29,12 +30,16 @@ export const VAERKTOEJER: Tool[] = [
   {
     name: 'soeg_varer',
     description:
-      'Søg i Venmarks sortiment efter varer kunden kan bestille. Søg på fiskeart eller produkt (fx "torsk", "laks røget", "rejer"), ' +
-      'eller på varenummer. Giver varenr., navn, kundens pris pr. enhed og hvor meget der kan leveres på kundens NÆSTE leveringsdag. ' +
-      'Søg med ét eller to ord ad gangen; prøv evt. flere søgninger (fx både "rødspætte" og "spætte").',
+      'Søg i Venmarks sortiment efter varer kunden kan bestille. Søg på fiskeart, produkt, oprindelse eller leverandør ' +
+      '(fx "torsk", "laks røget", "laks bakka", "rejer") eller et varenummer. Alle ord skal passe, store/små bogstaver er ligegyldige. ' +
+      'Giver varenr., navn, kundens pris og hvor meget der kan leveres på leveringsdatoen (standard: kundens næste leveringsdag) ' +
+      'samt bestillingsfristen — så du ikke behøver kalde leveringsdage/kan_leveres bagefter. Finder du intet, så prøv færre eller andre ord.',
     input_schema: {
       type: 'object',
-      properties: { soegeord: { type: 'string', description: 'Søgeord på dansk, fx "torsk" — eller et varenummer' } },
+      properties: {
+        soegeord:      { type: 'string', description: 'Søgeord, fx "torsk" eller "laks bakka" — eller et varenummer' },
+        leveringsdato: { type: 'string', description: 'Valgfri YYYY-MM-DD; udelad for næste leveringsdag' },
+      },
       required: ['soegeord'],
     },
   },
@@ -103,7 +108,7 @@ type VaerktoejSvar = Record<string, unknown> | unknown[]
 
 export async function koerVaerktoej(navn: string, input: any, ctx: RobotKontekst): Promise<VaerktoejSvar> {
   switch (navn) {
-    case 'soeg_varer':          return soegVarer(String(input?.soegeord ?? ''), ctx)
+    case 'soeg_varer':          return soegVarer(String(input?.soegeord ?? ''), String(input?.leveringsdato ?? ''), ctx)
     case 'dagens_anbefalinger': return dagensAnbefalinger(ctx)
     case 'vare_detaljer':       return vareDetaljer(arr(input?.varenumre), ctx)
     case 'kan_leveres':         return kanLeveres(arr(input?.varenumre), String(input?.leveringsdato ?? ''), ctx)
@@ -123,7 +128,7 @@ const idag = () => ymdLokal(new Date())
 
 // ── Fælles: varekort → kompakt linje med pris og levering næste leveringsdag ──
 
-async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string, string> = new Map()) {
+async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string, string> = new Map(), dato = '') {
   const synlige: BCItem[] = []
   for (const i of items) if (await ctx.maaSe(i.number)) synlige.push(i)
   const valgte = synlige.slice(0, MAX_VARER)
@@ -131,9 +136,13 @@ async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string
 
   const nos = valgte.map(i => i.number)
   const [priser, lok, dage, { kundens }] = await Promise.all([
-    ctx.priser(), ctx.lokation(), ctx.leveringsdage(), ctx.metoder(),
+    ctx.priser(), ctx.lokation(), ctx.leveringsdage(20), ctx.metoder(),
   ])
-  const naeste = dage[0]?.dato ?? ''
+  const dag = (dato && dage.find(x => x.dato === dato)) || dage[0]
+  if (dato && dag?.dato !== dato) {
+    return { fejl: `${dato} er ikke en leveringsdag for kunden.`, muligeDage: dage.slice(0, 8).map(x => x.dato) }
+  }
+  const naeste = dag?.dato ?? ''
   const [disp, daekning, oversat] = await Promise.all([
     getItemAvailabilities(lok, nos).catch(() => new Map<string, BCItemAvailability>()),
     naeste
@@ -145,7 +154,8 @@ async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string
   const d = idag()
 
   return {
-    naesteLeveringsdag: naeste || null,
+    leveringsdato: naeste || null,
+    ...(dag ? { bestilSenest: fristTekst(dag.frist) } : {}),
     varer: oversat.map(i => {
       const p = prisFor(i.number, priser, d)
       const a = disp.get(i.number)
@@ -155,7 +165,7 @@ async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string
         navn:   i.displayName,
         pris:   p ? `${p.pris.toFixed(2)} kr./${p.enhed || i.baseUnitOfMeasureCode}` : 'ingen fast pris — dagspris, spørg kontoret',
         basisenhed: i.baseUnitOfMeasureCode,
-        kanLeveresNaesteLeveringsdag:
+        kanLeveres:
           m === undefined ? 'ukendt' : m < 0 ? 'ja, intet loft' : m <= 0 ? 'nej, udsolgt til den dag' : `op til ${m} ${i.baseUnitOfMeasureCode}`,
         ...(a?.strengtLager && (a.disponibelt ?? 0) <= 0 && a.naesteLevering ? { igenFra: a.naesteLevering } : {}),
         ...(a?.daekketFra && m !== undefined && m >= 0 ? { ubegraensetFra: a.daekketFra } : {}),
@@ -168,22 +178,23 @@ async function varelinjer(items: BCItem[], ctx: RobotKontekst, noter: Map<string
 
 // ── soeg_varer ────────────────────────────────────────────────────────────────
 
-async function soegVarer(q: string, ctx: RobotKontekst) {
-  q = q.trim().replace(/'/g, '')
+async function soegVarer(q: string, dato: string, ctx: RobotKontekst) {
+  q = q.trim()
   if (q.length < 2) return { fejl: 'Søgeordet er for kort.' }
-  const res = await getItems({ search: q, top: 30 }).catch(() => ({ value: [] as BCItem[] }))
-  const items: BCItem[] = [...(res.value ?? [])]
-  // BC søger kun i de danske navne — på engelsk/tysk også i de oversatte.
-  if (ctx.kunde.sprog !== 'da') {
-    const navne = await getVarenavne(ctx.kunde.sprog).catch(() => new Map<string, string>())
-    const har = new Set(items.map(i => i.number))
-    const ekstra = Array.from(navne.entries())
-      .filter(([nr, navn]) => !har.has(nr) && navn.toLowerCase().includes(q.toLowerCase()))
-      .map(([nr]) => nr).slice(0, 20)
-    if (ekstra.length) items.push(...await getItemsByNumbers(ekstra).catch(() => []))
-  }
-  const svar = await varelinjer(items, ctx)
-  return svar.varer.length ? svar : { varer: [], besked: `Ingen varer fundet for "${q}". Prøv et andet ord.` }
+  const fundne = await soegKatalog(q, ctx.kunde.sprog)
+  // Kun varer kunden må se — og dem med en pris til kunden først (de er i kundens sortiment).
+  const [priser, synlige] = await Promise.all([ctx.priser(), Promise.all(fundne.map(n => ctx.maaSe(n)))])
+  const harPris = new Set(priser.map(p => p.itemNo))
+  const tilladte = fundne.filter((_, i) => synlige[i])
+  const sorteret = [...tilladte.filter(n => harPris.has(n)), ...tilladte.filter(n => !harPris.has(n))]
+  if (!sorteret.length) return { varer: [], besked: `Ingen varer fundet for "${q}". Prøv færre eller andre ord.` }
+  const items = await getItemsByNumbers(sorteret.slice(0, MAX_VARER)).catch(() => [] as BCItem[])
+  const orden = new Map(sorteret.map((n, i) => [n, i]))
+  items.sort((a, b) => (orden.get(a.number) ?? 99) - (orden.get(b.number) ?? 99))
+  const svar = await varelinjer(items, ctx, new Map(), /^\d{4}-\d{2}-\d{2}$/.test(dato) ? dato : '')
+  return sorteret.length > MAX_VARER
+    ? { ...svar, flere: `${sorteret.length - MAX_VARER} varer mere matcher — spørg kunden om størrelse/type, eller søg mere præcist.` }
+    : svar
 }
 
 // ── dagens_anbefalinger ───────────────────────────────────────────────────────

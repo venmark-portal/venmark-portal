@@ -89,7 +89,8 @@ export async function koerSamtale(
     const resultater: ToolResultBlockParam[] = []
     for (const blok of msg.content) {
       if (blok.type !== 'tool_use') continue
-      brugte.push(blok.name)
+      // Navn + input i loggen, så vi kan se hvad robotten søgte på (fx "laks bakka").
+      brugte.push(`${blok.name}${JSON.stringify(blok.input ?? {}).slice(0, 120)}`)
       on.vaerktoej(blok.name)
       let indhold: string
       try {
