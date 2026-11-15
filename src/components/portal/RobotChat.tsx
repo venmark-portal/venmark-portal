@@ -5,9 +5,13 @@
 //
 // Portalens menu bruger almindelige links (hel sidegenindlæsning), så samtalen gemmes i
 // sessionStorage og overlever et sideskift. En ny fane = en ny samtale.
+//
+// Stemme: browserens egen talegenkendelse (Web Speech API) laver tale om til tekst, og svaret
+// læses op med browserens stemme — robotten får præcis samme tekst som hvis kunden skrev,
+// så det koster ingen ekstra tokens. Spurgt med stemmen → svaret læses op (hænderne fri i bilen).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useT } from '@/lib/i18n/portal/LangProvider'
+import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
 import { robotDict } from '@/lib/i18n/portal/dict/robot'
 
 interface Tur {
@@ -37,7 +41,24 @@ function laes(): { samtaleId: string; ture: Tur[]; aaben: boolean } {
 
 /** Bestillingssiden med robottens leveringsdag valgt. */
 function bestilUrl(dato?: string): string {
-  return dato && /^d{4}-d{2}-d{2}$/.test(dato) ? `/portal/bestil?dato=${dato}` : '/portal/bestil'
+  return dato && /^\d{4}-\d{2}-\d{2}$/.test(dato) ? `/portal/bestil?dato=${dato}` : '/portal/bestil'
+}
+
+/** Talegenkenderen (Chrome/Edge/Safari) — Firefox har ingen. */
+function talegenkender(): any {
+  if (typeof window === 'undefined') return null
+  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null
+}
+
+/** Svaret som sætninger til oplæsning: uden **fed** og varenumre i parentes. Korte bidder, fordi
+ *  Chrome stopper lange oplæsninger midtvejs. */
+function oplaesningsBidder(tekst: string): string[] {
+  return tekst
+    .replace(/\*\*/g, '')
+    .replace(/\s*\((\d{4,6})\)/g, '')
+    .split(/(?<=[.!?:])\s+|\n+/)
+    .map(s => s.replace(/^[-•]\s*/, '').trim())
+    .filter(Boolean)
 }
 
 /** **fed** og linjeskift — mere markdown skriver robotten ikke. */
@@ -81,6 +102,7 @@ function Vurdering({ tur, t, onVurder }: { tur: Tur; t: (k: any) => string; onVu
 
 export default function RobotChat() {
   const t = useT(robotDict)
+  const locale = useLocale()
   const [aktiv, setAktiv]         = useState(false)
   const [initiativ, setInitiativ] = useState(false)
   const [aaben, setAaben]         = useState(false)
@@ -92,6 +114,40 @@ export default function RobotChat() {
   const listeRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const startet  = useRef(false)
+
+  // Stemme
+  const [kanTale, setKanTale]       = useState(false)
+  const [lytter, setLytter]         = useState(false)
+  const [taler, setTaler]           = useState(false)
+  const [stemmeFejl, setStemmeFejl] = useState('')
+  const genkender = useRef<any>(null)
+  const oplaes    = useRef(false)   // spørgsmålet blev talt → læs svaret op
+
+  useEffect(() => { setKanTale(!!talegenkender()) }, [])
+
+  const stopOplaesning = () => {
+    try { window.speechSynthesis?.cancel() } catch {}
+    setTaler(false)
+  }
+
+  /** Læs svaret op. `derefter` kører når oplæsningen er færdig (eller ikke kan køre). */
+  const laesOp = (tekst: string, derefter?: () => void) => {
+    const ss = typeof window !== 'undefined' ? window.speechSynthesis : undefined
+    const bidder = oplaesningsBidder(tekst)
+    if (!ss || !bidder.length) { derefter?.(); return }
+    ss.cancel()
+    const sprog = locale.slice(0, 2).toLowerCase()
+    const stemme = ss.getVoices().find(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
+    setTaler(true)
+    bidder.forEach((b, i) => {
+      const u = new SpeechSynthesisUtterance(b)
+      u.lang = locale
+      if (stemme) u.voice = stemme
+      if (i === bidder.length - 1) u.onend = () => { setTaler(false); derefter?.() }
+      u.onerror = () => { setTaler(false); if (i === bidder.length - 1) derefter?.() }
+      ss.speak(u)
+    })
+  }
 
   // Gem samtalen ved hver ændring (ikke mens den første indlæsning står på).
   useEffect(() => {
@@ -127,6 +183,7 @@ export default function RobotChat() {
       let kurvAendret = false
       let kurvDato = ''
       let ordreAendret = false
+      let svar = ''   // det endelige svar (til oplæsning)
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let buf = ''
@@ -139,14 +196,17 @@ export default function RobotChat() {
         for (const d of dele) {
           if (!d.startsWith('data: ')) continue
           const h = JSON.parse(d.slice(6)) as { t: string; v?: string }
-          if (h.t === 'tekst' && h.v) { setOpslag(''); tilfoej(h.v) }
+          if (h.t === 'tekst' && h.v) { setOpslag(''); tilfoej(h.v); svar += h.v }
           else if (h.t === 'vaerktoej') setOpslag(h.v ?? '')
-          else if (h.t === 'ryd') setTure(prev => {
+          else if (h.t === 'ryd') {
             // Robottens arbejdsnoter før et opslag — kun det endelige svar bliver stående.
-            const kopi = prev.slice()
-            kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], tekst: '' }
-            return kopi
-          })
+            svar = ''
+            setTure(prev => {
+              const kopi = prev.slice()
+              kopi[kopi.length - 1] = { ...kopi[kopi.length - 1], tekst: '' }
+              return kopi
+            })
+          }
           else if (h.t === 'fejl') tilfoej(h.v ?? t('fejl'))
           else if (h.t === 'kurv') {
             kurvAendret = true
@@ -170,20 +230,61 @@ export default function RobotChat() {
       }
       // Står kunden på bestillingssiden, viser den stadig den gamle kurv — og ville gemme den
       // oven i robottens ved næste ændring. Genindlæs (samtalen ligger i sessionStorage).
-      if (kurvAendret && window.location.pathname.startsWith('/portal/bestil')) {
-        setTimeout(() => { window.location.href = bestilUrl(kurvDato) }, 600)
-      }
       // Flyttet leveringsdag: ordresiden viser stadig den gamle dag.
-      if (ordreAendret && window.location.pathname.startsWith('/portal/ordrer')) {
-        setTimeout(() => window.location.reload(), 600)
+      let genindlaes: (() => void) | null = null
+      if (kurvAendret && window.location.pathname.startsWith('/portal/bestil')) {
+        genindlaes = () => { window.location.href = bestilUrl(kurvDato) }
+      } else if (ordreAendret && window.location.pathname.startsWith('/portal/ordrer')) {
+        genindlaes = () => window.location.reload()
       }
+      // Spurgt med stemmen → læs svaret op; genindlæs først bagefter, så oplæsningen ikke afbrydes.
+      if (oplaes.current && svar.trim()) laesOp(svar, genindlaes ?? undefined)
+      else if (genindlaes) setTimeout(genindlaes, 600)
     } catch {
       tilfoej(t('fejl'))
     } finally {
+      oplaes.current = false
       setSvarer(false); setOpslag('')
       inputRef.current?.focus()
     }
-  }, [samtaleId, t])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [samtaleId, t, locale])
+
+  /** Mikrofon: tal → teksten vises i feltet mens man taler → sendes når man holder pause. */
+  const lyt = () => {
+    if (lytter) { genkender.current?.stop(); return }
+    const SR = talegenkender()
+    if (!SR || svarer) return
+    stopOplaesning(); setStemmeFejl('')
+    // iOS kræver at oplæsning startes i et klik — en tom oplæsning "låser op" til svaret.
+    try { window.speechSynthesis?.speak(new SpeechSynthesisUtterance('')) } catch {}
+    const r = new SR()
+    r.lang = locale
+    r.interimResults = true
+    r.continuous = false
+    let endelig = ''
+    r.onresult = (e: any) => {
+      let midlertidig = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const x = e.results[i]
+        if (x.isFinal) endelig += x[0].transcript
+        else midlertidig += x[0].transcript
+      }
+      setInput((endelig + midlertidig).trim())
+    }
+    r.onerror = (e: any) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setStemmeFejl(t('mikNaegtet'))
+      else if (e.error !== 'no-speech' && e.error !== 'aborted') setStemmeFejl(t('stemmeFejl'))
+    }
+    r.onend = () => {
+      setLytter(false); genkender.current = null
+      const tekst = endelig.trim()
+      if (tekst) { setInput(''); oplaes.current = true; spoerg(tekst) }
+    }
+    genkender.current = r
+    setLytter(true)
+    try { r.start() } catch { setLytter(false); genkender.current = null }
+  }
 
   // Første indlæsning: er robotten slået til, og skal den selv starte samtalen?
   useEffect(() => {
@@ -225,6 +326,7 @@ export default function RobotChat() {
 
   const nySamtale = () => {
     if (svarer) return
+    stopOplaesning()
     setSamtaleId(nyId()); setTure([])
   }
 
@@ -271,7 +373,7 @@ export default function RobotChat() {
                 className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40">
                 {t('ny')}
               </button>
-              <button type="button" onClick={() => setAaben(false)} aria-label={t('luk')}
+              <button type="button" onClick={() => { genkender.current?.abort(); stopOplaesning(); setAaben(false) }} aria-label={t('luk')}
                 className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
                   <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -310,7 +412,26 @@ export default function RobotChat() {
           </div>
 
           <div className="border-t border-gray-100 px-3 pb-3 pt-2">
+            {taler && (
+              <button type="button" onClick={stopOplaesning}
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>
+                {t('stopOplaesning')}
+              </button>
+            )}
+            {stemmeFejl && <p className="mb-2 text-xs text-red-600">{stemmeFejl}</p>}
             <div className="flex items-end gap-2">
+              {kanTale && (
+                <button type="button" onClick={lyt} disabled={svarer && !lytter}
+                  aria-label={lytter ? t('stopLyt') : t('tal')} title={lytter ? t('stopLyt') : t('tal')} aria-pressed={lytter}
+                  className={'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl transition disabled:opacity-40 ' +
+                    (lytter ? 'animate-pulse bg-red-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3" />
+                    <path strokeLinecap="round" d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                  </svg>
+                </button>
+              )}
               <label htmlFor="robot-input" className="sr-only">{t('placeholder')}</label>
               <textarea
                 id="robot-input"
@@ -319,7 +440,7 @@ export default function RobotChat() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                placeholder={t('placeholder')}
+                placeholder={lytter ? t('lytter') : t('placeholder')}
                 maxLength={2000}
                 className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 md:text-sm"
               />

@@ -28,6 +28,10 @@ export const robotDict = defineDict({
     hvadForkert: 'Hvad var forkert? (valgfrit)',
     seKurven: 'Se kurven og send bestillingen →',
     vt_tidligere_koeb: 'Kigger på dine tidligere køb…', vt_se_kurv: 'Kigger i kurven…', vt_laeg_i_kurv: 'Lægger i kurven…', vt_flyt_leveringsdag: 'Tjekker leveringsdagen på ordren…',
+    tal: 'Tal i stedet for at skrive', stopLyt: 'Stop med at lytte', lytter: 'Lytter … tal nu',
+    stopOplaesning: 'Stop oplæsning',
+    mikNaegtet: 'Mikrofonen er ikke tilladt. Giv portalen adgang til mikrofonen i browserens indstillinger.',
+    stemmeFejl: 'Talen kunne ikke opfattes. Prøv igen, eller skriv.',
   },
   en: {
     aabn: 'Ask the Venmark assistant',
@@ -55,6 +59,10 @@ export const robotDict = defineDict({
     hvadForkert: 'What was wrong? (optional)',
     seKurven: 'View cart and send order →',
     vt_tidligere_koeb: 'Checking your previous purchases…', vt_se_kurv: 'Checking your cart…', vt_laeg_i_kurv: 'Adding to cart…', vt_flyt_leveringsdag: 'Checking the order’s delivery day…',
+    tal: 'Speak instead of typing', stopLyt: 'Stop listening', lytter: 'Listening … speak now',
+    stopOplaesning: 'Stop reading aloud',
+    mikNaegtet: 'The microphone is not allowed. Give the portal access to the microphone in your browser settings.',
+    stemmeFejl: 'Your speech could not be recognised. Try again, or type.',
   },
   de: {
     aabn: 'Venmark-Assistent fragen',
@@ -82,5 +90,9 @@ export const robotDict = defineDict({
     hvadForkert: 'Was war falsch? (optional)',
     seKurven: 'Warenkorb ansehen und Bestellung senden →',
     vt_tidligere_koeb: 'Ihre früheren Käufe werden geprüft…', vt_se_kurv: 'Warenkorb wird geprüft…', vt_laeg_i_kurv: 'Wird in den Warenkorb gelegt…', vt_flyt_leveringsdag: 'Liefertag der Bestellung wird geprüft…',
+    tal: 'Sprechen statt tippen', stopLyt: 'Zuhören beenden', lytter: 'Hört zu … bitte sprechen',
+    stopOplaesning: 'Vorlesen beenden',
+    mikNaegtet: 'Das Mikrofon ist nicht erlaubt. Erlauben Sie dem Portal den Mikrofonzugriff in den Browsereinstellungen.',
+    stemmeFejl: 'Die Sprache wurde nicht erkannt. Bitte erneut versuchen oder tippen.',
   },
 })
