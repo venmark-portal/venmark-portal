@@ -32,6 +32,12 @@ export default function Bemaerkning({
   const [kanTale, setKanTale] = useState(false)
   const [talefejl, setTalefejl] = useState('')
   const genkenderRef = useRef<any>(null)
+  // Det der stod i feltet da vi begyndte at lytte, og de færdige stumper vi har fået
+  // siden, gemt under hver sit nummer. Ligger uden for React-state, fordi
+  // talegenkendelsen fyrer mange gange i sekundet og skal kunne regne teksten forfra
+  // hver gang uden at vente på en gentegning.
+  const basisRef = useRef('')
+  const stumperRef = useRef<string[]>([])
 
   useEffect(() => {
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
@@ -47,15 +53,48 @@ export default function Bemaerkning({
       setLytter(false)
       return
     }
+    // Luk en gammel genkender HELT ned først. To genkendere i gang samtidig skriver
+    // oven i hinanden, og så står teksten dobbelt uanset hvad vi ellers gør.
+    if (genkenderRef.current) {
+      try {
+        genkenderRef.current.onresult = null
+        genkenderRef.current.onend = null
+        genkenderRef.current.onerror = null
+        genkenderRef.current.abort()
+      } catch { /* ingen */ }
+      genkenderRef.current = null
+    }
+
     const g = new SR()
     g.lang = 'da-DK'
     g.interimResults = true
     g.continuous = false
+    g.maxAlternatives = 1
+    basisRef.current = tekst
+    stumperRef.current = []
     g.onresult = (e: any) => {
-      let ny = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) ny += e.results[i][0].transcript
-      // Læg til det der allerede står, så man kan tale i flere omgange.
-      setTekst(t => (t ? `${t} ${ny}` : ny).trim().slice(0, MAKS))
+      // Talegenkendelsen sender den SAMME sætning igen og igen mens den retter sig
+      // selv undervejs ("to kass…" → "to kasser" → "to kasser står…"). Lægger man
+      // hver besked til teksten, står ordene fem-ti gange i feltet.
+      // Derfor: gem hver færdig stump under sit nummer, og byg teksten forfra hver
+      // gang. Så gør det ingen skade at samme stump kommer flere gange.
+      let foreloebig = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        const t = String(r?.[0]?.transcript ?? '')
+        if (r?.isFinal) stumperRef.current[i] = t
+        else foreloebig += t
+      }
+      const faerdig = stumperRef.current
+        .filter(Boolean)
+        .join(' ')
+      setTekst(
+        [basisRef.current, faerdig, foreloebig]
+          .map(d => d.trim())
+          .filter(Boolean)
+          .join(' ')
+          .slice(0, MAKS),
+      )
     }
     // Fejl må ALDRIG være tavse her. Mikrofon-adgang kan være nægtet, og
     // talegenkendelsen kræver netværk — begge dele ser ud som "der sker ingenting",
