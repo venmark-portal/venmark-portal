@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useT, useLocale } from '@/lib/i18n/portal/LangProvider'
 import { robotDict } from '@/lib/i18n/portal/dict/robot'
+import { useDiktat } from '@/lib/tale/optager'
 
 interface Tur {
   rolle: 'kunde' | 'robot'
@@ -86,6 +87,17 @@ function oplaesningsBidder(tekst: string): string[] {
     .split(/(?<=[.!?:])\s+|\n+/)
     .map(s => s.replace(/^[-•]\s*/, '').trim())
     .filter(Boolean)
+}
+
+/** Ordbog til diktaten: de varenavne robotten SELV har nævnt i samtalen. Det er dem,
+ *  kunden gentager ("så tager jeg to kasser af den"), og dem en talemodel ellers gætter
+ *  galt på. De faste fiskeord ligger på serveren. */
+function samtaleOrd(ture: Tur[]): string[] {
+  const ord = new Set<string>()
+  for (const tur of ture.slice(-6)) {
+    for (const m of (tur.tekst ?? '').matchAll(/\*\*([^*]{3,60})\*\*/g)) ord.add(m[1].trim())
+  }
+  return [...ord].slice(0, 40)
 }
 
 /** **fed** og linjeskift — mere markdown skriver robotten ikke. */
@@ -168,6 +180,9 @@ export default function RobotChat() {
   const serverTale = useRef(false)
   const lydRef = useRef<HTMLAudioElement | null>(null)
   const [lydStatus, setLydStatus] = useState('')
+  // Diktaten laves længere nede (den skal kende `spoerg`), men "læg på" ligger ovenfor
+  // og skal kunne afbryde en optagelse midt i en sætning.
+  const afbrydDiktat = useRef<() => void>(() => {})
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
 
@@ -237,6 +252,7 @@ export default function RobotChat() {
     try { sessionStorage.removeItem(KALD) } catch {}
     try { genkender.current?.abort() } catch {}
     genkender.current = null
+    afbrydDiktat.current()
     setLytter(false)
     stopOplaesning()
   }
@@ -487,6 +503,38 @@ export default function RobotChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [samtaleId, t, locale])
 
+  /** Mikrofonen over serveren: hele sætningen optages og sendes på én gang, og VI hører
+   *  efter, hvornår kunden holder op med at tale (ellers er samtalen ikke håndfri).
+   *  Browserens egen genkendelse hørte "10 kg laksefilet" som "10 kW" (Claus 16-11) og
+   *  findes slet ikke på iPhone. Er der ingen nøgle på serveren, bruges browseren som før. */
+  const diktat = useDiktat(
+    tekst => {
+      // Lagde kunden på, mens teksten var undervejs, må den ikke sende sig selv af sted
+      // bagefter. Den skal heller ikke smides væk: den lander i feltet, klar til Send.
+      if (!kald.current) { setInput(tekst); return }
+      stille.current = 0; setInput(''); oplaes.current = true; spoerg(tekst)
+    },
+    () => samtaleOrd(ture),
+    {
+      stilhedMs: 1800,          // færdig, når der har været stille i knap 2 sek.
+      opstartMs: 9000,          // tid til at komme i gang
+      onSlut: fikTekst => {
+        setLytter(false)
+        if (fikTekst || !kald.current) return
+        // Stilhed: i en åben samtale lytter vi videre — kunden lægger selv på. Men
+        // mikrofonen må ikke stå åben for evigt i lommen.
+        stille.current += 1
+        if (stille.current >= MAKS_STILLE) { laegPaa(); return }
+        window.setTimeout(() => { if (kald.current) lytRef.current?.() }, 300)
+      },
+    },
+  )
+  afbrydDiktat.current = diktat.afbryd
+  // Mikrofonknappen skal frem, hvis EN af de to veje virker — serverdiktaten virker også
+  // på iPhone, hvor browseren ikke kan genkende tale.
+  const kanStemme = kanTale || diktat.klar
+  const lytterNu = lytter || diktat.optager
+
   /** Mikrofon: tal → teksten vises i feltet mens man taler → sendes når man holder pause.
    *
    *  `nytKald` = kunden trykkede på mikrofonen. Så er det en ÅBEN samtale: vi lytter igen efter
@@ -495,16 +543,21 @@ export default function RobotChat() {
    *  Vi lytter ikke, mens robotten taler — ellers hører den sig selv i højttaleren. */
   const startLyt = (nytKald = false) => {
     const SR = talegenkender()
-    if (!SR) return
+    if (!SR && !diktat.klar) return
     if (nytKald) {
       kald.current = true
       stille.current = 0
       setIKald(true)
       try { sessionStorage.setItem(KALD, String(Date.now())) } catch {}
     }
-    if (genkender.current || svarerRef.current || talerRef.current) return
+    if (genkender.current || diktat.optager || diktat.skriver || svarerRef.current || talerRef.current) return
     stopOplaesning(); setStemmeFejl('')
     laasOpStemme()
+    if (diktat.klar) {
+      if (kald.current) { try { sessionStorage.setItem(KALD, String(Date.now())) } catch {} }
+      void diktat.start()
+      return
+    }
     const r = new SR()
     r.lang = locale
     r.interimResults = true
@@ -579,7 +632,9 @@ export default function RobotChat() {
         // efter, så mikrofonen ikke åbner af sig selv næste gang portalen bruges.
         let kaldTid = 0
         try { kaldTid = Number(sessionStorage.getItem(KALD) ?? 0) } catch {}
-        if (s.aktiv && kaldTid > 0 && Date.now() - kaldTid < 90_000 && talegenkender()) {
+        // Her tjekker vi IKKE om browseren kan genkende tale: nøglen i sessionen bliver
+        // kun sat, når en samtale faktisk er startet, og startLyt vælger selv vejen.
+        if (s.aktiv && kaldTid > 0 && Date.now() - kaldTid < 90_000) {
           setAaben(true)
           window.setTimeout(() => lytRef.current?.(true), 500)
         } else if (kaldTid) {
@@ -741,15 +796,15 @@ export default function RobotChat() {
             )}
             {iKald && (
               <p className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-900">
-                <span className={'h-2 w-2 shrink-0 rounded-full ' + (lytter ? 'animate-pulse bg-red-600' : 'bg-blue-400')} aria-hidden="true" />
-                <span className="font-medium">{taler ? t('robotTaler') : lytter ? t('lytter') : t('etOejeblik')}</span>
+                <span className={'h-2 w-2 shrink-0 rounded-full ' + (lytterNu ? 'animate-pulse bg-red-600' : 'bg-blue-400')} aria-hidden="true" />
+                <span className="font-medium">{taler ? t('robotTaler') : lytterNu ? t('lytter') : t('etOejeblik')}</span>
                 <span className="ml-auto shrink-0 text-blue-700">{t('kaldAaben')}</span>
               </p>
             )}
-            {stemmeFejl && <p className="mb-2 text-xs text-red-600">{stemmeFejl}</p>}
+            {(stemmeFejl || diktat.fejl) && <p className="mb-2 text-xs text-red-600">{diktat.fejl || stemmeFejl}</p>}
             {lydStatus && <p className="mb-2 text-xs text-emerald-700">{lydStatus}</p>}
             <div className="flex items-end gap-2">
-              {kanTale && (iKald ? (
+              {kanStemme && (iKald ? (
                 // Åben samtale: kunden lægger selv på, når han ikke vil mere.
                 <button type="button" onClick={laegPaa}
                   aria-label={t('laegPaa')} title={t('laegPaa')}
@@ -760,7 +815,7 @@ export default function RobotChat() {
                   {t('laegPaa')}
                 </button>
               ) : (
-                <button type="button" onClick={() => startLyt(true)} disabled={svarer}
+                <button type="button" onClick={() => startLyt(true)} disabled={svarer || diktat.skriver}
                   aria-label={t('tal')} title={t('tal')}
                   className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition hover:bg-gray-200 disabled:opacity-40">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
@@ -777,7 +832,7 @@ export default function RobotChat() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                placeholder={lytter ? t('lytter') : t('placeholder')}
+                placeholder={lytterNu ? t('lytter') : t('placeholder')}
                 maxLength={2000}
                 className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 md:text-sm"
               />

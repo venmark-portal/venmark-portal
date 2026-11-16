@@ -10,6 +10,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+export interface DiktatValg {
+  /** Stop af sig selv, når der har været stille så længe (ms). 0 = brugeren trykker Stop.
+   *  Robotsamtalen skal være håndfri, så dér lytter vi på lyden og klipper selv. */
+  stilhedMs?: number
+  /** Hvor længe vi venter på, at der kommer tale i det hele taget (ms). */
+  opstartMs?: number
+  /** Optagelsen er slut og teksten afleveret. `fikTekst` er falsk, hvis der ikke kom ord
+   *  ud af den — så ved en åben samtale, at den skal lytte igen i stedet for at svare. */
+  onSlut?: (fikTekst: boolean) => void
+}
+
 export interface Diktat {
   /** Har serveren en nøgle? Ellers skal skærmen bruge browserens egen genkendelse. */
   klar: boolean
@@ -20,12 +31,18 @@ export interface Diktat {
   start: () => Promise<void>
   /** Stopper og afleverer teksten. */
   stop: () => void
+  /** Stopper og smider optagelsen væk — fx når samtalen lægges på midt i en sætning. */
+  afbryd: () => void
 }
 
 /** Længste optagelse. Et glemt tryk må ikke blive til en times lyd. */
 const MAKS_MS = 90_000
 
-export function useDiktat(onTekst: (tekst: string) => void, ord: () => string[] = () => []): Diktat {
+export function useDiktat(
+  onTekst: (tekst: string) => void,
+  ord: () => string[] = () => [],
+  valg: DiktatValg = {},
+): Diktat {
   const [klar, setKlar] = useState(false)
   const [optager, setOptager] = useState(false)
   const [skriver, setSkriver] = useState(false)
@@ -35,8 +52,21 @@ export function useDiktat(onTekst: (tekst: string) => void, ord: () => string[] 
   const stopperRef = useRef(0)
   const ordRef = useRef(ord)
   const tekstRef = useRef(onTekst)
+  const valgRef = useRef(valg)
   ordRef.current = ord
   tekstRef.current = onTekst
+  valgRef.current = valg
+  // Lytningen på lydstyrken: AudioContext'en genbruges, fordi en ny der laves uden for
+  // et tryk starter suspenderet på iPhone — og så måler vi stilhed hele vejen.
+  const lydCtxRef = useRef<AudioContext | null>(null)
+  const maalerRef = useRef(0)
+  const taltRef = useRef(false)
+  const afbrudtRef = useRef(false)
+
+  const stopMaaler = useCallback(() => {
+    window.clearInterval(maalerRef.current)
+    maalerRef.current = 0
+  }, [])
 
   useEffect(() => {
     let levende = true
@@ -47,6 +77,7 @@ export function useDiktat(onTekst: (tekst: string) => void, ord: () => string[] 
     return () => {
       levende = false
       window.clearTimeout(stopperRef.current)
+      window.clearInterval(maalerRef.current)
       try { optagerRef.current?.stream.getTracks().forEach(t => t.stop()) } catch {}
     }
   }, [])
@@ -65,16 +96,28 @@ export function useDiktat(onTekst: (tekst: string) => void, ord: () => string[] 
     // sætter filendelsen efter typen, så begge dele kan læses.
     const m = new MediaRecorder(stream)
     bidderRef.current = []
+    afbrudtRef.current = false
+    taltRef.current = !valgRef.current.stilhedMs   // måler vi ikke, antager vi der blev talt
     m.ondataavailable = e => { if (e.data.size) bidderRef.current.push(e.data) }
     m.onstop = async () => {
       window.clearTimeout(stopperRef.current)
+      stopMaaler()
       try { stream.getTracks().forEach(t => t.stop()) } catch {}
       optagerRef.current = null
       setOptager(false)
       const lyd = new Blob(bidderRef.current, { type: m.mimeType || 'audio/webm' })
       bidderRef.current = []
-      if (lyd.size < 1200) { setFejl('Hørte ingenting — prøv igen, og tal tæt på telefonen.'); return }
+      const slut = valgRef.current.onSlut
+      if (afbrudtRef.current) { slut?.(false); return }
+      // Hørte vi aldrig nogen tale, er der ingen grund til at sende 9 sekunders stilhed
+      // op i skyen og betale for den.
+      if (!taltRef.current || lyd.size < 1200) {
+        if (!valgRef.current.stilhedMs) setFejl('Hørte ingenting — prøv igen, og tal tæt på telefonen.')
+        slut?.(false)
+        return
+      }
       setSkriver(true)
+      let fikTekst = false
       try {
         const form = new FormData()
         form.append('lyd', lyd)
@@ -83,23 +126,69 @@ export function useDiktat(onTekst: (tekst: string) => void, ord: () => string[] 
         const data = await res.json().catch(() => ({}))
         if (!res.ok) { setFejl(data.error ?? 'Talegenkendelsen svarede ikke'); return }
         const tekst = String(data.tekst ?? '').trim()
-        if (tekst) tekstRef.current(tekst)
+        if (tekst) { fikTekst = true; tekstRef.current(tekst) }
         else setFejl('Der kom ingen ord ud af optagelsen.')
       } catch {
         setFejl('Kunne ikke nå talegenkendelsen.')
       } finally {
         setSkriver(false)
+        slut?.(fikTekst)
       }
     }
     optagerRef.current = m
     m.start()
     setOptager(true)
     stopperRef.current = window.setTimeout(() => { try { m.stop() } catch {} }, MAKS_MS)
-  }, [])
+
+    if (!valgRef.current.stilhedMs) return
+    const AC = (window as any).AudioContext ?? (window as any).webkitAudioContext
+    if (!AC) { taltRef.current = true; return }   // kan vi ikke måle, lader vi tiden løbe ud
+    try {
+      const ctx: AudioContext = lydCtxRef.current ?? (lydCtxRef.current = new AC())
+      if (ctx.state === 'suspended') await ctx.resume()
+      const kilde = ctx.createMediaStreamSource(stream)
+      const maaler = ctx.createAnalyser()
+      maaler.fftSize = 1024
+      kilde.connect(maaler)
+      const data = new Uint8Array(maaler.fftSize)
+      const begyndt = Date.now()
+      let sidsteLyd = begyndt
+      let gulv = 1
+      maalerRef.current = window.setInterval(() => {
+        maaler.getByteTimeDomainData(data)
+        let sum = 0
+        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v }
+        const styrke = Math.sqrt(sum / data.length)
+        const nu = Date.now()
+        // Det første lille stykke bruges til at måle, hvor stille der FAKTISK er. En
+        // kølemotor på lageret eller motorvejsstøj i bilen må ikke tælle som tale.
+        if (nu - begyndt < 400) { gulv = Math.min(gulv, styrke); return }
+        const graense = Math.max(0.02, gulv * 2.5 + 0.01)
+        if (styrke > graense) { taltRef.current = true; sidsteLyd = nu; return }
+        if (!taltRef.current) {
+          if (nu - begyndt > (valgRef.current.opstartMs ?? 9000)) { try { m.stop() } catch {} }
+          return
+        }
+        if (nu - sidsteLyd > (valgRef.current.stilhedMs ?? 1800)) {
+          try { kilde.disconnect() } catch {}
+          try { m.stop() } catch {}
+        }
+      }, 100)
+    } catch {
+      // Kan vi ikke måle lyden, må optagelsen køre til tiden løber ud. Så er samtalen
+      // langsom, men den går ikke i stå.
+      taltRef.current = true
+    }
+  }, [stopMaaler])
 
   const stop = useCallback(() => {
     try { optagerRef.current?.stop() } catch { /* allerede stoppet */ }
   }, [])
 
-  return { klar, optager, skriver, fejl, start, stop }
+  const afbryd = useCallback(() => {
+    afbrudtRef.current = true
+    try { optagerRef.current?.stop() } catch { /* allerede stoppet */ }
+  }, [])
+
+  return { klar, optager, skriver, fejl, start, stop, afbryd }
 }
