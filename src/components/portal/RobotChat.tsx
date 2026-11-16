@@ -52,7 +52,7 @@ function nyId(): string {
   return (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-function laes(): { samtaleId: string; ture: Tur[]; aaben: boolean } {
+function laes(): { samtaleId: string; ture: Tur[]; aaben: boolean; bruger?: string } {
   try {
     const v = JSON.parse(sessionStorage.getItem(NOEGLE) ?? 'null')
     if (v?.samtaleId && Array.isArray(v.ture)) {
@@ -62,7 +62,7 @@ function laes(): { samtaleId: string; ture: Tur[]; aaben: boolean } {
       const frisk = typeof v.tid === 'number'
         && Date.now() - v.tid < PAUSE_MS
         && new Date(v.tid).toDateString() === new Date().toDateString()
-      return frisk ? v : { samtaleId: nyId(), ture: [], aaben: v.aaben === true }
+      return frisk ? v : { samtaleId: nyId(), ture: [], aaben: v.aaben === true, bruger: v.bruger }
     }
   } catch {}
   return { samtaleId: nyId(), ture: [], aaben: false }
@@ -197,6 +197,9 @@ export default function RobotChat() {
   // Diktaten laves længere nede (den skal kende `spoerg`), men "læg på" ligger ovenfor
   // og skal kunne afbryde en optagelse midt i en sætning.
   const afbrydDiktat = useRef<() => void>(() => {})
+  /** Hvem samtalen i sessionStorage tilhører. sessionStorage følger FANEN, ikke logget-ind —
+   *  et rolleskift er en hel sideindlæsning i samme fane, så den gamle samtale kom med over. */
+  const bruger = useRef('')
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
 
@@ -403,7 +406,9 @@ export default function RobotChat() {
   // Gem samtalen ved hver ændring (ikke mens den første indlæsning står på).
   useEffect(() => {
     if (!samtaleId) return
-    try { sessionStorage.setItem(NOEGLE, JSON.stringify({ samtaleId, ture, aaben, tid: Date.now() })) } catch {}
+    try {
+      sessionStorage.setItem(NOEGLE, JSON.stringify({ samtaleId, ture, aaben, tid: Date.now(), bruger: bruger.current }))
+    } catch {}
   }, [samtaleId, ture, aaben])
 
   // Altid nederst — også når panelet først vises (efter status-kaldet ved genindlæsning, fx når
@@ -643,8 +648,23 @@ export default function RobotChat() {
     setSamtaleId(gemt.samtaleId); setTure(gemt.ture); setAaben(gemt.aaben)
     fetch('/api/portal/robot', { cache: 'no-store' })
       .then(r => r.json())
-      .then((s: { aktiv: boolean; initiativ: boolean }) => {
+      .then((s: { aktiv: boolean; initiativ: boolean; bruger?: string }) => {
         setAktiv(s.aktiv); setInitiativ(s.initiativ)
+        bruger.current = s.bruger ?? ''
+        // Er det en ANDEN end den, samtalen blev ført med? Så er den ikke vores: serveren
+        // kender ikke dens ord, og den ville stå og se rigtig ud uden at være det.
+        if (gemt.bruger && s.bruger && gemt.bruger !== s.bruger) {
+          const id = nyId()
+          setSamtaleId(id); setTure([])
+          try { sessionStorage.removeItem(HILST); sessionStorage.removeItem(KALD) } catch {}
+          if (s.aktiv && s.initiativ && !startet.current) {
+            startet.current = true
+            try { sessionStorage.setItem(HILST, '1') } catch {}
+            setAaben(true)
+            spoerg('', true, id)
+          }
+          return
+        }
         let hilst = false
         try { hilst = sessionStorage.getItem(HILST) === '1' } catch {}
         if (s.aktiv && s.initiativ && !hilst && gemt.ture.length === 0 && !startet.current) {

@@ -34,8 +34,13 @@ export default function RolleSkift({ flydende = false }: { flydende?: boolean })
     if (r === nu) { setAaben(false); return }
     setTravl(r); setFejl(false)
     const ny = await skiftRolle(r).catch(() => null)
-    if (somKlientRolle(ny ?? undefined) === r) window.location.href = ROLLE_START[r]
-    else { setTravl(null); setFejl(true) }
+    if (somKlientRolle(ny ?? undefined) === r) {
+      // Alt i sessionStorage hører til den rolle, man forlader — fx robotsamtalen. Det
+      // følger FANEN, ikke logindet, så det stod og så rigtigt ud i den nye rolle, selv om
+      // serveren ikke kendte et ord af det (Claus 16-11).
+      try { sessionStorage.clear() } catch { /* privat vindue */ }
+      window.location.href = ROLLE_START[r]
+    } else { setTravl(null); setFejl(true) }
   }
 
   return (

@@ -40,7 +40,12 @@ export async function GET() {
   const k = await kunde()
   if (!k || !robotKonfigureret()) return NextResponse.json({ aktiv: false, initiativ: false })
   const s = await hentRobotStatus(k.customerId).catch(() => ({ aktiv: false, initiativ: false }))
-  return NextResponse.json(s)
+  // Hvem er logget ind lige nu? Samtalen ligger i sessionStorage, og den OVERLEVER et
+  // rolleskift og et skift til en anden konto i samme fane — så stod den gamle samtale
+  // og så rigtig ud, mens serveren ikke kendte et eneste af dens ord (Claus 16-11).
+  // En admin, der kigger med som kunden, er heller ikke den samme: hans samtale må ikke
+  // ligge og se ud som kundens egen, når kunden selv logger ind i den fane bagefter.
+  return NextResponse.json({ ...s, bruger: k.customerId + (k.somAdmin ? `/${k.somAdmin}` : '') })
 }
 
 export async function PATCH(req: NextRequest) {
