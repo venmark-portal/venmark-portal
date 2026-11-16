@@ -797,7 +797,12 @@ export default function RobotChat() {
             {iKald && (
               <p className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-900">
                 <span className={'h-2 w-2 shrink-0 rounded-full ' + (lytterNu ? 'animate-pulse bg-red-600' : 'bg-blue-400')} aria-hidden="true" />
-                <span className="font-medium">{taler ? t('robotTaler') : lytterNu ? t('lytter') : t('etOejeblik')}</span>
+                <span className="font-medium">
+                  {taler ? t('robotTaler')
+                    : diktat.optager ? t('optagerNu')
+                      : diktat.skriver ? t('skriverNed')
+                        : lytter ? t('lytter') : t('etOejeblik')}
+                </span>
                 <span className="ml-auto shrink-0 text-blue-700">{t('kaldAaben')}</span>
               </p>
             )}

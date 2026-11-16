@@ -18,7 +18,11 @@ const MAKS_BYTES = 8 * 1024 * 1024
  *  browserens egen genkendelse, så knappen aldrig bare er død. */
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if (!token) return new NextResponse('Unauthorized', { status: 401 })
+  // Kan vi ikke se et login, svarer vi stadig: knappen skal vide, om serveren KAN, og
+  // selve optagelsen bliver afvist længere nede, hvis man ikke er logget ind. Ellers
+  // falder en telefon med en sær cookie tavst tilbage på browserens genkendelse, og
+  // det kan man ikke se udefra.
+  if (!token) console.log('[tale] klar-forespørgsel uden login')
   return NextResponse.json({ klar: taleKonfigureret() })
 }
 
@@ -52,7 +56,15 @@ export async function POST(req: NextRequest) {
       : type.includes('wav') ? 'wav' : 'webm'
 
   try {
+    const start = Date.now()
     const tekst = await transskriber(lyd, `diktat.${endelse}`, Array.isArray(ord) ? ord : [])
+    // Logges ALTID. Uden den kan vi ikke se, om en telefon overhovedet nåede serveren,
+    // eller om den faldt tilbage på browserens egen genkendelse — og så leder vi efter
+    // fejlen i modellen i stedet for i vejen derhen (Claus 16-11).
+    console.log(
+      `[tale] diktat ${Date.now() - start}ms, ${Math.round(lyd.size / 1024)} kB ${type},`
+      + ` ${Array.isArray(ord) ? ord.length : 0} egne ord → "${tekst.slice(0, 200)}"`,
+    )
     return NextResponse.json({ tekst })
   } catch (e: any) {
     // Logges med besked: en tavs 500 på en diktat-knap er umulig at fejlsøge bagefter.

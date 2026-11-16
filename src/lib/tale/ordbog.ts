@@ -34,8 +34,11 @@ export function taleOrdbog(egne: string[] = []): string {
     ord.push(t)
     if (ord.length >= 60) break
   }
-  return `Dansk tale fra en fiskegrossist. Antal står som tal med enhed (10 kg, 3 kasser), `
-    + `aldrig som kW eller kilowatt. Størrelser skrives med romertal (str. III) eller interval `
+  // "ti kilo" er korrekt dansk, men ubrugeligt for os: antallet skal kunne læses af en
+  // ordrelinje. Derfor står kravet om cifre først og helt firkantet.
+  return `Dansk tale fra en fiskegrossist. Skriv ALTID antal med cifre og kort enhed: `
+    + `"10 kg", ikke "ti kilo"; "3 kasser", ikke "tre kasser". Enheden kg skrives aldrig `
+    + `som kW eller kilowatt. Størrelser skrives med romertal (str. III) eller interval `
     + `(1700-2100). Ord der kan forekomme: ${ord.join(', ')}.`
 }
 
