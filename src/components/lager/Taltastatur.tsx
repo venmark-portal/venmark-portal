@@ -60,21 +60,24 @@ export default function Taltastatur({
   return (
     <div
       className={
-        'rounded-2xl bg-white p-3 ring-1 ring-gray-200 ' +
+        'rounded-2xl bg-white p-2 ring-1 ring-gray-200 ' +
         // Gulv under tastaturet. Uden det giver flex-1 efter for alt det andet på
         // skærmen, og tasterne bliver presset ned til et par millimeter — ulæselige
         // og umulige at ramme. Er der ikke plads, ruller arbejdsområdet i stedet.
         (fyld ? 'flex min-h-[17rem] flex-1 flex-col' : 'mt-3')
       }
     >
-      <div className="mb-2 flex shrink-0 items-baseline justify-between gap-2 rounded-xl bg-gray-100 px-4 py-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+      {/* Tastaturets display. Lav bjælke — hver millimeter her er en millimeter mindre
+          tast. Teksten siger ERSTATTER, fordi det er dét der sker: tallet træder i
+          stedet for det talte, det lægges ikke til (Claus spurgte 16-11). */}
+      <div className="mb-1.5 flex shrink-0 items-baseline justify-between gap-2 rounded-xl bg-gray-100 px-3 py-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
           Sæt antal
-          {nuvaerende !== undefined && ` · nu ${nuvaerende.toLocaleString('da-DK', { maximumFractionDigits: 3 })}`}
+          {!!nuvaerende && ` · erstatter ${nuvaerende.toLocaleString('da-DK', { maximumFractionDigits: 3 })}`}
         </span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold tabular-nums text-gray-900">{tekst || '—'}</span>
-          {enhed && <span className="text-base font-medium text-gray-500">{enhed}</span>}
+        <span className="flex items-baseline gap-1.5">
+          <span className="text-2xl font-bold tabular-nums text-gray-900">{tekst || '—'}</span>
+          {enhed && <span className="text-sm font-medium text-gray-500">{enhed}</span>}
         </span>
       </div>
 
@@ -102,18 +105,18 @@ export default function Taltastatur({
         ))}
       </div>
 
-      <div className="mt-2 grid shrink-0 grid-cols-2 gap-2">
+      <div className="mt-1.5 grid shrink-0 grid-cols-2 gap-2">
         <button
           onClick={() => gem(false)}
           disabled={!gyldig || deaktiveret}
-          className="rounded-xl bg-emerald-700 py-3 text-base font-semibold text-white disabled:opacity-40"
+          className="rounded-xl bg-emerald-700 py-2.5 text-base font-semibold text-white disabled:opacity-40"
         >
           <Check size={18} className="mr-1.5 inline" /> Gem antal
         </button>
         <button
           onClick={() => gem(true)}
           disabled={!gyldig || deaktiveret}
-          className="rounded-xl bg-amber-600 py-3 text-base font-semibold text-white disabled:opacity-40"
+          className="rounded-xl bg-amber-600 py-2.5 text-base font-semibold text-white disabled:opacity-40"
         >
           <Pencil size={18} className="mr-1.5 inline" /> Gem som anslået
         </button>

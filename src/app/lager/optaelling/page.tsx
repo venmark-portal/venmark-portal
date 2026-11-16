@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Plus, Send, Trash2, X,
+  AlertTriangle, ArrowLeft, Camera, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Plus, Send, Trash2, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur from '@/components/lager/Taltastatur'
@@ -50,6 +50,8 @@ export default function OptaellingSide() {
   const [scanLager, setScanLager] = useState(false)
   const [kasser, setKasser] = useState(0)
   const [listeAaben, setListeAaben] = useState(false)
+  const [billedeAabent, setBilledeAabent] = useState(false)
+  const [sendDialog, setSendDialog] = useState(false)
 
   const lydRef = useRef<AudioContext | null>(null)
   const bip = useCallback((hz: number, ms: number) => {
@@ -233,6 +235,7 @@ export default function OptaellingSide() {
     if (!optaelling) return
     setTravl(true)
     try {
+      setSendDialog(false)
       const r = await fetch(`/api/lager/optaelling/${optaelling.id}/send`, { method: 'POST' })
       const data = await r.json()
       if (!data.ok) { setBesked({ slags: 'fejl', tekst: data.fejl ?? 'Kunne ikke sendes' }); return }
@@ -333,6 +336,8 @@ export default function OptaellingSide() {
 
   // ── Tælling i gang ────────────────────────────────────────────────────────
   const laast = optaelling.status !== 'aaben'
+  const afvigelser = varer.filter(v => v.afvigelse !== null && Math.abs(v.afvigelse) >= 0.001).length
+  const anslaaede = varer.filter(v => v.estimated).length
 
   return (
     // Fast app-ramme: skærmen fylder PRÆCIS skærmen, og siden ruller ikke. En
@@ -410,7 +415,7 @@ export default function OptaellingSide() {
               onScan={scan}
               travl={travl}
               placeholder={scanLager ? 'Scan kasse' : 'Scan vare eller kasse'}
-              pause={stemmerDialog || !!bemaerkVare}
+              pause={stemmerDialog || !!bemaerkVare || billedeAabent || sendDialog}
             />
 
             {scanLager && (
@@ -443,9 +448,9 @@ export default function OptaellingSide() {
               Bundlinjen og scannefeltet bliver stående uanset hvad. */}
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-1 pt-2">
           {aktiv && (
-            <div className="shrink-0 rounded-2xl bg-white p-3 ring-2 ring-emerald-600">
+            <div className="shrink-0 rounded-2xl bg-white p-2.5 ring-2 ring-emerald-600">
               <div className="flex gap-3">
-                <Varebillede itemNo={aktiv.itemNo} />
+                <Varebillede itemNo={aktiv.itemNo} navn={aktiv.navn} onDialog={setBilledeAabent} />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-gray-900">{aktiv.itemNo}</p>
                   <p className="truncate text-sm text-gray-600">{aktiv.navn}</p>
@@ -454,7 +459,7 @@ export default function OptaellingSide() {
               <div className="mt-1 flex items-end gap-4">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Talt</p>
-                  <p className="text-2xl font-bold tabular-nums text-emerald-700">
+                  <p className="text-xl font-bold tabular-nums text-emerald-700">
                     {tal(aktiv.total)} {aktiv.uom}
                   </p>
                 </div>
@@ -463,7 +468,7 @@ export default function OptaellingSide() {
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">BC</p>
                     <p
                       className={
-                        'text-2xl font-bold tabular-nums ' +
+                        'text-xl font-bold tabular-nums ' +
                         (Math.abs(aktiv.total - aktiv.bcAntal) < 0.001 ? 'text-gray-400' : 'text-amber-600')
                       }
                     >
@@ -473,24 +478,24 @@ export default function OptaellingSide() {
                 )}
               </div>
               <p className="text-xs text-gray-500">{aktiv.antal} registrering(er) · {hylde || 'ingen hylde'}</p>
-              <div className="mt-2 grid grid-cols-3 gap-2">
+              <div className="mt-1.5 grid grid-cols-3 gap-2">
                 <button
                   onClick={faerdigMedVaren}
                   disabled={travl}
-                  className="rounded-xl bg-emerald-700 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                  className="rounded-xl bg-emerald-700 py-2 text-sm font-semibold text-white disabled:opacity-40"
                 >
                   <Check size={15} className="mr-1 inline" /> Færdig
                 </button>
                 <button
                   onClick={() => fortryd(aktiv.itemNo)}
-                  className="rounded-xl bg-white py-2.5 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
+                  className="rounded-xl bg-white py-2 text-sm font-semibold text-gray-800 ring-1 ring-gray-300"
                 >
                   <Trash2 size={15} className="mr-1 inline" /> Fortryd
                 </button>
                 <button
                   onClick={() => setBemaerkVare(aktiv.itemNo)}
                   className={
-                    'rounded-xl py-2.5 text-sm font-semibold ring-1 ' +
+                    'rounded-xl py-2 text-sm font-semibold ring-1 ' +
                     (varer.find(v => v.itemNo === aktiv.itemNo)?.remark
                       ? 'bg-amber-50 text-amber-800 ring-amber-300'
                       : 'bg-white text-gray-800 ring-gray-300')
@@ -504,7 +509,7 @@ export default function OptaellingSide() {
                 <button
                   onClick={() => stemmer(aktiv.itemNo, true)}
                   disabled={travl}
-                  className="mt-2 w-full rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                  className="mt-1.5 w-full rounded-xl bg-sky-700 py-2 text-sm font-semibold text-white disabled:opacity-40"
                 >
                   <CircleCheck size={15} className="mr-1 inline" />
                   Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom}
@@ -640,6 +645,35 @@ export default function OptaellingSide() {
         </div>
       )}
 
+      {sendDialog && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setSendDialog(false)}>
+          <div className="w-full max-w-lg rounded-t-3xl bg-white p-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-gray-900">Send optællingen til BC?</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              <strong>{varer.length} varer</strong>
+              {afvigelser > 0 && <>, heraf <strong className="text-amber-700">{afvigelser} med afvigelse</strong></>}
+              {anslaaede > 0 && <> og <strong className="text-amber-700">{anslaaede} anslået</strong></>}.
+            </p>
+            <p className="mt-2 text-sm text-gray-600">
+              Tallene lægges i lageropgørelseskladden i BC, og optællingen lukkes — du kan ikke tælle
+              videre på den bagefter. Kladden skal stadig bogføres i BC.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={send}
+                disabled={travl}
+                className="flex-1 rounded-xl bg-gray-900 py-3.5 font-semibold text-white disabled:opacity-40"
+              >
+                <Send size={16} className="mr-1.5 inline" /> {travl ? 'Sender…' : 'Ja, send til BC'}
+              </button>
+              <button onClick={() => setSendDialog(false)} className="rounded-xl px-4 text-gray-500">
+                Fortryd
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bundlinje — altid synlig, aldrig under skærmkanten. */}
       {!laast && (
         <footer className="shrink-0 border-t border-gray-200 bg-white p-3">
@@ -651,8 +685,11 @@ export default function OptaellingSide() {
               {varer.length} <span className="font-normal text-gray-500">varer</span>
             </button>
             <StemmerKnap onVare={nr => stemmer(nr, false)} aaben={stemmerDialog} setAaben={setStemmerDialog} />
+            {/* Sendingen kan ikke fortrydes: tællingen lukkes, og tallene lander i
+                kladden i BC. Derfor et spørgsmål imellem — en optæller med handsker
+                rammer let den bredeste knap på skærmen. */}
             <button
-              onClick={send}
+              onClick={() => setSendDialog(true)}
               disabled={travl || varer.length === 0}
               className="flex-1 rounded-xl bg-gray-900 py-3 font-semibold text-white disabled:opacity-40"
             >
@@ -718,17 +755,30 @@ function NyHylde({ lokation, onOprettet }: { lokation: string; onOprettet: (h: H
 }
 
 /**
- * Varens billede, slået op på varenummer. Kan skiftes fra terminalen: står man med
- * varen i hånden, er det dér det rigtige billede bliver taget — ikke på kontoret.
- * Billedet gemmes på varen i BC, så portalen og pakkeriet ser det samme.
+ * Varens billede, slået op på varenummer.
+ *
+ * Et tryk FORSTØRRER billedet — det er dét man vil, når man står med en kasse og skal
+ * se, om det er den rigtige vare. Kameraet ligger bagved, i den store visning, for et
+ * nyt billede tager man sjældent og ved et uheld hver gang (Claus 16-11). Billedet
+ * gemmes på varen i BC, så portalen og pakkeriet ser det samme.
  */
-function Varebillede({ itemNo }: { itemNo: string }) {
+function Varebillede({
+  itemNo, navn, onDialog,
+}: {
+  itemNo: string
+  navn: string
+  /** Fortæller siden at en dialog er fremme, så scannefeltet holder fingrene væk. */
+  onDialog: (v: boolean) => void
+}) {
   const [version, setVersion] = useState(0)
   const [fejlet, setFejlet] = useState(false)
   const [sender, setSender] = useState(false)
+  const [stor, setStor] = useState(false)
   const filRef = useRef<HTMLInputElement>(null)
+  const kameraRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setFejlet(false); setVersion(v => v + 1) }, [itemNo])
+  useEffect(() => { onDialog(stor); return () => onDialog(false) }, [stor, onDialog])
 
   async function upload(fil: File) {
     setSender(true)
@@ -748,13 +798,19 @@ function Varebillede({ itemNo }: { itemNo: string }) {
     }
   }
 
+  const vaelg = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (f) upload(f)
+    e.target.value = ''
+  }
+
   return (
     <div className="shrink-0">
       <button
         type="button"
-        onClick={() => filRef.current?.click()}
-        className="relative block h-16 w-16 overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200"
-        title="Tryk for at tage eller vælge et nyt billede"
+        onClick={() => setStor(true)}
+        className="relative block h-14 w-14 overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200"
+        title="Tryk for at se billedet stort"
       >
         {!fejlet ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -776,18 +832,61 @@ function Varebillede({ itemNo }: { itemNo: string }) {
           </span>
         )}
       </button>
-      <input
-        ref={filRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        hidden
-        onChange={e => {
-          const f = e.target.files?.[0]
-          if (f) upload(f)
-          e.target.value = ''
-        }}
-      />
+
+      {stor && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/90 p-4" onClick={() => setStor(false)}>
+          <div className="flex shrink-0 items-start justify-between gap-3 text-white">
+            <div className="min-w-0">
+              <p className="font-semibold">{itemNo}</p>
+              <p className="truncate text-sm text-white/70">{navn}</p>
+            </div>
+            <button
+              onClick={() => setStor(false)}
+              className="shrink-0 rounded-full bg-white/15 p-2 text-white"
+              aria-label="Luk"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="flex min-h-0 flex-1 items-center justify-center py-4" onClick={e => e.stopPropagation()}>
+            {!fejlet ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`stor-${version}`}
+                src={`/api/lager/varebillede/${encodeURIComponent(itemNo)}?v=${version}`}
+                alt={navn}
+                className="max-h-full max-w-full rounded-2xl object-contain"
+                onError={() => setFejlet(true)}
+              />
+            ) : (
+              <p className="text-center text-sm text-white/70">Der er ikke noget billede på varen endnu.</p>
+            )}
+          </div>
+
+          {/* To veje ind, fordi de bruges forskelligt: kameraet når man står med varen,
+              galleriet når billedet allerede er taget. */}
+          <div className="grid shrink-0 grid-cols-2 gap-2" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => kameraRef.current?.click()}
+              disabled={sender}
+              className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-900 disabled:opacity-50"
+            >
+              <Camera size={16} className="mr-1.5 inline" /> {sender ? 'Sender…' : 'Tag nyt billede'}
+            </button>
+            <button
+              onClick={() => filRef.current?.click()}
+              disabled={sender}
+              className="rounded-xl bg-white/15 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              <ImagePlus size={16} className="mr-1.5 inline" /> Indsæt billede
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input ref={kameraRef} type="file" accept="image/*" capture="environment" hidden onChange={vaelg} />
+      <input ref={filRef} type="file" accept="image/*" hidden onChange={vaelg} />
     </div>
   )
 }
