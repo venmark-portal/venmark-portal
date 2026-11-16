@@ -58,6 +58,19 @@ function bestilUrl(dato?: string): string {
   return dato && /^\d{4}-\d{2}-\d{2}$/.test(dato) ? `/portal/bestil?dato=${dato}` : '/portal/bestil'
 }
 
+/** Telefon-bredde: samtalen fylder hele skærmen og lægger sig oven på siden bagved. */
+function paaTelefon(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+}
+
+/** Luk panelet i det gemte, FØR vi skifter side — ellers åbner det sig igen oven på kurven. */
+function gemPanelLukket() {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(NOEGLE) ?? 'null')
+    if (v) sessionStorage.setItem(NOEGLE, JSON.stringify({ ...v, aaben: false, tid: Date.now() }))
+  } catch {}
+}
+
 /** Talegenkenderen (Chrome/Edge/Safari) — Firefox har ingen. */
 function talegenkender(): any {
   if (typeof window === 'undefined') return null
@@ -351,7 +364,13 @@ export default function RobotChat() {
       // Flyttet leveringsdag: ordresiden viser stadig den gamle dag.
       let genindlaes: (() => void) | null = null
       if (kurvAendret && window.location.pathname.startsWith('/portal/bestil')) {
-        genindlaes = () => { window.location.href = bestilUrl(kurvDato) }
+        genindlaes = () => {
+          // Står kunden med kurven foran sig på telefonen, skal samtalen ikke lægge sig
+          // oven på den igen efter genindlæsningen. I en håndfri samtale bliver den —
+          // dér kigger kunden ikke på skærmen, og samtalen skal kunne fortsætte.
+          if (paaTelefon() && !kald.current) gemPanelLukket()
+          window.location.href = bestilUrl(kurvDato)
+        }
       } else if (ordreAendret && window.location.pathname.startsWith('/portal/ordrer')) {
         genindlaes = () => window.location.reload()
       }
@@ -532,10 +551,12 @@ export default function RobotChat() {
                 className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40">
                 {t('ny')}
               </button>
-              <button type="button" onClick={() => { laegPaa(); setAaben(false) }} aria-label={t('luk')}
-                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100">
-                <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
-                  <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+              {/* Pil ned, ikke et kryds: samtalen bliver liggende i boblen. Og den lægger
+                  på — en mikrofon, der står åben bag et lukket panel, er ikke til at se. */}
+              <button type="button" onClick={() => { laegPaa(); setAaben(false) }} aria-label={t('luk')} title={t('luk')}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l5 5 5-5" />
                 </svg>
               </button>
             </div>
@@ -555,7 +576,14 @@ export default function RobotChat() {
                     ? <Tekst s={tur.tekst} />
                     : <span className="text-gray-500">{opslagTekst}</span>}
                   {tur.kurv && (
-                    <a href={bestilUrl(tur.kurvDato)} className="mt-2 block w-fit rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+                    <a
+                      href={bestilUrl(tur.kurvDato)}
+                      // På telefonen fylder samtalen hele skærmen, så kurven lander bagved
+                      // (Claus 16-11). Vil kunden SE kurven, træder samtalen til side og
+                      // lægger på — den ligger stadig i chatboblen og kan tages op igen.
+                      onClick={() => { if (paaTelefon()) { laegPaa(); gemPanelLukket(); setAaben(false) } }}
+                      className="mt-2 block w-fit rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                    >
                       {t('seKurven')}
                     </a>
                   )}
