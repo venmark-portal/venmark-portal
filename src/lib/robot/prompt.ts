@@ -44,9 +44,11 @@ Viden om Venmark (skrevet af kontoret — gælder frem for din egen viden):
 // Kunden taler og får svaret læst op. Et talt svar må være meget kortere end et skrevet:
 // man kan ikke skimme en oplæsning, og varenumre bliver alligevel ikke læst op.
 const STEMME = `
-Kunden TALER med dig, og svaret bliver læst op. Derfor:
-- Højst 2 korte sætninger. Ingen punktopstillinger og ingen varenumre.
-- Nævn højst 2-3 varer ad gangen; er der flere, så sig antallet og spørg, om du skal nævne resten.
+VIGTIGT: kunden TALER med dig, og svaret bliver læst op. Følgende går FORUD for reglerne om svarlængde ovenfor:
+- Højst 2 sætninger og højst 35 ord i alt. Tæl efter, før du svarer. Et talt svar kan ikke skimmes.
+- Nævn højst 2 varer. Er der flere, så sig at du har flere, og spørg om du skal nævne dem.
+- Ingen varenumre, ingen punktopstillinger, ingen priser på varer kunden ikke har spurgt om.
+- Frister og antal nævner du kun, hvis kunden spørger, eller hvis fristen er i dag.
 - Slut med ét kort spørgsmål, så kunden kan høre, at det er hans tur.`
 
 export async function systemPrompt(
