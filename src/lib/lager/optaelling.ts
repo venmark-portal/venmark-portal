@@ -161,7 +161,7 @@ export async function tilfoejLinje(
   countId: string,
   linje: NyLinje,
   brugerNavn: string,
-): Promise<{ total: number; antal: number; bcAntal: number | null }> {
+): Promise<{ total: number; antal: number; bcAntal: number | null; mit: number }> {
   await ensureOptaellingSchema()
   const id = `cl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   await prisma.$executeRaw`
@@ -174,7 +174,17 @@ export async function tilfoejLinje(
        ${linje.bcQty ?? null}, ${linje.remark?.slice(0, 150) ?? null},
        ${linje.boxType ?? null}, ${linje.productionNo ?? null})
   `
-  return vareTotal(countId, linje.itemNo)
+  const i_alt = await vareTotal(countId, linje.itemNo)
+  // Hvad DENNE optæller har talt netop her. Et tastet tal erstatter kun det, så
+  // terminalen skal kunne skrive "erstatter dine 4" og ikke hele varens total.
+  const mine = await prisma.$queryRaw<any[]>`
+    SELECT COALESCE(SUM(qty), 0) AS mit
+    FROM "LagerCountLine"
+    WHERE "countId" = ${countId} AND "itemNo" = ${linje.itemNo.toUpperCase()}
+      AND COALESCE("shelfCode",'') = ${linje.shelfCode ?? ''}
+      AND COALESCE("countedBy",'') = ${brugerNavn}
+  `
+  return { ...i_alt, mit: Number(mine[0]?.mit ?? 0) }
 }
 
 /**
@@ -196,27 +206,35 @@ export async function kasseAlleredeTalt(countId: string, barcode: string): Promi
  * SÆTTER antallet på en vare i stedet for at lægge til. Det er sådan et tastet tal
  * skal opføre sig: scanner man en vare (1 stk.) og taster 43, skal der stå 43 — ikke 44.
  *
- * Er der valgt en hylde, røres kun den hyldes registreringer, så man kan sætte
- * antallet på "Frys 1 reol A" uden at slette det der blev talt på en anden hylde.
+ * Men KUN ens eget, og kun dér hvor man står. Flere må gerne tælle den samme vare
+ * (Claus 16-11), og før slettede et tastet tal uden hyldevalg ALT på varen — også det
+ * en kollega havde talt på en anden hylde, uden at nogen af dem kunne se det.
+ * Derfor afgrænses sletningen til samme hylde OG samme optæller.
  */
 export async function saetAntal(
   countId: string,
   linje: NyLinje,
   brugerNavn: string,
-): Promise<{ total: number; antal: number; bcAntal: number | null }> {
+): Promise<{ total: number; antal: number; bcAntal: number | null; andres: number }> {
   await ensureOptaellingSchema()
   const itemNo = linje.itemNo.toUpperCase()
-  if (linje.shelfCode) {
-    await prisma.$executeRaw`
-      DELETE FROM "LagerCountLine"
-      WHERE "countId" = ${countId} AND "itemNo" = ${itemNo} AND COALESCE("shelfCode",'') = ${linje.shelfCode}
-    `
-  } else {
-    await prisma.$executeRaw`
-      DELETE FROM "LagerCountLine" WHERE "countId" = ${countId} AND "itemNo" = ${itemNo}
-    `
-  }
-  return tilfoejLinje(countId, linje, brugerNavn)
+  await prisma.$executeRaw`
+    DELETE FROM "LagerCountLine"
+    WHERE "countId" = ${countId} AND "itemNo" = ${itemNo}
+      AND COALESCE("shelfCode",'') = ${linje.shelfCode ?? ''}
+      AND COALESCE("countedBy",'') = ${brugerNavn}
+  `
+  const svar = await tilfoejLinje(countId, linje, brugerNavn)
+  // Hvad andre (eller egne registreringer på en anden hylde) bidrager med. Terminalen
+  // skal kunne sige "du satte 43, men der står 55 på varen" — ellers tror optælleren,
+  // at tallet ikke blev gemt rigtigt.
+  const rows = await prisma.$queryRaw<any[]>`
+    SELECT COALESCE(SUM(qty), 0) AS andres
+    FROM "LagerCountLine"
+    WHERE "countId" = ${countId} AND "itemNo" = ${itemNo}
+      AND NOT (COALESCE("shelfCode",'') = ${linje.shelfCode ?? ''} AND COALESCE("countedBy",'') = ${brugerNavn})
+  `
+  return { ...svar, andres: Number(rows[0]?.andres ?? 0) }
 }
 
 /**

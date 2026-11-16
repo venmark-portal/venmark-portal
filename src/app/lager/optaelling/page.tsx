@@ -37,7 +37,9 @@ export default function OptaellingSide() {
   const [hylde, setHylde] = useState('')
   const [varer, setVarer] = useState<Vare[]>([])
   const [aktiv, setAktiv] = useState<
-    { itemNo: string; navn: string; uom: string; total: number; antal: number; bcAntal: number | null } | null
+    // mit = hvad DU har talt på den hylde du står ved. Et tastet tal erstatter kun det —
+    // ikke hvad en kollega har talt på den samme vare et andet sted.
+    { itemNo: string; navn: string; uom: string; total: number; antal: number; mit: number; bcAntal: number | null } | null
   >(null)
   const [blind, setBlind] = useState(false)
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
@@ -162,7 +164,7 @@ export default function OptaellingSide() {
       if (v.boxType) setKasser(k => k + 1)
       setAktiv({
         itemNo: v.itemNo, navn: v.description, uom: v.baseUnitOfMeasure,
-        total: data.total, antal: data.antal,
+        total: data.total, antal: data.antal, mit: data.mit ?? data.total,
         bcAntal: optaelling.blind ? null : v.inventory,
       })
       setVarer(await fetch(`/api/lager/optaelling/${optaelling.id}`).then(x => x.json()).then(x => x.varer ?? []))
@@ -524,7 +526,7 @@ export default function OptaellingSide() {
           {aktiv && !scanLager && (
             <Taltastatur
               enhed={aktiv.uom}
-              nuvaerende={aktiv.total}
+              nuvaerende={aktiv.mit}
               deaktiveret={travl}
               fyld
               onGem={async (antal, anslaaet) => {
@@ -540,7 +542,16 @@ export default function OptaellingSide() {
                 const data = await res.json()
                 if (res.ok) {
                   bip(760, 100)
-                  setAktiv({ ...aktiv, total: data.total, antal: data.antal })
+                  setAktiv({ ...aktiv, total: data.total, antal: data.antal, mit: data.mit ?? antal })
+                  // Har andre talt den samme vare, er varens total større end det du tastede.
+                  // Uden en linje her ligner det, at tallet ikke blev gemt rigtigt.
+                  setBesked(data.andres > 0
+                    ? {
+                      slags: 'ok',
+                      tekst: `Du satte ${tal(antal)} ${aktiv.uom} — andre har talt ${tal(data.andres)}. `
+                        + `I alt ${tal(data.total)} på varen.`,
+                    }
+                    : null)
                   await hentStatus(optaelling.id)
                 }
               }}

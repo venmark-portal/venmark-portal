@@ -13,6 +13,8 @@ import { Check, Delete, Pencil } from 'lucide-react'
  *
  * Tallet man taster SÆTTER antallet på varen. Det er den eneste rækkefølge der ikke
  * overrasker nogen: scanner man en vare og taster 43, står der 43 — ikke 44.
+ * Det gælder dog kun ens EGNE registreringer dér hvor man står: flere må gerne tælle
+ * den samme vare, og så må den enes tal ikke slette den andens.
  *
  * To måder at gemme på, fordi de betyder noget forskelligt:
  *   Gem antal       = talt. Sådan er der.
@@ -73,7 +75,7 @@ export default function Taltastatur({
       <div className="mb-1.5 flex shrink-0 items-baseline justify-between gap-2 rounded-xl bg-gray-100 px-3 py-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
           Sæt antal
-          {!!nuvaerende && ` · erstatter ${nuvaerende.toLocaleString('da-DK', { maximumFractionDigits: 3 })}`}
+          {!!nuvaerende && ` · erstatter dine ${nuvaerende.toLocaleString('da-DK', { maximumFractionDigits: 3 })}`}
         </span>
         <span className="flex items-baseline gap-1.5">
           <span className="text-2xl font-bold tabular-nums text-gray-900">{tekst || '—'}</span>
