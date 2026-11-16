@@ -162,6 +162,7 @@ export default function RobotChat() {
   const puls      = useRef(0)   // holder Chrome vågen under lange oplæsninger
   const lydOk     = useRef(false)   // oplæsningen er faktisk begyndt mindst én gang
   const sidsteFejl = useRef('')     // kode fra SpeechSynthesis, så vi kan se HVORFOR
+  const valgtStemme = useRef('')    // hvilken stemme telefonen brugte
   const [lydStatus, setLydStatus] = useState('')
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
@@ -249,6 +250,7 @@ export default function RobotChat() {
     const stemme = liste.find(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
       ?? liste.find(v => v.default)
       ?? liste[0]
+    valgtStemme.current = stemme ? `${stemme.name} (${stemme.lang})` : 'telefonens standard'
     saetTaler(true)
 
     const tal = (dele: string[], andetForsoeg: boolean) => {
@@ -527,7 +529,19 @@ export default function RobotChat() {
     lydOk.current = false
     sidsteFejl.current = ''
     laasOpStemme()
-    laesOp(t('lydtest'), () => setLydStatus(lydOk.current ? t('lydVirker') : ''))
+    const t0 = Date.now()
+    laesOp(t('lydtest'), () => {
+      const gik = Date.now() - t0
+      if (!lydOk.current) return                    // vagthunden har allerede skrevet hvorfor
+      // Startede OG sluttede med det samme: stemmen melder sig færdig uden at have sagt
+      // noget. Sådan opfører en manglende talepakke sig — og det er dét Claus ser, når
+      // der står "lyden virker", men der ikke kommer en lyd (16-11).
+      if (gik < 900) {
+        setStemmeFejl(`${t('lydTavs')} (${valgtStemme.current} · ${gik} ms)`)
+        return
+      }
+      setLydStatus(`${t('lydVirker')} (${valgtStemme.current})`)
+    })
   }
 
   const vurder = async (idx: number, vurdering: 1 | -1, kommentar?: string) => {

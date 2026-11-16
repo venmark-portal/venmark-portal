@@ -37,6 +37,7 @@ export const robotDict = defineDict({
     ingenLyd: 'Svaret kunne ikke læses op. Tjek lydstyrken og lydløs-knappen — svaret står i chatten.',
     stemmerFundet: 'stemmer fundet', testLyd: 'Test lyd', lydVirker: 'Lyden virker — robotten kan læse op.',
     lydtest: 'Test. En, to, tre.',
+    lydTavs: 'Stemmen meldte sig færdig uden at sige noget. Telefonen mangler talepakken, eller lyden er slået fra.',
   },
   en: {
     aabn: 'Ask the Venmark assistant',
@@ -73,6 +74,7 @@ export const robotDict = defineDict({
     ingenLyd: 'The answer could not be read aloud. Check the volume and the silent switch — the answer is in the chat.',
     stemmerFundet: 'voices found', testLyd: 'Test sound', lydVirker: 'Sound works — the assistant can read aloud.',
     lydtest: 'Test. One, two, three.',
+    lydTavs: 'The voice reported it was done without saying anything. The phone is missing the speech pack, or sound is off.',
   },
   de: {
     aabn: 'Venmark-Assistent fragen',
@@ -109,5 +111,6 @@ export const robotDict = defineDict({
     ingenLyd: 'Die Antwort konnte nicht vorgelesen werden. Prüfen Sie Lautstärke und Stummschalter — die Antwort steht im Chat.',
     stemmerFundet: 'Stimmen gefunden', testLyd: 'Ton testen', lydVirker: 'Der Ton funktioniert — der Assistent kann vorlesen.',
     lydtest: 'Test. Eins, zwei, drei.',
+    lydTavs: 'Die Stimme meldete sich fertig, ohne etwas zu sagen. Dem Telefon fehlt das Sprachpaket, oder der Ton ist aus.',
   },
 })
