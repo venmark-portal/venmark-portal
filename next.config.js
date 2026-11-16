@@ -7,7 +7,7 @@ const nextConfig = {
   // Ved kørsel er variablen ikke sat, så serveren læser som altid fra .next.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   typescript: { ignoreBuildErrors: true },
-  // puppeteer er kun installeret på produktionsserveren (Hetzner), ikke lokalt
+  // puppeteer står i package.json (ellers fjerner npm install den ved deploy → prisliste-PDF 500); holdes extern
   experimental: { serverComponentsExternalPackages: ['puppeteer'] },
   webpack(config, { isServer }) {
     if (isServer) {
