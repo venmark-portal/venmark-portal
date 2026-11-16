@@ -38,17 +38,21 @@ export default function Bemaerkning({
   // hver gang uden at vente på en gentegning.
   const basisRef = useRef('')
   const stumperRef = useRef<string[]>([])
+  // Vil brugeren stadig tale? Browseren lukker mikrofonen af sig selv ved den første
+  // pause — og så står man og taler ind i en lukket mikrofon uden at opdage det.
+  const villRef = useRef(false)
 
   useEffect(() => {
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
     setKanTale(!!SR)
-    return () => { try { genkenderRef.current?.stop() } catch { /* ingen */ } }
+    return () => { villRef.current = false; try { genkenderRef.current?.stop() } catch { /* ingen */ } }
   }, [])
 
   function tal() {
     const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
     if (!SR) return
     if (lytter) {
+      villRef.current = false
       try { genkenderRef.current?.stop() } catch { /* ingen */ }
       setLytter(false)
       return
@@ -68,10 +72,15 @@ export default function Bemaerkning({
     const g = new SR()
     g.lang = 'da-DK'
     g.interimResults = true
-    g.continuous = false
+    // Mikrofonen skal blive ÅBEN, til man selv slukker. Med continuous = false stopper
+    // browseren ved den første pause, og alt efter pausen forsvandt uden en lyd:
+    // "Jeg skal lige have …10 kg laks mere med" blev til "Jeg skal lige have"
+    // (Claus 16-11). Pauser hører med, når man dikterer en bestilling.
+    g.continuous = true
     g.maxAlternatives = 1
     basisRef.current = tekst
     stumperRef.current = []
+    villRef.current = true
     g.onresult = (e: any) => {
       // Talegenkendelsen sender den SAMME sætning igen og igen mens den retter sig
       // selv undervejs ("to kass…" → "to kasser" → "to kasser står…"). Lægger man
@@ -100,6 +109,9 @@ export default function Bemaerkning({
     // talegenkendelsen kræver netværk — begge dele ser ud som "der sker ingenting",
     // og så leder man efter fejlen et helt forkert sted.
     g.onerror = (e: any) => {
+      // Alle fejl stopper lytningen. Ellers kan genstarten nedenfor køre i ring på en
+      // mikrofon der aldrig kommer til at virke.
+      villRef.current = false
       setLytter(false)
       const kode = String(e?.error ?? '')
       if (kode === 'not-allowed' || kode === 'service-not-allowed') {
@@ -114,7 +126,17 @@ export default function Bemaerkning({
         setTalefejl(`Talegenkendelsen fejlede (${kode}).`)
       }
     }
-    g.onend = () => setLytter(false)
+    g.onend = () => {
+      // Browseren lukker også en continuous-lytning efter lang stilhed. Vil brugeren
+      // stadig tale, starter vi forfra — men først foldes det færdige ind i basis:
+      // en ny lytning tæller resultaterne fra 0 igen, og ellers ville de nye stumper
+      // skrive oven i de gamle.
+      if (!villRef.current) { setLytter(false); return }
+      basisRef.current = [basisRef.current, stumperRef.current.filter(Boolean).join(' ')]
+        .map(d => d.trim()).filter(Boolean).join(' ')
+      stumperRef.current = []
+      try { g.start() } catch { villRef.current = false; setLytter(false) }
+    }
     genkenderRef.current = g
     setTalefejl('')
     setLytter(true)

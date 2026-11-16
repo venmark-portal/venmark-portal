@@ -160,6 +160,9 @@ export default function RobotChat() {
   const stemmer   = useRef<SpeechSynthesisVoice[]>([])
   const vagt      = useRef(0)   // oplæsningen kom aldrig i gang
   const puls      = useRef(0)   // holder Chrome vågen under lange oplæsninger
+  const lydOk     = useRef(false)   // oplæsningen er faktisk begyndt mindst én gang
+  const sidsteFejl = useRef('')     // kode fra SpeechSynthesis, så vi kan se HVORFOR
+  const [lydStatus, setLydStatus] = useState('')
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
 
@@ -241,7 +244,11 @@ export default function RobotChat() {
 
     const sprog = locale.slice(0, 2).toLowerCase()
     const liste = stemmer.current.length ? stemmer.current : (ss.getVoices() ?? [])
+    // Har telefonen ingen dansk stemme (almindeligt på Android uden dansk talepakke),
+    // er en stemme med accent stadig bedre end tavshed.
     const stemme = liste.find(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
+      ?? liste.find(v => v.default)
+      ?? liste[0]
     saetTaler(true)
 
     const tal = (dele: string[], andetForsoeg: boolean) => {
@@ -253,9 +260,14 @@ export default function RobotChat() {
           const u = new SpeechSynthesisUtterance(b)
           u.lang = locale
           if (stemme) u.voice = stemme
-          u.onstart = () => { begyndt = true; window.clearTimeout(vagt.current) }
+          u.onstart = () => { begyndt = true; lydOk.current = true; window.clearTimeout(vagt.current) }
           if (i === dele.length - 1) u.onend = faerdig
-          u.onerror = () => { if (i === dele.length - 1) faerdig() }
+          u.onerror = (ev: any) => {
+            // Koden er det eneste vi har at fejlsøge på, når telefonen bare er tavs.
+            const kode = String(ev?.error ?? '')
+            if (kode && kode !== 'interrupted' && kode !== 'canceled') sidsteFejl.current = kode
+            if (i === dele.length - 1) faerdig()
+          }
           try { ss.speak(u) } catch { faerdig() }
         })
         // Chrome sætter lange oplæsninger på pause af sig selv efter ~15 sekunder.
@@ -269,7 +281,11 @@ export default function RobotChat() {
       vagt.current = window.setTimeout(() => {
         if (begyndt || faerdigKaldt) return
         if (!andetForsoeg) { tal([dele.join(' ')], true); return }   // ét samlet forsøg mere
-        setStemmeFejl(t('ingenLyd'))
+        // Tag diagnosen med i beskeden. "Der er ingen lyd" kan jeg ikke fejlsøge på
+        // afstand; "0 stemmer" eller "synthesis-failed" kan.
+        setStemmeFejl(
+          `${t('ingenLyd')} (${liste.length} ${t('stemmerFundet')}${sidsteFejl.current ? ` · ${sidsteFejl.current}` : ''})`,
+        )
         faerdig()
       }, 2500)
     }
@@ -415,8 +431,18 @@ export default function RobotChat() {
     const r = new SR()
     r.lang = locale
     r.interimResults = true
-    r.continuous = false
+    // Mikrofonen holdes åben hen over pauser, og VI bestemmer hvornår sætningen er
+    // slut. Med continuous = false klipper browseren ved den første pause: "nogle
+    // flåede rødspætte 2 … 5 kg" mistede de sidste 5 kg (Claus 16-11). En bestilling
+    // dikteres med tænkepauser, og de må ikke sende spørgsmålet halvfærdigt af sted.
+    r.continuous = true
     let endelig = ''
+    let stilhed = 0
+    const venter = (ms: number) => {
+      window.clearTimeout(stilhed)
+      stilhed = window.setTimeout(() => { try { r.stop() } catch { /* lukket alligevel */ } }, ms)
+    }
+    r.onstart = () => venter(9000)        // tid til at komme i gang
     r.onresult = (e: any) => {
       let midlertidig = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -425,6 +451,7 @@ export default function RobotChat() {
         else midlertidig += x[0].transcript
       }
       setInput((endelig + midlertidig).trim())
+      venter(1800)                        // færdig, når der har været stille i knap 2 sek.
     }
     r.onerror = (e: any) => {
       // Er mikrofonen ikke til at redde, er en åben samtale også slut — ellers prøver vi igen
@@ -434,6 +461,7 @@ export default function RobotChat() {
       else if (e.error !== 'no-speech' && e.error !== 'aborted') setStemmeFejl(t('stemmeFejl'))
     }
     r.onend = () => {
+      window.clearTimeout(stilhed)
       setLytter(false); genkender.current = null
       const tekst = endelig.trim()
       if (tekst) { stille.current = 0; setInput(''); oplaes.current = true; spoerg(tekst); return }
@@ -490,6 +518,16 @@ export default function RobotChat() {
     if (!tekst || svarer) return
     setInput('')
     spoerg(tekst)
+  }
+
+  /** Siger en kort sætning direkte fra trykket. Virker den, men ikke svarene, er det
+   *  oplåsningen; er den også tavs, er det telefonen (lydstyrke, lydløs, ingen stemme). */
+  const testLyd = () => {
+    setStemmeFejl(''); setLydStatus('')
+    lydOk.current = false
+    sidsteFejl.current = ''
+    laasOpStemme()
+    laesOp(t('lydtest'), () => setLydStatus(lydOk.current ? t('lydVirker') : ''))
   }
 
   const vurder = async (idx: number, vurdering: 1 | -1, kommentar?: string) => {
@@ -616,6 +654,7 @@ export default function RobotChat() {
               </p>
             )}
             {stemmeFejl && <p className="mb-2 text-xs text-red-600">{stemmeFejl}</p>}
+            {lydStatus && <p className="mb-2 text-xs text-emerald-700">{lydStatus}</p>}
             <div className="flex items-end gap-2">
               {kanTale && (iKald ? (
                 // Åben samtale: kunden lægger selv på, når han ikke vil mere.
@@ -654,11 +693,18 @@ export default function RobotChat() {
                 {t('send')}
               </button>
             </div>
-            <label className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-              <input id="robot-initiativ" type="checkbox" checked={initiativ}
-                onChange={e => skiftInitiativ(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300" />
-              {t('initiativ')}
-            </label>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs text-gray-500">
+                <input id="robot-initiativ" type="checkbox" checked={initiativ}
+                  onChange={e => skiftInitiativ(e.target.checked)} className="h-3.5 w-3.5 rounded border-gray-300" />
+                {t('initiativ')}
+              </label>
+              {kanTale && (
+                <button type="button" onClick={testLyd} className="shrink-0 text-xs text-gray-400 underline">
+                  {t('testLyd')}
+                </button>
+              )}
+            </div>
             <p className="mt-1 text-[11px] text-gray-400">{t('forbehold')}</p>
           </div>
         </section>
