@@ -217,6 +217,16 @@ export default function RobotChat() {
     stopOplaesning()
   }
 
+  /** Har telefonen overhovedet en stemme på kundens sprog? Uden den kan browseren ikke
+   *  læse op, uanset hvad vi gør i koden. */
+  const harEgetSprog = () => {
+    const sprog = locale.slice(0, 2).toLowerCase()
+    const liste = stemmer.current.length
+      ? stemmer.current
+      : (typeof window !== 'undefined' ? window.speechSynthesis?.getVoices() ?? [] : [])
+    return liste.some(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
+  }
+
   /**
    * Læs svaret op. `derefter` kører når oplæsningen er færdig (eller ikke kan køre) —
    * i en åben samtale er det dér, vi lytter igen, så den MÅ aldrig udeblive.
@@ -537,7 +547,11 @@ export default function RobotChat() {
       // noget. Sådan opfører en manglende talepakke sig — og det er dét Claus ser, når
       // der står "lyden virker", men der ikke kommer en lyd (16-11).
       if (gik < 900) {
-        setStemmeFejl(`${t('lydTavs')} (${valgtStemme.current} · ${gik} ms)`)
+        // Mangler sproget helt, er der ingen grund til at tale om lydstyrke: telefonen
+        // skal have en talepakke. Claus' Samsung havde KUN tysk, og den sagde heller
+        // ingenting (16-11).
+        setStemmeFejl(harEgetSprog() ? `${t('lydTavs')} (${valgtStemme.current} · ${gik} ms)`
+          : `${t('lydIngenDansk')} (${valgtStemme.current})`)
         return
       }
       setLydStatus(`${t('lydVirker')} (${valgtStemme.current})`)

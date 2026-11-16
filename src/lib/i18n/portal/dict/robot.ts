@@ -38,6 +38,7 @@ export const robotDict = defineDict({
     stemmerFundet: 'stemmer fundet', testLyd: 'Test lyd', lydVirker: 'Lyden virker — robotten kan læse op.',
     lydtest: 'Test. En, to, tre.',
     lydTavs: 'Stemmen meldte sig færdig uden at sige noget. Telefonen mangler talepakken, eller lyden er slået fra.',
+    lydIngenDansk: 'Telefonen har ingen dansk stemme. Android: Indstillinger → Tekst-til-tale → Google tekst-til-tale → installér dansk. iPhone: Tilgængelighed → Talt indhold → Stemmer → Dansk.',
   },
   en: {
     aabn: 'Ask the Venmark assistant',
@@ -75,6 +76,7 @@ export const robotDict = defineDict({
     stemmerFundet: 'voices found', testLyd: 'Test sound', lydVirker: 'Sound works — the assistant can read aloud.',
     lydtest: 'Test. One, two, three.',
     lydTavs: 'The voice reported it was done without saying anything. The phone is missing the speech pack, or sound is off.',
+    lydIngenDansk: 'The phone has no voice for this language. Android: Settings → Text-to-speech → Google TTS → install the language. iPhone: Accessibility → Spoken Content → Voices.',
   },
   de: {
     aabn: 'Venmark-Assistent fragen',
@@ -112,5 +114,6 @@ export const robotDict = defineDict({
     stemmerFundet: 'Stimmen gefunden', testLyd: 'Ton testen', lydVirker: 'Der Ton funktioniert — der Assistent kann vorlesen.',
     lydtest: 'Test. Eins, zwei, drei.',
     lydTavs: 'Die Stimme meldete sich fertig, ohne etwas zu sagen. Dem Telefon fehlt das Sprachpaket, oder der Ton ist aus.',
+    lydIngenDansk: 'Das Telefon hat keine Stimme für diese Sprache. Android: Einstellungen → Text-in-Sprache → Google TTS → Sprache installieren. iPhone: Bedienungshilfen → Gesprochene Inhalte → Stimmen.',
   },
 })
