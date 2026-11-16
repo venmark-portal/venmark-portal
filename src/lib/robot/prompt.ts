@@ -66,6 +66,7 @@ export async function systemPrompt(
       type: 'text',
       text: `Nu: ${tid} (dansk tid).\nKunde: ${k.navn} (kundenr. ${k.customerNo}).\nSprog: ${sprog}.` +
         `\nKurven lige nu: ${nuTilstand?.kurv ?? 'ukendt — slå op med se_kurv'}.` +
+        '\n(Kurven står med varenumre uden navne. Skal du nævne varerne for kunden, så hent navnene med se_kurv — sig aldrig bare "vare 23995".)' +
         (nuTilstand?.stemme ? `\n${STEMME}` : ''),
     },
   ]
