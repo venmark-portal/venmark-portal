@@ -85,13 +85,22 @@ export async function saetRobotInitiativ(customerId: string, initiativ: boolean)
 
 export interface RobotTur { rolle: 'kunde' | 'robot'; tekst: string }
 
-/** Samtalens hidtidige tekst-ture, ældste først. Værktøjskald gentages ikke — robotten slår op igen. */
+/** Samtalens hidtidige tekst-ture, ældste først. Værktøjskald gentages ikke — robotten slår op igen.
+ *
+ *  Kun de seneste timer kommer med. En fane, der har stået åben til i dag, har samme samtaleId
+ *  som i går, og uden grænsen kørte robotten videre i gårsdagens samtale, som om intet var sket
+ *  (Claus 16-11) — med varer og ordrer, der ikke findes mere. Browseren starter også selv en ny
+ *  samtale efter et ophold; dette er værnet, hvis den ikke gør.
+ *
+ *  Grænsen står som en SQL-literal (4 timer) og ikke som en parameter: make_interval/INTERVAL med
+ *  en Prisma-parameter afhænger af, hvilken taltype driveren sender, og det er ikke værd at gætte på. */
 export async function hentSamtale(customerId: string, samtaleId: string, max = 30): Promise<RobotTur[]> {
   await ensureRobotSkema()
   const rows = await prisma.$queryRaw<{ rolle: string; tekst: string }[]>`
     SELECT rolle, tekst FROM (
       SELECT id, rolle, tekst FROM "RobotBesked"
       WHERE "customerId" = ${customerId} AND "samtaleId" = ${samtaleId} AND rolle IN ('kunde', 'robot')
+        AND "createdAt" > (NOW() AT TIME ZONE 'UTC') - INTERVAL '4 hours'
       ORDER BY id DESC LIMIT ${max}
     ) t ORDER BY id ASC
   `

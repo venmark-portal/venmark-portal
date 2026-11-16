@@ -13,6 +13,7 @@ import {
 } from '@/lib/businesscentral'
 import { getDeliveryDatesForMethod, getDeadlineForMethodDelivery, nextBusinessDays } from '@/lib/dateUtils'
 import { ymdLokal } from '@/lib/aabenOrdre'
+import { hentKurv } from '@/lib/kurv'
 
 export interface RobotKunde {
   customerId:  string   // portal-id (Customer.id) — nøgle for kurv, favoritter i portal-DB, log
@@ -79,6 +80,24 @@ export class RobotKontekst {
       return {
         std: new Set(aktive.filter(f => f.standardFavorite).map(f => f.itemNo)),
         fav: new Set(aktive.filter(f => !f.standardFavorite).map(f => f.itemNo)),
+      }
+    })
+  }
+
+  /** Kurven lige nu, kort nok til at stå i instruksen: "tom" eller "23994 10 KG, 48011 1 KASSE".
+   *
+   *  Den SKAL med i hvert spørgsmål. Ellers tror robotten på, hvad den selv skrev tidligere i
+   *  samtalen — og kunden kan have slettet en ordre eller ryddet kurven i et andet vindue siden.
+   *  Kun portal-databasen, ingen BC-kald: varenavne henter robotten med se_kurv, hvis den skal
+   *  tale om indholdet. */
+  kurvTekst(): Promise<string> {
+    return this.husk('kurvtekst', async () => {
+      try {
+        const k = await hentKurv(this.kunde.customerId)
+        if (!k.linjer.length) return 'tom'
+        return k.linjer.slice(0, 30).map(l => `${l.itemNo} ${l.quantity} ${l.uom}`).join(', ')
+      } catch {
+        return 'ukendt — slå op med se_kurv'
       }
     })
   }

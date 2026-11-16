@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const samtaleId = String(body?.samtaleId ?? '').slice(0, 64)
   const start = body?.start === true
+  const stemme = body?.stemme === true   // spørgsmålet blev talt ind → kort svar der kan læses op
   const tekst = start ? START_INSTRUKS : String(body?.tekst ?? '').trim().slice(0, 2000)
   if (!/^[A-Za-z0-9-]{8,64}$/.test(samtaleId) || !tekst) {
     return NextResponse.json({ error: 'Ugyldig forespørgsel' }, { status: 400 })
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
           tekst:     bid  => send('tekst', bid),
           vaerktoej: navn => send('vaerktoej', navn),
           ryd:       ()   => send('ryd'),
-        })
+        }, stemme)
         const svar = r.svar || 'Det kunne jeg ikke finde ud af lige nu. Prøv at spørge på en anden måde, eller skriv til os under Beskeder.'
         if (!r.svar) send('tekst', svar)
         const svarId = await logTur({

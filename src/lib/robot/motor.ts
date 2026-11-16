@@ -48,6 +48,8 @@ export async function koerSamtale(
   spoergsmaal: string,
   ctx: RobotKontekst,
   on: MotorHaendelser,
+  /** Kunden talte spørgsmålet ind og får svaret læst op → kortere svar, ingen varenumre. */
+  stemme = false,
 ): Promise<MotorResultat> {
   const messages: MessageParam[] = historik.map(t => ({
     role: t.rolle === 'kunde' ? 'user' : 'assistant',
@@ -55,7 +57,7 @@ export async function koerSamtale(
   }))
   messages.push({ role: 'user', content: spoergsmaal })
 
-  const system = await systemPrompt(ctx.kunde)
+  const system = await systemPrompt(ctx.kunde, { kurv: await ctx.kurvTekst(), stemme })
   const brugte: string[] = []
   let svar = ''
   let inputTokens = 0, outputTokens = 0, cacheTokens = 0

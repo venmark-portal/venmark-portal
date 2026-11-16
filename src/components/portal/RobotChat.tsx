@@ -26,6 +26,12 @@ interface Tur {
 
 const NOEGLE = 'venmark-robot'
 const HILST  = 'venmark-robot-hilst'
+const KALD   = 'venmark-robot-kald'
+
+/** Efter så langt et ophold er samtalen slut — næste spørgsmål starter forfra. */
+const PAUSE_MS = 2 * 60 * 60 * 1000
+/** Stille runder i en åben stemmesamtale, før vi lægger på af os selv (ca. 2-4 minutter). */
+const MAKS_STILLE = 12
 
 function nyId(): string {
   return (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -34,7 +40,15 @@ function nyId(): string {
 function laes(): { samtaleId: string; ture: Tur[]; aaben: boolean } {
   try {
     const v = JSON.parse(sessionStorage.getItem(NOEGLE) ?? 'null')
-    if (v?.samtaleId && Array.isArray(v.ture)) return v
+    if (v?.samtaleId && Array.isArray(v.ture)) {
+      // En fane kan stå åben til næste dag. Kørte vi videre i samme samtale, talte robotten om
+      // kurve og ordrer, der ikke findes mere, og vidste ikke at vi sidst talte i går (Claus 16-11).
+      // Efter et ophold — eller over midnat — er det en ny samtale.
+      const frisk = typeof v.tid === 'number'
+        && Date.now() - v.tid < PAUSE_MS
+        && new Date(v.tid).toDateString() === new Date().toDateString()
+      return frisk ? v : { samtaleId: nyId(), ture: [], aaben: v.aaben === true }
+    }
   } catch {}
   return { samtaleId: nyId(), ture: [], aaben: false }
 }
@@ -119,15 +133,37 @@ export default function RobotChat() {
   const [kanTale, setKanTale]       = useState(false)
   const [lytter, setLytter]         = useState(false)
   const [taler, setTaler]           = useState(false)
+  const [iKald, setIKald]           = useState(false)   // åben stemmesamtale (håndfri)
   const [stemmeFejl, setStemmeFejl] = useState('')
   const genkender = useRef<any>(null)
   const oplaes    = useRef(false)   // spørgsmålet blev talt → læs svaret op
+  // Samtalen holdes åben, til kunden lægger på. Tilstanden ligger i refs, fordi
+  // talegenkenderens og oplæsningens tilbagekald fyrer før React har gentegnet.
+  const kald      = useRef(false)
+  const stille    = useRef(0)
+  const talerRef  = useRef(false)
+  const svarerRef = useRef(false)
+  const lytRef    = useRef<(nytKald?: boolean) => void>(() => {})
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
 
+  const saetTaler = (v: boolean) => { talerRef.current = v; setTaler(v) }
+
   const stopOplaesning = () => {
     try { window.speechSynthesis?.cancel() } catch {}
-    setTaler(false)
+    saetTaler(false)
+  }
+
+  /** Læg på: luk mikrofonen og oplæsningen, og hold op med at lytte igen. */
+  const laegPaa = () => {
+    kald.current = false
+    stille.current = 0
+    setIKald(false)
+    try { sessionStorage.removeItem(KALD) } catch {}
+    try { genkender.current?.abort() } catch {}
+    genkender.current = null
+    setLytter(false)
+    stopOplaesning()
   }
 
   /** Læs svaret op. `derefter` kører når oplæsningen er færdig (eller ikke kan køre). */
@@ -138,13 +174,13 @@ export default function RobotChat() {
     ss.cancel()
     const sprog = locale.slice(0, 2).toLowerCase()
     const stemme = ss.getVoices().find(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
-    setTaler(true)
+    saetTaler(true)
     bidder.forEach((b, i) => {
       const u = new SpeechSynthesisUtterance(b)
       u.lang = locale
       if (stemme) u.voice = stemme
-      if (i === bidder.length - 1) u.onend = () => { setTaler(false); derefter?.() }
-      u.onerror = () => { setTaler(false); if (i === bidder.length - 1) derefter?.() }
+      if (i === bidder.length - 1) u.onend = () => { saetTaler(false); derefter?.() }
+      u.onerror = () => { saetTaler(false); if (i === bidder.length - 1) derefter?.() }
       ss.speak(u)
     })
   }
@@ -152,7 +188,7 @@ export default function RobotChat() {
   // Gem samtalen ved hver ændring (ikke mens den første indlæsning står på).
   useEffect(() => {
     if (!samtaleId) return
-    try { sessionStorage.setItem(NOEGLE, JSON.stringify({ samtaleId, ture, aaben })) } catch {}
+    try { sessionStorage.setItem(NOEGLE, JSON.stringify({ samtaleId, ture, aaben, tid: Date.now() })) } catch {}
   }, [samtaleId, ture, aaben])
 
   // Altid nederst — også når panelet først vises (efter status-kaldet ved genindlæsning, fx når
@@ -162,6 +198,9 @@ export default function RobotChat() {
   }, [ture, opslag, aktiv, aaben])
 
   const spoerg = useCallback(async (tekst: string, start = false, id = samtaleId) => {
+    // Talt spørgsmål → serveren svarer kortere (det skal kunne læses op), og svaret læses op.
+    const medStemme = oplaes.current || kald.current
+    svarerRef.current = true
     setSvarer(true); setOpslag('')
     setTure(prev => [...prev, ...(start ? [] : [{ rolle: 'kunde' as const, tekst }]), { rolle: 'robot' as const, tekst: '' }])
     const tilfoej = (bid: string) => setTure(prev => {
@@ -174,7 +213,7 @@ export default function RobotChat() {
       const res = await fetch('/api/portal/robot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(start ? { samtaleId: id, start: true } : { samtaleId: id, tekst }),
+        body: JSON.stringify(start ? { samtaleId: id, start: true } : { samtaleId: id, tekst, stemme: medStemme }),
       })
       if (!res.ok || !res.body) {
         tilfoej(res.status === 429 ? t('loft') : t('fejl'))
@@ -237,24 +276,42 @@ export default function RobotChat() {
       } else if (ordreAendret && window.location.pathname.startsWith('/portal/ordrer')) {
         genindlaes = () => window.location.reload()
       }
+      // I en åben samtale lytter vi igen, så snart svaret er læst op — kunden skal ikke røre
+      // telefonen mellem hvert spørgsmål. Skal siden genindlæses, tager den sig selv af det
+      // (KALD-flaget i sessionStorage), så samtalen fortsætter efter genindlæsningen.
+      const genoptag = () => { if (kald.current) window.setTimeout(() => lytRef.current?.(), 250) }
       // Spurgt med stemmen → læs svaret op; genindlæs først bagefter, så oplæsningen ikke afbrydes.
-      if (oplaes.current && svar.trim()) laesOp(svar, genindlaes ?? undefined)
+      if (medStemme && svar.trim()) laesOp(svar, () => { if (genindlaes) genindlaes(); else genoptag() })
       else if (genindlaes) setTimeout(genindlaes, 600)
+      else genoptag()
     } catch {
       tilfoej(t('fejl'))
+      if (kald.current) window.setTimeout(() => lytRef.current?.(), 400)
     } finally {
       oplaes.current = false
+      svarerRef.current = false
       setSvarer(false); setOpslag('')
-      inputRef.current?.focus()
+      if (!kald.current) inputRef.current?.focus()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [samtaleId, t, locale])
 
-  /** Mikrofon: tal → teksten vises i feltet mens man taler → sendes når man holder pause. */
-  const lyt = () => {
-    if (lytter) { genkender.current?.stop(); return }
+  /** Mikrofon: tal → teksten vises i feltet mens man taler → sendes når man holder pause.
+   *
+   *  `nytKald` = kunden trykkede på mikrofonen. Så er det en ÅBEN samtale: vi lytter igen efter
+   *  hvert svar, og den slutter først, når kunden lægger på. Før lukkede mikrofonen af sig selv,
+   *  så snart robotten begyndte at tale, og man skulle trykke forfra hver gang (Claus 16-11).
+   *  Vi lytter ikke, mens robotten taler — ellers hører den sig selv i højttaleren. */
+  const startLyt = (nytKald = false) => {
     const SR = talegenkender()
-    if (!SR || svarer) return
+    if (!SR) return
+    if (nytKald) {
+      kald.current = true
+      stille.current = 0
+      setIKald(true)
+      try { sessionStorage.setItem(KALD, String(Date.now())) } catch {}
+    }
+    if (genkender.current || svarerRef.current || talerRef.current) return
     stopOplaesning(); setStemmeFejl('')
     // iOS kræver at oplæsning startes i et klik — en tom oplæsning "låser op" til svaret.
     try { window.speechSynthesis?.speak(new SpeechSynthesisUtterance('')) } catch {}
@@ -273,18 +330,30 @@ export default function RobotChat() {
       setInput((endelig + midlertidig).trim())
     }
     r.onerror = (e: any) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setStemmeFejl(t('mikNaegtet'))
+      // Er mikrofonen ikke til at redde, er en åben samtale også slut — ellers prøver vi igen
+      // og igen uden at kunden kan se hvorfor.
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { setStemmeFejl(t('mikNaegtet')); laegPaa() }
+      else if (e.error === 'audio-capture') { setStemmeFejl(t('stemmeFejl')); laegPaa() }
       else if (e.error !== 'no-speech' && e.error !== 'aborted') setStemmeFejl(t('stemmeFejl'))
     }
     r.onend = () => {
       setLytter(false); genkender.current = null
       const tekst = endelig.trim()
-      if (tekst) { setInput(''); oplaes.current = true; spoerg(tekst) }
+      if (tekst) { stille.current = 0; setInput(''); oplaes.current = true; spoerg(tekst); return }
+      if (!kald.current) return
+      // Stilhed: i en åben samtale lytter vi videre — kunden lægger selv på. Men mikrofonen må
+      // ikke stå åben for evigt i lommen, så efter en lang stilhed lægger vi på af os selv.
+      stille.current += 1
+      if (stille.current >= MAKS_STILLE) { laegPaa(); return }
+      window.setTimeout(() => { if (kald.current) lytRef.current?.() }, 300)
     }
     genkender.current = r
     setLytter(true)
+    // Holdes frisk, så en samtale der har kørt et stykke tid også tages op efter en genindlæsning.
+    if (kald.current) { try { sessionStorage.setItem(KALD, String(Date.now())) } catch {} }
     try { r.start() } catch { setLytter(false); genkender.current = null }
   }
+  lytRef.current = startLyt
 
   // Første indlæsning: er robotten slået til, og skal den selv starte samtalen?
   useEffect(() => {
@@ -301,6 +370,18 @@ export default function RobotChat() {
           try { sessionStorage.setItem(HILST, '1') } catch {}
           setAaben(true)
           spoerg('', true, gemt.samtaleId)
+          return
+        }
+        // Blev en åben stemmesamtale afbrudt af en genindlæsning (robotten lagde i kurven), så
+        // tag den op igen — ellers skal kunden røre telefonen midt i en bilsamtale. Kun lige
+        // efter, så mikrofonen ikke åbner af sig selv næste gang portalen bruges.
+        let kaldTid = 0
+        try { kaldTid = Number(sessionStorage.getItem(KALD) ?? 0) } catch {}
+        if (s.aktiv && kaldTid > 0 && Date.now() - kaldTid < 90_000 && talegenkender()) {
+          setAaben(true)
+          window.setTimeout(() => lytRef.current?.(true), 500)
+        } else if (kaldTid) {
+          try { sessionStorage.removeItem(KALD) } catch {}
         }
       })
       .catch(() => {})
@@ -373,7 +454,7 @@ export default function RobotChat() {
                 className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40">
                 {t('ny')}
               </button>
-              <button type="button" onClick={() => { genkender.current?.abort(); stopOplaesning(); setAaben(false) }} aria-label={t('luk')}
+              <button type="button" onClick={() => { laegPaa(); setAaben(false) }} aria-label={t('luk')}
                 className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
                   <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
@@ -413,25 +494,43 @@ export default function RobotChat() {
 
           <div className="border-t border-gray-100 px-3 pb-3 pt-2">
             {taler && (
-              <button type="button" onClick={stopOplaesning}
+              // I en åben samtale betyder "stop oplæsning" også "nu vil jeg sige noget" — så
+              // lytter vi med det samme i stedet for at vente oplæsningen ud.
+              <button type="button" onClick={() => { stopOplaesning(); if (kald.current) window.setTimeout(() => lytRef.current?.(), 150) }}
                 className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>
-                {t('stopOplaesning')}
+                {iKald ? t('minTur') : t('stopOplaesning')}
               </button>
+            )}
+            {iKald && (
+              <p className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-900">
+                <span className={'h-2 w-2 shrink-0 rounded-full ' + (lytter ? 'animate-pulse bg-red-600' : 'bg-blue-400')} aria-hidden="true" />
+                <span className="font-medium">{taler ? t('robotTaler') : lytter ? t('lytter') : t('etOejeblik')}</span>
+                <span className="ml-auto shrink-0 text-blue-700">{t('kaldAaben')}</span>
+              </p>
             )}
             {stemmeFejl && <p className="mb-2 text-xs text-red-600">{stemmeFejl}</p>}
             <div className="flex items-end gap-2">
-              {kanTale && (
-                <button type="button" onClick={lyt} disabled={svarer && !lytter}
-                  aria-label={lytter ? t('stopLyt') : t('tal')} title={lytter ? t('stopLyt') : t('tal')} aria-pressed={lytter}
-                  className={'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl transition disabled:opacity-40 ' +
-                    (lytter ? 'animate-pulse bg-red-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
+              {kanTale && (iKald ? (
+                // Åben samtale: kunden lægger selv på, når han ikke vil mere.
+                <button type="button" onClick={laegPaa}
+                  aria-label={t('laegPaa')} title={t('laegPaa')}
+                  className="flex h-[42px] shrink-0 items-center gap-1.5 rounded-xl bg-red-600 px-3 text-sm font-semibold text-white transition hover:bg-red-700">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7c6-4 12-4 18 0l-2.2 3.3a2 2 0 0 1-2.4.7l-1.7-.7a2 2 0 0 1-1.2-1.8V7.2c-1.7-.3-3.3-.3-5 0v1.3a2 2 0 0 1-1.2 1.8l-1.7.7a2 2 0 0 1-2.4-.7L3 7Zm1 14L21 4" />
+                  </svg>
+                  {t('laegPaa')}
+                </button>
+              ) : (
+                <button type="button" onClick={() => startLyt(true)} disabled={svarer}
+                  aria-label={t('tal')} title={t('tal')}
+                  className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-700 transition hover:bg-gray-200 disabled:opacity-40">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
                     <rect x="9" y="3" width="6" height="11" rx="3" />
                     <path strokeLinecap="round" d="M5 11a7 7 0 0 0 14 0M12 18v3" />
                   </svg>
                 </button>
-              )}
+              ))}
               <label htmlFor="robot-input" className="sr-only">{t('placeholder')}</label>
               <textarea
                 id="robot-input"
