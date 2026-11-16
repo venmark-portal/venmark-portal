@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
+import { prisma } from '@/lib/prisma'
 import { taleKonfigureret, transskriber } from '@/lib/tale/openai'
 
 export const runtime = 'nodejs'
@@ -42,12 +43,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Optagelsen er for lang' }, { status: 413 })
   }
 
-  // Varenavne fra skærmen: den vare man står med, kurvens varer, kundens faste varer.
+  // Varenavne fra skærmen: den vare man står med, kurvens varer, dem robotten lige har
+  // nævnt.
   let ord: string[] = []
   try {
     const raa = String(form?.get('ord') ?? '')
     if (raa) ord = JSON.parse(raa)
   } catch { /* ordbogen er en hjælp, ikke et krav */ }
+  if (!Array.isArray(ord)) ord = []
+
+  // Kundens EGNE varer lægges til. Uden dem var ordbogen tom på den FØRSTE sætning i en
+  // samtale — og det er netop der, man siger varenavnet ("jeg skal have 10 kg
+  // laksefilet"). Favoritterne er den bedste liste vi har: det er dem, kunden køber.
+  const bruger = String(token.sub ?? '')
+  if (bruger) {
+    try {
+      const favoritter = await prisma.favorite.findMany({
+        where: { customerId: bruger },
+        select: { itemName: true },
+        take: 80,
+      })
+      ord = [...ord, ...favoritter.map(f => f.itemName).filter(Boolean)]
+    } catch { /* en lagermedarbejder har ingen favoritter — ordbogen er stadig god nok */ }
+  }
 
   // Filendelsen skal passe til lyden: iOS optager mp4, Android/Chrome webm.
   const type = lyd.type || 'audio/webm'

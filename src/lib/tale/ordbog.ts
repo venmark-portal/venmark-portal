@@ -17,23 +17,41 @@ const FAST = [
   'kilo', 'kasse', 'kasser', 'dåse', 'dåser', 'stk', 'palle',
 ]
 
-/**
- * Bygger instruksen til talemodellen. `egne` er det der gælder lige nu — varen man
- * står med, kurvens varer, kundens faste varer — og kommer FØRST, fordi den vejer
- * tungest.
- */
-export function taleOrdbog(egne: string[] = []): string {
+/** Varenavne står i BC med RÅB ("LAKSEFILET 1700/2100"). Sendes de sådan, skriver
+ *  modellen gerne hele sætningen med store bogstaver. Navne der i forvejen har små
+ *  bogstaver, lades som de er. */
+function paentNavn(s: string): string {
+  const t = String(s ?? '').trim()
+  return /[a-zæøå]/.test(t) ? t : t.toLowerCase()
+}
+
+/** Kundens egne ord først (de vejer tungest), men ALDRIG så mange at de faste
+ *  fiskeord bliver presset ud — en kunde kan have 80 favoritter. */
+function byg(egne: string[], maksEgne: number, maks: number): string[] {
   const ord: string[] = []
   const set = new Set<string>()
-  for (const o of [...egne, ...FAST]) {
-    const t = String(o ?? '').trim()
-    if (!t) continue
-    const noegle = t.toLowerCase()
-    if (set.has(noegle)) continue
-    set.add(noegle)
-    ord.push(t)
-    if (ord.length >= 60) break
+  const tag = (liste: string[], loft: number) => {
+    for (const o of liste) {
+      const t = paentNavn(o)
+      if (!t) continue
+      const noegle = t.toLowerCase()
+      if (set.has(noegle)) continue
+      set.add(noegle)
+      ord.push(t)
+      if (ord.length >= loft) return
+    }
   }
+  tag(egne, Math.min(maksEgne, maks))
+  tag(FAST, maks)
+  return ord
+}
+
+/**
+ * Bygger instruksen til talemodellen. `egne` er det der gælder lige nu — varen man
+ * står med, kurvens varer, kundens favoritter.
+ */
+export function taleOrdbog(egne: string[] = []): string {
+  const ord = byg(egne, 30, 50)
   // "ti kilo" er korrekt dansk, men ubrugeligt for os: antallet skal kunne læses af en
   // ordrelinje. Derfor står kravet om cifre først og helt firkantet.
   return `Dansk tale fra en fiskegrossist. Skriv ALTID antal med cifre og kort enhed: `
@@ -42,16 +60,8 @@ export function taleOrdbog(egne: string[] = []): string {
     + `(1700-2100). Ord der kan forekomme: ${ord.join(', ')}.`
 }
 
-/** Ordene alene — til `keywords`-feltet på de nyere modeller. */
+/** Ordene alene — til `keywords`-feltet på de nyere modeller. Her er der plads til flere
+ *  end i prompten, for de udvander ikke en instruks. */
 export function taleNoegleord(egne: string[] = []): string[] {
-  const set = new Set<string>()
-  const ud: string[] = []
-  for (const o of [...egne, ...FAST]) {
-    const t = String(o ?? '').trim()
-    if (!t || set.has(t.toLowerCase())) continue
-    set.add(t.toLowerCase())
-    ud.push(t)
-    if (ud.length >= 60) break
-  }
-  return ud
+  return byg(egne, 80, 120)
 }
