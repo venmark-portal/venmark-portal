@@ -34,6 +34,7 @@ export const robotDict = defineDict({
     kaldAaben: 'åben til du lægger på', minTur: 'Stop — jeg vil sige noget',
     mikNaegtet: 'Mikrofonen er ikke tilladt. Giv portalen adgang til mikrofonen i browserens indstillinger.',
     stemmeFejl: 'Talen kunne ikke opfattes. Prøv igen, eller skriv.',
+    ingenLyd: 'Svaret kunne ikke læses op. Tjek lydstyrken og lydløs-knappen — svaret står i chatten.',
   },
   en: {
     aabn: 'Ask the Venmark assistant',
@@ -67,6 +68,7 @@ export const robotDict = defineDict({
     kaldAaben: 'open until you hang up', minTur: 'Stop — I want to speak',
     mikNaegtet: 'The microphone is not allowed. Give the portal access to the microphone in your browser settings.',
     stemmeFejl: 'Your speech could not be recognised. Try again, or type.',
+    ingenLyd: 'The answer could not be read aloud. Check the volume and the silent switch — the answer is in the chat.',
   },
   de: {
     aabn: 'Venmark-Assistent fragen',
@@ -100,5 +102,6 @@ export const robotDict = defineDict({
     kaldAaben: 'offen, bis Sie auflegen', minTur: 'Stop — ich möchte sprechen',
     mikNaegtet: 'Das Mikrofon ist nicht erlaubt. Erlauben Sie dem Portal den Mikrofonzugriff in den Browsereinstellungen.',
     stemmeFejl: 'Die Sprache wurde nicht erkannt. Bitte erneut versuchen oder tippen.',
+    ingenLyd: 'Die Antwort konnte nicht vorgelesen werden. Prüfen Sie Lautstärke und Stummschalter — die Antwort steht im Chat.',
   },
 })

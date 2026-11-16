@@ -144,14 +144,48 @@ export default function RobotChat() {
   const talerRef  = useRef(false)
   const svarerRef = useRef(false)
   const lytRef    = useRef<(nytKald?: boolean) => void>(() => {})
+  const stemmer   = useRef<SpeechSynthesisVoice[]>([])
+  const vagt      = useRef(0)   // oplæsningen kom aldrig i gang
+  const puls      = useRef(0)   // holder Chrome vågen under lange oplæsninger
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
 
   const saetTaler = (v: boolean) => { talerRef.current = v; setTaler(v) }
 
+  // Stemmerne hentes asynkront. getVoices() er tom på det første kald, og en utterance
+  // med en stemme der ikke findes, siger ingenting — derfor holder vi listen frisk.
+  useEffect(() => {
+    const ss = typeof window !== 'undefined' ? window.speechSynthesis : undefined
+    if (!ss) return
+    const hent = () => { stemmer.current = ss.getVoices() ?? [] }
+    hent()
+    ss.addEventListener?.('voiceschanged', hent)
+    return () => ss.removeEventListener?.('voiceschanged', hent)
+  }, [])
+
   const stopOplaesning = () => {
+    window.clearTimeout(vagt.current)
+    window.clearInterval(puls.current)
     try { window.speechSynthesis?.cancel() } catch {}
     saetTaler(false)
+  }
+
+  /**
+   * Låser oplæsningen op. SKAL køre inde i et klik: iOS taler kun, hvis syntesen
+   * én gang er startet af en finger — og et svar kommer altid efter et netværkskald,
+   * altså uden for klikket. En TOM utterance tæller ikke som oplåsning; der skal
+   * rigtige tegn til, så vi bruger et mellemrum uden lyd.
+   */
+  const laasOpStemme = () => {
+    const ss = typeof window !== 'undefined' ? window.speechSynthesis : undefined
+    if (!ss) return
+    try {
+      ss.resume()
+      const u = new SpeechSynthesisUtterance(' ')
+      u.volume = 0
+      u.lang = locale
+      ss.speak(u)
+    } catch {}
   }
 
   /** Læg på: luk mikrofonen og oplæsningen, og hold op med at lytte igen. */
@@ -166,23 +200,68 @@ export default function RobotChat() {
     stopOplaesning()
   }
 
-  /** Læs svaret op. `derefter` kører når oplæsningen er færdig (eller ikke kan køre). */
+  /**
+   * Læs svaret op. `derefter` kører når oplæsningen er færdig (eller ikke kan køre) —
+   * i en åben samtale er det dér, vi lytter igen, så den MÅ aldrig udeblive.
+   *
+   * Tre fælder, der alle giver samme symptom: robotten hører dig, men du hører ikke
+   * robotten (Claus 16-11).
+   *   1) Chrome taber oplæsningen, hvis speak() kommer i samme tick som cancel().
+   *   2) Syntesen står tit i pause efter en talegenkendelse — resume() skal til.
+   *   3) Starter oplæsningen alligevel ikke, hænger samtalen for evigt. Derfor en
+   *      vagthund: ét nyt forsøg, og ellers en besked kunden kan handle på.
+   */
   const laesOp = (tekst: string, derefter?: () => void) => {
     const ss = typeof window !== 'undefined' ? window.speechSynthesis : undefined
     const bidder = oplaesningsBidder(tekst)
     if (!ss || !bidder.length) { derefter?.(); return }
-    ss.cancel()
+
+    let faerdigKaldt = false
+    const faerdig = () => {
+      if (faerdigKaldt) return
+      faerdigKaldt = true
+      window.clearTimeout(vagt.current)
+      window.clearInterval(puls.current)
+      saetTaler(false)
+      derefter?.()
+    }
+
     const sprog = locale.slice(0, 2).toLowerCase()
-    const stemme = ss.getVoices().find(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
+    const liste = stemmer.current.length ? stemmer.current : (ss.getVoices() ?? [])
+    const stemme = liste.find(v => v.lang.replace('_', '-').toLowerCase().startsWith(sprog))
     saetTaler(true)
-    bidder.forEach((b, i) => {
-      const u = new SpeechSynthesisUtterance(b)
-      u.lang = locale
-      if (stemme) u.voice = stemme
-      if (i === bidder.length - 1) u.onend = () => { saetTaler(false); derefter?.() }
-      u.onerror = () => { saetTaler(false); if (i === bidder.length - 1) derefter?.() }
-      ss.speak(u)
-    })
+
+    const tal = (dele: string[], andetForsoeg: boolean) => {
+      let begyndt = false
+      try { ss.cancel(); ss.resume() } catch {}
+      // Et lille ophold efter cancel() — ellers sluger Chrome den første utterance.
+      window.setTimeout(() => {
+        dele.forEach((b, i) => {
+          const u = new SpeechSynthesisUtterance(b)
+          u.lang = locale
+          if (stemme) u.voice = stemme
+          u.onstart = () => { begyndt = true; window.clearTimeout(vagt.current) }
+          if (i === dele.length - 1) u.onend = faerdig
+          u.onerror = () => { if (i === dele.length - 1) faerdig() }
+          try { ss.speak(u) } catch { faerdig() }
+        })
+        // Chrome sætter lange oplæsninger på pause af sig selv efter ~15 sekunder.
+        window.clearInterval(puls.current)
+        puls.current = window.setInterval(() => {
+          if (!ss.speaking) { window.clearInterval(puls.current); return }
+          try { ss.resume() } catch {}
+        }, 5000)
+      }, 80)
+
+      vagt.current = window.setTimeout(() => {
+        if (begyndt || faerdigKaldt) return
+        if (!andetForsoeg) { tal([dele.join(' ')], true); return }   // ét samlet forsøg mere
+        setStemmeFejl(t('ingenLyd'))
+        faerdig()
+      }, 2500)
+    }
+
+    tal(bidder, false)
   }
 
   // Gem samtalen ved hver ændring (ikke mens den første indlæsning står på).
@@ -313,8 +392,7 @@ export default function RobotChat() {
     }
     if (genkender.current || svarerRef.current || talerRef.current) return
     stopOplaesning(); setStemmeFejl('')
-    // iOS kræver at oplæsning startes i et klik — en tom oplæsning "låser op" til svaret.
-    try { window.speechSynthesis?.speak(new SpeechSynthesisUtterance('')) } catch {}
+    laasOpStemme()
     const r = new SR()
     r.lang = locale
     r.interimResults = true
