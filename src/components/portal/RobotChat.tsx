@@ -163,6 +163,10 @@ export default function RobotChat() {
   const lydOk     = useRef(false)   // oplæsningen er faktisk begyndt mindst én gang
   const sidsteFejl = useRef('')     // kode fra SpeechSynthesis, så vi kan se HVORFOR
   const valgtStemme = useRef('')    // hvilken stemme telefonen brugte
+  // Stemme fra serveren: virker uden talepakke på telefonen. Claus' Samsung havde
+  // ingen dansk (16-11), og kundernes telefoner er der ingen der styrer.
+  const serverTale = useRef(false)
+  const lydRef = useRef<HTMLAudioElement | null>(null)
   const [lydStatus, setLydStatus] = useState('')
 
   useEffect(() => { setKanTale(!!talegenkender()) }, [])
@@ -180,10 +184,19 @@ export default function RobotChat() {
     return () => ss.removeEventListener?.('voiceschanged', hent)
   }, [])
 
+  // Har serveren en stemme? Spørges én gang; ellers læser telefonen selv op.
+  useEffect(() => {
+    fetch('/api/tale/transskriber')
+      .then(r => (r.ok ? r.json() : { klar: false }))
+      .then(d => { serverTale.current = !!d.klar })
+      .catch(() => {})
+  }, [])
+
   const stopOplaesning = () => {
     window.clearTimeout(vagt.current)
     window.clearInterval(puls.current)
     try { window.speechSynthesis?.cancel() } catch {}
+    try { lydRef.current?.pause() } catch {}
     saetTaler(false)
   }
 
@@ -194,6 +207,17 @@ export default function RobotChat() {
    * rigtige tegn til, så vi bruger et mellemrum uden lyd.
    */
   const laasOpStemme = () => {
+    // Lydafspilleren låses op på samme måde som oplæsningen: ÉT element, startet i
+    // klikket, som vi bagefter genbruger til svarene. Et nyt Audio() efter et
+    // netværkskald får ikke lov at spille på iOS.
+    try {
+      if (!lydRef.current) lydRef.current = new Audio()
+      const a = lydRef.current
+      a.muted = true
+      a.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA='
+      void a.play().catch(() => {})
+      a.muted = false
+    } catch {}
     const ss = typeof window !== 'undefined' ? window.speechSynthesis : undefined
     if (!ss) return
     try {
@@ -228,6 +252,43 @@ export default function RobotChat() {
   }
 
   /**
+   * Oplæsning fra serveren: vi henter svaret som en lydfil og afspiller den i det
+   * element, der blev låst op ved mikrofon-trykket. Kræver ingen talepakke på
+   * telefonen, og lyden er den samme hos alle kunder.
+   *
+   * Fejler noget som helst, falder vi tilbage på telefonens egen oplæsning — en
+   * stemme med accent er bedre end tavshed, og `derefter` SKAL kaldes, ellers
+   * hænger en åben samtale.
+   */
+  const serverLaesOp = (tekst: string, derefter?: () => void) => {
+    saetTaler(true)
+    let faerdigKaldt = false
+    const faerdig = () => { if (!faerdigKaldt) { faerdigKaldt = true; saetTaler(false); derefter?.() } }
+    const tilbagefald = () => {
+      if (faerdigKaldt) return
+      serverTale.current = false          // prøv ikke igen i denne samtale
+      saetTaler(false)
+      laesOp(tekst, derefter)
+    }
+
+    fetch('/api/tale/oplaes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tekst, sprog: locale.slice(0, 2) }),
+    })
+      .then(async res => {
+        if (!res.ok) throw new Error(String(res.status))
+        const url = URL.createObjectURL(await res.blob())
+        const a = lydRef.current ?? (lydRef.current = new Audio())
+        a.onended = () => { URL.revokeObjectURL(url); faerdig() }
+        a.onerror = () => { URL.revokeObjectURL(url); tilbagefald() }
+        a.src = url
+        await a.play()
+      })
+      .catch(tilbagefald)
+  }
+
+  /**
    * Læs svaret op. `derefter` kører når oplæsningen er færdig (eller ikke kan køre) —
    * i en åben samtale er det dér, vi lytter igen, så den MÅ aldrig udeblive.
    *
@@ -241,7 +302,11 @@ export default function RobotChat() {
   const laesOp = (tekst: string, derefter?: () => void) => {
     const ss = typeof window !== 'undefined' ? window.speechSynthesis : undefined
     const bidder = oplaesningsBidder(tekst)
-    if (!ss || !bidder.length) { derefter?.(); return }
+    if (!bidder.length) { derefter?.(); return }
+    // Serverstemmen først: den lyder ens på alle telefoner. Svarer den ikke, læser
+    // telefonen selv op — så er stemmen i det mindste ikke væk, fordi nettet knækkede.
+    if (serverTale.current) { serverLaesOp(bidder.join(' '), derefter); return }
+    if (!ss) { derefter?.(); return }
 
     let faerdigKaldt = false
     const faerdig = () => {
