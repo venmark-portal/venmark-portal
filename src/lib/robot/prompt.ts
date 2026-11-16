@@ -64,7 +64,11 @@ export async function systemPrompt(
     { type: 'text', text: REGLER + (await videnTilPrompt()), cache_control: { type: 'ephemeral' } },
     {
       type: 'text',
-      text: `Nu: ${tid} (dansk tid).\nKunde: ${k.navn} (kundenr. ${k.customerNo}).\nSprog: ${sprog}.` +
+      // Sproget skal stå som et krav, ikke som en oplysning. Ellers slipper der engelsk med
+      // ud i et dansk svar, når noget går galt: "Leveringsdag is needed before adding. Til
+      // hvilken dag skal de 60 kilo?" (Claus 16-11).
+      text: `Nu: ${tid} (dansk tid).\nKunde: ${k.navn} (kundenr. ${k.customerNo}).` +
+        `\nSprog: ${sprog}. Skriv ALT på ${sprog} — også når du siger at noget mangler eller gik galt.` +
         `\nKurven lige nu: ${nuTilstand?.kurv ?? 'ukendt — slå op med se_kurv'}.` +
         '\n(Kurven står med varenumre uden navne. Skal du nævne varerne for kunden, så hent navnene med se_kurv — sig aldrig bare "vare 23995".)' +
         (nuTilstand?.stemme ? `\n${STEMME}` : ''),

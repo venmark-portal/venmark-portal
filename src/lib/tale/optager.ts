@@ -18,6 +18,10 @@ export interface DiktatValg {
    *  lægge" / "i 14-17 bakker" / "60 kilo i alt" — og robotten svarede på hver stump for
    *  sig (Claus 16-11). Folk tænker midt i en bestilling. */
   stilhedMs?: number
+  /** Pausen man får, når man har talt længe. En opremsning af varer har længere
+   *  tænkepauser end et "ja tak" — "en kasse rødgrøn laks, en hvidløgslaks og en …"
+   *  blev klippet midt i listen, mens han tænkte (Claus 16-11). */
+  stilhedLangMs?: number
   /** Hvor længe vi venter på, at der kommer tale i det hele taget (ms). */
   opstartMs?: number
   /** Så lidt tale må en optagelse ikke klippes efter (ms). Et "øh" eller et host må ikke
@@ -185,7 +189,12 @@ export function useDiktat(
         // Der skal være talt LÆNGE nok til, at det kan være en sætning. Ellers klipper et
         // host eller et "øh" bestillingen over, og robotten svarer på en stump.
         if (taleMs < (valgRef.current.mindstTaleMs ?? 700)) return
-        if (nu - sidsteLyd > (valgRef.current.stilhedMs ?? 1800)) {
+        // Jo længere man har talt, jo mere tålmodige er vi: et kort svar skal af sted med
+        // det samme, en opremsning skal have lov at tænke sig om.
+        const vindue = taleMs > 6000
+          ? (valgRef.current.stilhedLangMs ?? valgRef.current.stilhedMs ?? 1800)
+          : (valgRef.current.stilhedMs ?? 1800)
+        if (nu - sidsteLyd > vindue) {
           try { kilde.disconnect() } catch {}
           try { m.stop() } catch {}
         }

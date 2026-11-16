@@ -29,8 +29,22 @@ const NOEGLE = 'venmark-robot'
 const HILST  = 'venmark-robot-hilst'
 const KALD   = 'venmark-robot-kald'
 
-/** Efter så langt et ophold er samtalen slut — næste spørgsmål starter forfra. */
-const PAUSE_MS = 2 * 60 * 60 * 1000
+/** Efter så langt et ophold er samtalen slut — næste spørgsmål starter forfra.
+ *
+ *  To timer var alt for længe. Samtale e84379 levede fra 19:21 til 21:23 med tre kvarters
+ *  pauser imellem: for kunden var det tre samtaler, for robotten én, og den svarede ud fra
+ *  noget, der blev sagt to timer før (Claus 16-11). Et halvt kvarters pause er et naturligt
+ *  skel — man kan nå at kigge i kurven og komme tilbage, men ikke at gå til frokost. */
+const PAUSE_MS = 30 * 60 * 1000
+
+/** Hvornår rørte vi samtalen sidst? Står i sessionStorage, så en fane der har ligget
+ *  stille, kan se det — også uden at siden er indlæst igen. */
+function sidsteAktivitet(): number {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(NOEGLE) ?? 'null')
+    return typeof v?.tid === 'number' ? v.tid : 0
+  } catch { return 0 }
+}
 /** Stille runder i en åben stemmesamtale, før vi lægger på af os selv (ca. 2-4 minutter). */
 const MAKS_STILLE = 12
 
@@ -399,6 +413,14 @@ export default function RobotChat() {
   }, [ture, opslag, aktiv, aaben])
 
   const spoerg = useCallback(async (tekst: string, start = false, id = samtaleId) => {
+    // Har panelet ligget stille længe, er det en ny samtale — også selv om fanen har stået
+    // åben hele tiden. Reglen ved indlæsning er ikke nok: den gamle fane blev ved med at
+    // bruge formiddagens samtale, når den blev taget frem igen (Claus 16-11).
+    if (!start && id === samtaleId && Date.now() - sidsteAktivitet() > PAUSE_MS) {
+      id = nyId()
+      setSamtaleId(id)
+      setTure([])
+    }
     // Talt spørgsmål → serveren svarer kortere (det skal kunne læses op), og svaret læses op.
     const medStemme = oplaes.current || kald.current
     svarerRef.current = true
@@ -520,6 +542,7 @@ export default function RobotChat() {
       // ("Prøv så lige at lægge" / "i 14-17 bakker" / "60 kilo i alt"), og robotten
       // svarede på hver stump (Claus 16-11). Den der er færdig, trykker Færdig.
       stilhedMs: 3000,
+      stilhedLangMs: 4500,      // har man talt længe, er man i gang med en opremsning
       opstartMs: 9000,          // tid til at komme i gang
       mindstTaleMs: 900,        // et host er ikke en sætning
       onSlut: fikTekst => {
