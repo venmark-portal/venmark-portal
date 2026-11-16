@@ -61,7 +61,10 @@ export default function Taltastatur({
     <div
       className={
         'rounded-2xl bg-white p-3 ring-1 ring-gray-200 ' +
-        (fyld ? 'flex min-h-0 flex-1 flex-col' : 'mt-3')
+        // Gulv under tastaturet. Uden det giver flex-1 efter for alt det andet på
+        // skærmen, og tasterne bliver presset ned til et par millimeter — ulæselige
+        // og umulige at ramme. Er der ikke plads, ruller arbejdsområdet i stedet.
+        (fyld ? 'flex min-h-[17rem] flex-1 flex-col' : 'mt-3')
       }
     >
       <div className="mb-2 flex shrink-0 items-baseline justify-between gap-2 rounded-xl bg-gray-100 px-4 py-3">
@@ -88,7 +91,7 @@ export default function Taltastatur({
             disabled={deaktiveret}
             className={
               'rounded-xl text-2xl font-semibold disabled:opacity-30 ' +
-              (fyld ? 'h-full ' : 'py-3.5 ') +
+              (fyld ? 'h-full min-h-[2.75rem] ' : 'py-3.5 ') +
               (t === 'slet'
                 ? 'bg-gray-200 text-gray-700'
                 : 'bg-white text-gray-900 ring-1 ring-gray-300 active:bg-gray-100')

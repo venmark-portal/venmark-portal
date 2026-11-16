@@ -136,7 +136,8 @@ export default function LagerForside() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 pb-24 pt-4">
+    // pt-12 giver plads til rolleskifteren, der svæver i øverste højre hjørne.
+    <div className="mx-auto max-w-lg px-4 pb-24 pt-12">
       {/* Status — alt man skal kunne se med ét blik */}
       <header className="mb-4 flex items-center justify-between">
         <div>

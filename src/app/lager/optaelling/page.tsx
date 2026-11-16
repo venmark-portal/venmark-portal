@@ -339,7 +339,9 @@ export default function OptaellingSide() {
     // optæller skal kunne nå alt med tommelfingeren uden at lede efter en knap
     // under kanten — listen over talte varer åbnes i stedet som en plade nedefra.
     <div className="mx-auto flex h-[100dvh] max-w-lg flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2 pt-3">
+      {/* pr-28: rolleskifteren svæver fast i øverste højre hjørne — uden luft her
+          lægger den sig oven på "Luk". */}
+      <header className="flex shrink-0 items-center justify-between gap-2 px-4 pb-2 pr-28 pt-3">
         <h1 className="min-w-0 truncate text-base font-bold text-gray-900">
           {optaelling.no}
           <span className="ml-2 text-sm font-normal text-gray-500">
@@ -437,7 +439,9 @@ export default function OptaellingSide() {
 
           {/* Arbejdsområdet fylder resten af skærmen: varen man står med, og
               taltastaturet der strækker sig ned til bundlinjen. */}
-          <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 pt-2">
+          {/* Ruller KUN hvis en lille skærm ikke kan rumme varekort + tastatur.
+              Bundlinjen og scannefeltet bliver stående uanset hvad. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-1 pt-2">
           {aktiv && (
             <div className="shrink-0 rounded-2xl bg-white p-3 ring-2 ring-emerald-600">
               <div className="flex gap-3">

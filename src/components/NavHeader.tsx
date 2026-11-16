@@ -4,7 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/leverandoer', '/skaerm']
+// Sider der er APPS, ikke hjemmeside: de tegner deres egen ramme og regner med at have
+// hele skærmen. Får de marketing-headeren ovenpå, bliver en app-skærm der er sat til
+// præcis én skærmhøjde klemt sammen — det var dét der mosede taltastaturet på lageret.
+const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/leverandoer', '/skaerm', '/lager']
 
 export default function NavHeader() {
   const [open, setOpen] = useState(false)
