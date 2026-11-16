@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Square, X } from 'lucide-react'
+import { useDiktat } from '@/lib/tale/optager'
 
 const MAKS = 150
 
@@ -38,6 +39,12 @@ export default function Bemaerkning({
   // hver gang uden at vente på en gentegning.
   const basisRef = useRef('')
   const stumperRef = useRef<string[]>([])
+  // Diktat over serveren: hele optagelsen sendes, og varenavnet kommer med som ordbog.
+  // Er der ingen nøgle på serveren, falder vi tilbage på browserens egen genkendelse.
+  const diktat = useDiktat(
+    ny => setTekst(t => [t.trim(), ny.trim()].filter(Boolean).join(' ').slice(0, MAKS)),
+    () => vare.split('·').map(s => s.trim()).filter(Boolean),
+  )
   // Vil brugeren stadig tale? Browseren lukker mikrofonen af sig selv ved den første
   // pause — og så står man og taler ind i en lukket mikrofon uden at opdage det.
   const villRef = useRef(false)
@@ -174,12 +181,27 @@ export default function Bemaerkning({
           <span className={'text-xs ' + (tekst.length >= MAKS ? 'font-semibold text-amber-700' : 'text-gray-400')}>
             {tekst.length} / {MAKS} tegn
           </span>
-          {!kanTale && (
+          {!kanTale && !diktat.klar && (
             // iPhone og Safari har ingen talegenkendelse i browseren — men iOS' eget
             // tastatur har en mikrofon-tast, og den virker i feltet her.
             <span className="text-xs text-gray-400">Indtal med mikrofonen på dit tastatur</span>
           )}
-          {kanTale && (
+          {diktat.klar ? (
+            // Optag → slip → hele sætningen kommer. Varenavnet sendes med som ordbog,
+            // så "10 kg laksefilet" ikke bliver til "10 kW" (Claus 16-11).
+            <button
+              type="button"
+              onClick={() => (diktat.optager ? diktat.stop() : diktat.start())}
+              disabled={diktat.skriver}
+              className={
+                'flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-50 ' +
+                (diktat.optager ? 'bg-red-600 text-white' : 'bg-gray-900 text-white')
+              }
+            >
+              {diktat.optager ? <Square size={15} /> : <Mic size={15} />}
+              {diktat.optager ? 'Stop' : diktat.skriver ? 'Skriver …' : 'Indtal'}
+            </button>
+          ) : kanTale && (
             <button
               type="button"
               onClick={tal}
@@ -194,8 +216,14 @@ export default function Bemaerkning({
           )}
         </div>
 
-        {talefejl && (
-          <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{talefejl}</p>
+        {(talefejl || diktat.fejl) && (
+          <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{diktat.fejl || talefejl}</p>
+        )}
+        {diktat.optager && (
+          <p className="mt-2 flex items-center gap-2 text-sm text-red-700">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" aria-hidden="true" />
+            Optager — tal færdig, og tryk så Stop.
+          </p>
         )}
 
         <div className="mt-3 flex gap-2">
