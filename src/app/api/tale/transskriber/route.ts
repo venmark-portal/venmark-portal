@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
   // samtale — og det er netop der, man siger varenavnet ("jeg skal have 10 kg
   // laksefilet"). Favoritterne er den bedste liste vi har: det er dem, kunden køber.
   const bruger = String(token.sub ?? '')
+  let egne = 0
   if (bruger) {
     try {
       const favoritter = await prisma.favorite.findMany({
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
         select: { itemName: true },
         take: 80,
       })
-      ord = [...ord, ...favoritter.map(f => f.itemName).filter(Boolean)]
+      const navne = favoritter.map(f => f.itemName).filter(Boolean)
+      egne = navne.length
+      ord = [...ord, ...navne]
     } catch { /* en lagermedarbejder har ingen favoritter — ordbogen er stadig god nok */ }
   }
 
@@ -79,9 +82,11 @@ export async function POST(req: NextRequest) {
     // Logges ALTID. Uden den kan vi ikke se, om en telefon overhovedet nåede serveren,
     // eller om den faldt tilbage på browserens egen genkendelse — og så leder vi efter
     // fejlen i modellen i stedet for i vejen derhen (Claus 16-11).
+    const optagetMs = Number(form?.get('ms') ?? 0)
     console.log(
-      `[tale] diktat ${Date.now() - start}ms, ${Math.round(lyd.size / 1024)} kB ${type},`
-      + ` ${Array.isArray(ord) ? ord.length : 0} egne ord → "${tekst.slice(0, 200)}"`,
+      `[tale] diktat: optaget ${(optagetMs / 1000).toFixed(1)}s, svar ${Date.now() - start}ms,`
+      + ` ${Math.round(lyd.size / 1024)} kB ${type}, ${ord.length} ord (${egne} favoritter)`
+      + ` → "${tekst.slice(0, 300)}"`,
     )
     return NextResponse.json({ tekst })
   } catch (e: any) {

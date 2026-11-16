@@ -516,8 +516,12 @@ export default function RobotChat() {
     },
     () => samtaleOrd(ture),
     {
-      stilhedMs: 1800,          // færdig, når der har været stille i knap 2 sek.
+      // Rundhåndet med pauserne: med 1,8 sek. blev én bestilling sendt som TRE spørgsmål
+      // ("Prøv så lige at lægge" / "i 14-17 bakker" / "60 kilo i alt"), og robotten
+      // svarede på hver stump (Claus 16-11). Den der er færdig, trykker Færdig.
+      stilhedMs: 3000,
       opstartMs: 9000,          // tid til at komme i gang
+      mindstTaleMs: 900,        // et host er ikke en sætning
       onSlut: fikTekst => {
         setLytter(false)
         if (fikTekst || !kald.current) return
@@ -792,6 +796,15 @@ export default function RobotChat() {
                 className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-gray-100 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>
                 {iKald ? t('minTur') : t('stopOplaesning')}
+              </button>
+            )}
+            {diktat.optager && (
+              // Vi klipper selv efter en pause, men den der ER færdig skal ikke stå og
+              // vente på den — og skal kunne holde en lang tænkepause uden at blive afbrudt.
+              <button type="button" onClick={diktat.stop}
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>
+                {t('faerdigTal')}
               </button>
             )}
             {iKald && (

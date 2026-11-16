@@ -12,10 +12,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface DiktatValg {
   /** Stop af sig selv, når der har været stille så længe (ms). 0 = brugeren trykker Stop.
-   *  Robotsamtalen skal være håndfri, så dér lytter vi på lyden og klipper selv. */
+   *  Robotsamtalen skal være håndfri, så dér lytter vi på lyden og klipper selv.
+   *
+   *  Vær rundhåndet her. Med 1,8 sek. blev én bestilling klippet i tre: "Prøv så lige at
+   *  lægge" / "i 14-17 bakker" / "60 kilo i alt" — og robotten svarede på hver stump for
+   *  sig (Claus 16-11). Folk tænker midt i en bestilling. */
   stilhedMs?: number
   /** Hvor længe vi venter på, at der kommer tale i det hele taget (ms). */
   opstartMs?: number
+  /** Så lidt tale må en optagelse ikke klippes efter (ms). Et "øh" eller et host må ikke
+   *  tælle som en færdig sætning. */
+  mindstTaleMs?: number
   /** Optagelsen er slut og teksten afleveret. `fikTekst` er falsk, hvis der ikke kom ord
    *  ud af den — så ved en åben samtale, at den skal lytte igen i stedet for at svare. */
   onSlut?: (fikTekst: boolean) => void
@@ -62,6 +69,7 @@ export function useDiktat(
   const maalerRef = useRef(0)
   const taltRef = useRef(false)
   const afbrudtRef = useRef(false)
+  const startTidRef = useRef(0)
 
   const stopMaaler = useCallback(() => {
     window.clearInterval(maalerRef.current)
@@ -122,6 +130,9 @@ export function useDiktat(
         const form = new FormData()
         form.append('lyd', lyd)
         form.append('ord', JSON.stringify(ordRef.current() ?? []))
+        // Optagelsens længde logges på serveren. Uden den kan vi ikke se forskel på
+        // "modellen hørte forkert" og "vi klippede for tidligt".
+        form.append('ms', String(Date.now() - startTidRef.current))
         const res = await fetch('/api/tale/transskriber', { method: 'POST', body: form })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) { setFejl(data.error ?? 'Talegenkendelsen svarede ikke'); return }
@@ -136,6 +147,7 @@ export function useDiktat(
       }
     }
     optagerRef.current = m
+    startTidRef.current = Date.now()
     m.start()
     setOptager(true)
     stopperRef.current = window.setTimeout(() => { try { m.stop() } catch {} }, MAKS_MS)
@@ -153,6 +165,7 @@ export function useDiktat(
       const data = new Uint8Array(maaler.fftSize)
       const begyndt = Date.now()
       let sidsteLyd = begyndt
+      let taleMs = 0
       let gulv = 1
       maalerRef.current = window.setInterval(() => {
         maaler.getByteTimeDomainData(data)
@@ -164,11 +177,14 @@ export function useDiktat(
         // kølemotor på lageret eller motorvejsstøj i bilen må ikke tælle som tale.
         if (nu - begyndt < 400) { gulv = Math.min(gulv, styrke); return }
         const graense = Math.max(0.02, gulv * 2.5 + 0.01)
-        if (styrke > graense) { taltRef.current = true; sidsteLyd = nu; return }
+        if (styrke > graense) { taltRef.current = true; taleMs += 100; sidsteLyd = nu; return }
         if (!taltRef.current) {
           if (nu - begyndt > (valgRef.current.opstartMs ?? 9000)) { try { m.stop() } catch {} }
           return
         }
+        // Der skal være talt LÆNGE nok til, at det kan være en sætning. Ellers klipper et
+        // host eller et "øh" bestillingen over, og robotten svarer på en stump.
+        if (taleMs < (valgRef.current.mindstTaleMs ?? 700)) return
         if (nu - sidsteLyd > (valgRef.current.stilhedMs ?? 1800)) {
           try { kilde.disconnect() } catch {}
           try { m.stop() } catch {}

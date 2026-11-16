@@ -32,6 +32,7 @@ export const robotDict = defineDict({
     // Serverdiktaten optager HELE sætningen og sender den, når man holder en pause. Det
     // skal stå anderledes end "Lytter", så man kan se hvilken af de to veje der kører.
     optagerNu: 'Optager … hold en pause, når du er færdig', skriverNed: 'Skriver det du sagde …',
+    faerdigTal: 'Færdig — send det jeg sagde',
     stopOplaesning: 'Stop oplæsning',
     laegPaa: 'Læg på', robotTaler: 'Assistenten taler …', etOejeblik: 'Et øjeblik …',
     kaldAaben: 'åben til du lægger på', minTur: 'Stop — jeg vil sige noget',
@@ -71,6 +72,7 @@ export const robotDict = defineDict({
     vt_tidligere_koeb: 'Checking your previous purchases…', vt_se_kurv: 'Checking your cart…', vt_laeg_i_kurv: 'Adding to cart…', vt_flyt_leveringsdag: 'Checking the order’s delivery day…',
     tal: 'Start a conversation — speak instead of typing', stopLyt: 'Stop listening', lytter: 'Listening … speak now',
     optagerNu: 'Recording … pause when you are done', skriverNed: 'Writing down what you said …',
+    faerdigTal: 'Done — send what I said',
     stopOplaesning: 'Stop reading aloud',
     laegPaa: 'Hang up', robotTaler: 'The assistant is speaking …', etOejeblik: 'One moment …',
     kaldAaben: 'open until you hang up', minTur: 'Stop — I want to speak',
@@ -110,6 +112,7 @@ export const robotDict = defineDict({
     vt_tidligere_koeb: 'Ihre früheren Käufe werden geprüft…', vt_se_kurv: 'Warenkorb wird geprüft…', vt_laeg_i_kurv: 'Wird in den Warenkorb gelegt…', vt_flyt_leveringsdag: 'Liefertag der Bestellung wird geprüft…',
     tal: 'Gespräch starten — sprechen statt tippen', stopLyt: 'Zuhören beenden', lytter: 'Hört zu … bitte sprechen',
     optagerNu: 'Aufnahme … machen Sie eine Pause, wenn Sie fertig sind', skriverNed: 'Das Gesagte wird notiert …',
+    faerdigTal: 'Fertig — senden, was ich gesagt habe',
     stopOplaesning: 'Vorlesen beenden',
     laegPaa: 'Auflegen', robotTaler: 'Der Assistent spricht …', etOejeblik: 'Einen Moment …',
     kaldAaben: 'offen, bis Sie auflegen', minTur: 'Stop — ich möchte sprechen',
