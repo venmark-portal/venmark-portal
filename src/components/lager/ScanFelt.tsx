@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Keyboard, ScanLine, X } from 'lucide-react'
+import { Camera, CornerDownLeft, Delete, Keyboard, ScanLine, X } from 'lucide-react'
 
 /**
  * Scanne-feltet. Håndterminalen sender stregkoden som tastetryk efterfulgt af Enter —
@@ -32,10 +32,16 @@ export default function ScanFelt({
   travl = false,
   placeholder = 'Scan stregkode',
   pause = false,
+  taltastatur = false,
 }: {
   onScan: (kode: string) => void
   travl?: boolean
   placeholder?: string
+  /** Appens eget taltastatur ligger FAST under feltet. Så er Androids tastatur ikke
+   *  nødvendigt for at taste en kode i hånden — det kommer kun frem, når man beder
+   *  om det med tastatur-knappen. Slås ikke til på tælleskærmen: dér ligger
+   *  Taltastatur allerede og ejer pladsen. */
+  taltastatur?: boolean
   /** Slår fokus-jagten HELT fra. Sættes når en dialog er åben: at gætte på
    *  document.activeElement er ikke nok, for på en telefon flytter skærmtastaturet
    *  rundt på fokus af sig selv, og så stjal feltet indtastningen alligevel. */
@@ -52,6 +58,8 @@ export default function ScanFelt({
     { tegn: number; ms: number; spring: number; auto: boolean; hurtig: boolean } | null
   >(null)
   const maksSpringRef = useRef(0)
+  /** ?maal=1 på adressen viser målingen af hvert scan. */
+  const [maal, setMaal] = useState(false)
   // Den aktuelle tekst som en ref. Ved scannerfart når React ikke at gentegne mellem
   // hvert tegn, og så måler vi på en forældet værdi og tror hele koden kom i ét hug.
   const vaerdiRef = useRef('')
@@ -65,6 +73,7 @@ export default function ScanFelt({
     // Windows og ikke i Safari. Derfor skjuler vi knappen i stedet for at vise en
     // knap der fejler, og tilbyder tastaturet som vej ind i stedet.
     setKanKamera(typeof window !== 'undefined' && 'BarcodeDetector' in window)
+    setMaal(new URLSearchParams(window.location.search).has('maal'))
     // Valget huskes PR. ENHED: en telefon uden scanner skal ikke bede om tastaturet
     // hver eneste gang, og en håndterminal skal ikke have et tastatur hen over
     // skærmen ved hvert scan.
@@ -158,6 +167,21 @@ export default function ScanFelt({
     }, STILLE_MS)
   }
 
+  /**
+   * Appens eget taltastatur. Går UDEN OM burst-målingen: et menneske med en handske
+   * på rammer aldrig maskinfart, og en halvtastet kode må ikke ryge af sted af sig
+   * selv, fordi man tænker sig om mellem to cifre.
+   */
+  function tryk(t: string) {
+    window.clearTimeout(stilleRef.current)
+    hurtigRef.current = false
+    if (t === 'send') { send(vaerdiRef.current); return }
+    const ny = t === 'slet' ? vaerdiRef.current.slice(0, -1) : vaerdiRef.current + t
+    if (!startTidRef.current) startTidRef.current = Date.now()
+    vaerdiRef.current = ny
+    setVaerdi(ny)
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
@@ -227,8 +251,10 @@ export default function ScanFelt({
       )}
 
       {/* Hvad feltet modtog. Står der ingenting efter et scan, er tegnene slet ikke
-          nået frem — og så er det scanneren eller fokus, der er galt, ikke opslaget. */}
-      {sidste && (
+          nået frem — og så er det scanneren eller fokus, der er galt, ikke opslaget.
+          Målingen fylder på en lille skærm, så den vises kun når man beder om den:
+          læg ?maal=1 på adressen, næste gang en scanner driller. */}
+      {sidste && maal && (
         <p className={'text-xs ' + (sidste.auto ? 'text-emerald-700' : 'text-gray-500')}>
           Modtog {sidste.tegn} tegn på {sidste.ms} ms
           {sidste.spring > 0 && `, største spring ${sidste.spring} ms`} —{' '}
@@ -240,6 +266,36 @@ export default function ScanFelt({
                 ? `for kort til at sende selv (mindst ${MINDST_TEGN} tegn). Tryk Enter.`
                 : 'sendt med Enter'}
         </p>
+      )}
+
+      {/* Appens eget taltastatur, fast under feltet. onPointerDown preventDefault er
+          det vigtige: uden den tager knappen fokus fra scannefeltet, og så taster
+          terminalen ud i ingenting ved næste scan. */}
+      {taltastatur && !kamera && (
+        <div className="grid grid-cols-3 gap-2 pt-1">
+          {['7', '8', '9', '4', '5', '6', '1', '2', '3', 'slet', '0', 'send'].map(t => (
+            <button
+              key={t}
+              type="button"
+              onPointerDown={e => e.preventDefault()}
+              onClick={() => tryk(t)}
+              disabled={t === 'send' && !vaerdi.trim()}
+              aria-label={t === 'slet' ? 'Slet sidste tegn' : t === 'send' ? 'Slå koden op' : t}
+              className={
+                'rounded-xl py-3.5 text-2xl font-semibold disabled:opacity-30 ' +
+                (t === 'send'
+                  ? 'bg-emerald-700 text-white'
+                  : t === 'slet'
+                    ? 'bg-gray-200 text-gray-700'
+                    : 'bg-white text-gray-900 ring-1 ring-gray-300 active:bg-gray-100')
+              }
+            >
+              {t === 'slet' ? <Delete size={22} className="mx-auto" />
+                : t === 'send' ? <CornerDownLeft size={22} className="mx-auto" />
+                  : t}
+            </button>
+          ))}
+        </div>
       )}
 
       {kamera && (

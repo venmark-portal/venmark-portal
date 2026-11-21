@@ -165,7 +165,7 @@ export default function LagerForside() {
         </div>
       </header>
 
-      <ScanFelt onScan={scan} travl={travl} />
+      <ScanFelt onScan={scan} travl={travl} taltastatur />
 
       <p className="mt-2 text-xs text-gray-500">
         Fri scanning: scan en kasse, en EAN eller et varenr. Ukendte koder kan knyttes til en vare med det samme.
