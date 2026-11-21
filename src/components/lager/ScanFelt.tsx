@@ -13,7 +13,19 @@ import { Camera, Keyboard, ScanLine, X } from 'lucide-react'
  *     koden rigtigt her, så folk ikke jagter en fejl der ikke findes.
  *   - Et løbende kald der stjæler fokus dræber scanning. Derfor ingen timere der
  *     rører feltet — kun et klik udefra kan flytte fokus, og vi tager det tilbage.
+ *   - Ikke alle scannere KAN sættes op til at sende Enter til sidst, og uden Enter
+ *     skulle man hive skærmtastaturet frem for at trykke den selv (Claus 21-11).
+ *     Derfor sender feltet selv, når tegnene kom i maskinfart og holdt op. Se
+ *     MAKS_SPRING herunder.
  */
+
+/** Længste pause mellem to tegn, der stadig kan være en maskine (ms). Et menneske
+ *  rammer sjældent under 80 ms tegn for tegn — en scanner ligger typisk på 5-30. */
+const MAKS_SPRING = 80
+/** Så længe skal der være stille, før vi tror koden er færdig (ms). */
+const STILLE_MS = 140
+/** Kortere end dette sender vi ikke af os selv — så er det en halv kode. */
+const MINDST_TEGN = 4
 export default function ScanFelt({
   onScan,
   travl = false,
@@ -33,6 +45,16 @@ export default function ScanFelt({
   const [kamera, setKamera] = useState(false)
   const [kanKamera, setKanKamera] = useState(false)
   const [tast, setTast] = useState(false)
+  // Hvad feltet FAKTISK modtog sidst. Kan scanneren ikke sættes op, er det den eneste
+  // måde at se om tegnene overhovedet når frem — og hvor hurtigt de kom.
+  const [sidste, setSidste] = useState<{ tegn: number; ms: number; auto: boolean; hurtig: boolean } | null>(null)
+  // Den aktuelle tekst som en ref. Ved scannerfart når React ikke at gentegne mellem
+  // hvert tegn, og så måler vi på en forældet værdi og tror hele koden kom i ét hug.
+  const vaerdiRef = useRef('')
+  const forrigeTastRef = useRef(0)
+  const startTidRef = useRef(0)
+  const hurtigRef = useRef(true)
+  const stilleRef = useRef(0)
 
   useEffect(() => {
     // Kamera-scanning findes kun i Chrome på Android, ChromeOS og macOS — IKKE på
@@ -67,11 +89,52 @@ export default function ScanFelt({
     return () => window.clearInterval(i)
   }, [kamera, pause])
 
-  function send(kode: string) {
+  // Ryd den ventende auto-afsendelse, når komponenten forsvinder.
+  useEffect(() => () => window.clearTimeout(stilleRef.current), [])
+
+  function send(kode: string, auto = false) {
+    window.clearTimeout(stilleRef.current)
     const renset = kode.trim().replace(/\+/g, '-')
     if (!renset) return
+    setSidste({
+      tegn: renset.length,
+      ms: startTidRef.current ? Date.now() - startTidRef.current : 0,
+      auto,
+      hurtig: hurtigRef.current,
+    })
+    forrigeTastRef.current = 0
+    startTidRef.current = 0
+    vaerdiRef.current = ''
     onScan(renset)
     setVaerdi('')
+  }
+
+  /**
+   * Hvert tegn der lander i feltet. Vi holder øje med, hvor hurtigt de kommer:
+   * kom hele koden i maskinfart, sender vi selv, når der bliver stille. Taster man
+   * i hånden (tastetilstand), rører vi ikke ved noget — dér er Enter gratis, fordi
+   * tastaturet alligevel er fremme.
+   */
+  function skriv(ny: string) {
+    const nu = Date.now()
+    const foer = vaerdiRef.current
+    if (!foer) {
+      // Ny kode begynder: start måling forfra.
+      hurtigRef.current = true
+      startTidRef.current = nu
+    } else {
+      // Kom flere tegn i ét hug, er det en scanner der indsætter hele koden — den har
+      // ingen mellemrum at måle på, og den skal ikke dømmes langsom.
+      const iEtHug = ny.length > foer.length + 1
+      if (!iEtHug && nu - forrigeTastRef.current > MAKS_SPRING) hurtigRef.current = false
+    }
+    forrigeTastRef.current = nu
+    vaerdiRef.current = ny
+    setVaerdi(ny)
+
+    window.clearTimeout(stilleRef.current)
+    if (tast || !hurtigRef.current || ny.trim().length < MINDST_TEGN) return
+    stilleRef.current = window.setTimeout(() => send(ny, true), STILLE_MS)
   }
 
   return (
@@ -85,11 +148,14 @@ export default function ScanFelt({
           <input
             ref={inputRef}
             value={vaerdi}
-            onChange={e => setVaerdi(e.target.value)}
+            onChange={e => skriv(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') {
+              // Enter er det normale. Tab tager vi med, fordi en del scannere sender
+              // den i stedet — og uden det ville koden bare hoppe videre til næste
+              // knap og forsvinde.
+              if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault()
-                send(vaerdi)
+                send(vaerdiRef.current || vaerdi)
               }
             }}
             // none = intet skærmtastatur der dækker halve skærmen ved hvert scan.
@@ -136,6 +202,19 @@ export default function ScanFelt({
       {tast && (
         <p className="text-xs text-gray-500">
           Tastetilstand: skriv koden og tryk Enter. Et fysisk tastatur virker altid — også uden scanner.
+        </p>
+      )}
+
+      {/* Hvad feltet modtog. Står der ingenting efter et scan, er tegnene slet ikke
+          nået frem — og så er det scanneren eller fokus, der er galt, ikke opslaget. */}
+      {sidste && (
+        <p className="text-xs text-gray-500">
+          Modtog {sidste.tegn} tegn på {sidste.ms} ms —{' '}
+          {sidste.auto
+            ? 'sendt automatisk'
+            : sidste.hurtig
+              ? 'sendt med Enter'
+              : 'for langsomt til at sende selv, så Enter var nødvendig'}
         </p>
       )}
 
