@@ -20,8 +20,9 @@ import { Camera, Keyboard, ScanLine, X } from 'lucide-react'
  */
 
 /** Længste pause mellem to tegn, der stadig kan være en maskine (ms). Et menneske
- *  rammer sjældent under 80 ms tegn for tegn — en scanner ligger typisk på 5-30. */
-const MAKS_SPRING = 80
+ *  holder ikke 120 ms tegn for tegn en hel kode igennem uden ét ophold — en scanner
+ *  ligger typisk på 5-30, men en langsom tastatur-emulering kan ligge højere. */
+const MAKS_SPRING = 120
 /** Så længe skal der være stille, før vi tror koden er færdig (ms). */
 const STILLE_MS = 140
 /** Kortere end dette sender vi ikke af os selv — så er det en halv kode. */
@@ -47,7 +48,10 @@ export default function ScanFelt({
   const [tast, setTast] = useState(false)
   // Hvad feltet FAKTISK modtog sidst. Kan scanneren ikke sættes op, er det den eneste
   // måde at se om tegnene overhovedet når frem — og hvor hurtigt de kom.
-  const [sidste, setSidste] = useState<{ tegn: number; ms: number; auto: boolean; hurtig: boolean } | null>(null)
+  const [sidste, setSidste] = useState<
+    { tegn: number; ms: number; spring: number; auto: boolean; hurtig: boolean } | null
+  >(null)
+  const maksSpringRef = useRef(0)
   // Den aktuelle tekst som en ref. Ved scannerfart når React ikke at gentegne mellem
   // hvert tegn, og så måler vi på en forældet værdi og tror hele koden kom i ét hug.
   const vaerdiRef = useRef('')
@@ -99,6 +103,7 @@ export default function ScanFelt({
     setSidste({
       tegn: renset.length,
       ms: startTidRef.current ? Date.now() - startTidRef.current : 0,
+      spring: maksSpringRef.current,
       auto,
       hurtig: hurtigRef.current,
     })
@@ -122,19 +127,35 @@ export default function ScanFelt({
       // Ny kode begynder: start måling forfra.
       hurtigRef.current = true
       startTidRef.current = nu
+      maksSpringRef.current = 0
     } else {
       // Kom flere tegn i ét hug, er det en scanner der indsætter hele koden — den har
       // ingen mellemrum at måle på, og den skal ikke dømmes langsom.
       const iEtHug = ny.length > foer.length + 1
-      if (!iEtHug && nu - forrigeTastRef.current > MAKS_SPRING) hurtigRef.current = false
+      const spring = nu - forrigeTastRef.current
+      if (!iEtHug) {
+        maksSpringRef.current = Math.max(maksSpringRef.current, spring)
+        if (spring > MAKS_SPRING) hurtigRef.current = false
+      }
     }
     forrigeTastRef.current = nu
     vaerdiRef.current = ny
     setVaerdi(ny)
 
+    // Når der bliver stille: enten sender vi, eller også skriver vi hvorfor vi ikke
+    // gjorde. "Der sker ingenting" skal aldrig være det eneste man får at vide.
     window.clearTimeout(stilleRef.current)
-    if (tast || !hurtigRef.current || ny.trim().length < MINDST_TEGN) return
-    stilleRef.current = window.setTimeout(() => send(ny, true), STILLE_MS)
+    const langNok = ny.trim().length >= MINDST_TEGN
+    stilleRef.current = window.setTimeout(() => {
+      if (hurtigRef.current && langNok) { send(ny, true); return }
+      setSidste({
+        tegn: ny.trim().length,
+        ms: startTidRef.current ? Date.now() - startTidRef.current : 0,
+        spring: maksSpringRef.current,
+        auto: false,
+        hurtig: hurtigRef.current,
+      })
+    }, STILLE_MS)
   }
 
   return (
@@ -208,13 +229,16 @@ export default function ScanFelt({
       {/* Hvad feltet modtog. Står der ingenting efter et scan, er tegnene slet ikke
           nået frem — og så er det scanneren eller fokus, der er galt, ikke opslaget. */}
       {sidste && (
-        <p className="text-xs text-gray-500">
-          Modtog {sidste.tegn} tegn på {sidste.ms} ms —{' '}
+        <p className={'text-xs ' + (sidste.auto ? 'text-emerald-700' : 'text-gray-500')}>
+          Modtog {sidste.tegn} tegn på {sidste.ms} ms
+          {sidste.spring > 0 && `, største spring ${sidste.spring} ms`} —{' '}
           {sidste.auto
             ? 'sendt automatisk'
-            : sidste.hurtig
-              ? 'sendt med Enter'
-              : 'for langsomt til at sende selv, så Enter var nødvendig'}
+            : !sidste.hurtig
+              ? `for langsomt til at sende selv (grænse ${MAKS_SPRING} ms). Tryk Enter.`
+              : sidste.tegn < MINDST_TEGN
+                ? `for kort til at sende selv (mindst ${MINDST_TEGN} tegn). Tryk Enter.`
+                : 'sendt med Enter'}
         </p>
       )}
 
