@@ -1,6 +1,11 @@
 import { getToken } from 'next-auth/jwt'
 import { NextRequest, NextResponse } from 'next/server'
 
+/** Hvor hver rolle hører hjemme. Bruges når nogen er havnet et forkert sted. */
+const ROLLE_START: Record<string, string> = {
+  customer: '/portal', admin: '/admin', lager: '/lager', driver: '/chauffeur/rute',
+}
+
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
 
@@ -56,9 +61,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Admin-sider kræver admin-rolle
+  // Admin-sider kræver admin-rolle. Send folk hjem til deres EGEN rolle — en pakker,
+  // der fulgte et admin-link, blev før sendt ind i kundeportalen.
   if (pathname.startsWith('/admin') && token.role !== 'admin') {
-    return NextResponse.redirect(new URL('/portal', req.url))
+    return NextResponse.redirect(new URL(ROLLE_START[String(token.role)] ?? '/portal', req.url))
+  }
+
+  // Kundeportalen er KUNDENS. En pakker, der endte her, fik kundens forside at se med
+  // sit eget navn på: rolleskifteren sagde "Lager/pakker", mens skærmen viste "Ny
+  // bestilling" og en tom ordreliste, fordi sessionen slet ikke har et kundenummer
+  // (Claus 21-11). Det kræver ikke et rolleskifte — et gammelt ikon på hjemmeskærmen,
+  // en push-besked (sw.js sender til /portal) eller et admin-link er nok.
+  // Admin må gerne: kontoret ser kundens portal gennem kundevælgeren.
+  if (pathname.startsWith('/portal') && token.role !== 'customer' && token.role !== 'admin') {
+    return NextResponse.redirect(new URL(ROLLE_START[String(token.role)] ?? '/portal/login', req.url))
   }
 
   // Giv stien videre til server-komponenterne. Admin-layoutet bruger den til at

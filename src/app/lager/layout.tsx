@@ -5,9 +5,14 @@ import SessionProvider from '@/components/portal/SessionProvider'
 import RolleSkift from '@/components/RolleSkift'
 import NyVersion from '@/components/lager/NyVersion'
 
+// Scanner-appen skal have sit EGET manifest. Den pegede på /manifest.json, som er
+// chaufførens: navnet er "Venmark Chauffør", den starter på /chauffeur/rute, og dens
+// scope er /chauffeur/ — så /lager lå uden for appen. Ikonet på hjemmeskærmen blev
+// derfor den forkerte app (Claus 21-11). Scope står uden skråstreg til sidst, så
+// start_url'en /lager ligger inden i den.
 export const metadata: Metadata = {
   title: 'Lager | Venmark',
-  manifest: '/manifest.json',
+  manifest: '/lager-manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Lager' },
 }
 
