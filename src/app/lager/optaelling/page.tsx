@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Camera, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Plus, Send, Trash2, X,
+  AlertTriangle, ArrowLeft, Camera, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Pencil, Plus, Send, Trash2, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
-import Taltastatur from '@/components/lager/Taltastatur'
+import Taltastatur, { beregn } from '@/components/lager/Taltastatur'
 import Bemaerkning from '@/components/lager/Bemaerkning'
 import { nyNoegle } from '@/lib/lager/device'
 
@@ -46,6 +46,9 @@ export default function OptaellingSide() {
   const [travl, setTravl] = useState(false)
   const [stemmerDialog, setStemmerDialog] = useState(false)
   const [bemaerkVare, setBemaerkVare] = useState('')
+  // Det tastede antal bor her og ikke nede i taltastaturet, fordi knapperne der
+  // gemmer er flyttet op på varekortet ved siden af "Stemmer på …" (Claus 21-11).
+  const [antalTekst, setAntalTekst] = useState('')
   // "Scan lager": man går rækken igennem og scanner KASSER i stedet for at tælle
   // varer. Egne producerede varer har variabel vægt, så hver kasse bærer sin egen
   // vægt — der er ikke noget at taste.
@@ -77,6 +80,10 @@ export default function OptaellingSide() {
     }).catch(() => {})
     fetch('/api/lager/optaelling').then(r => r.json()).then(setAabne).catch(() => {})
   }, [])
+
+  // Et halvtastet tal må ikke følge med over på næste vare — så ville man gemme
+  // det forriges antal uden at opdage det.
+  useEffect(() => { setAntalTekst('') }, [aktiv?.itemNo])
 
   useEffect(() => {
     if (!lokation) return
@@ -226,6 +233,43 @@ export default function OptaellingSide() {
     } finally { setTravl(false) }
   }
 
+  /**
+   * Gem det tastede antal på varen. Tallet SÆTTER antallet — det lægges ikke til,
+   * og det rører kun dine egne registreringer dér hvor du står.
+   *
+   * anslaaet = skøn. Der vejes ikke, så ved tvivl gætter man — men det skal kunne
+   * ses bagefter, før nogen bogfører på det.
+   */
+  async function gemAntal(anslaaet: boolean) {
+    if (!optaelling || !aktiv) return
+    const antal = beregn(antalTekst)
+    if (antal === null) return
+    const res = await fetch(`/api/lager/optaelling/${optaelling.id}/linje`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
+        estimated: anslaaet, shelfCode: hylde || undefined, saet: true,
+        bcQty: aktiv.bcAntal ?? undefined, idempotencyKey: nyNoegle(),
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) return
+    bip(760, 100)
+    setAntalTekst('')
+    setAktiv({ ...aktiv, total: data.total, antal: data.antal, mit: data.mit ?? antal })
+    // Har andre talt den samme vare, er varens total større end det du tastede.
+    // Uden en linje her ligner det, at tallet ikke blev gemt rigtigt.
+    setBesked(data.andres > 0
+      ? {
+        slags: 'ok',
+        tekst: `Du satte ${tal(antal)} ${aktiv.uom} — andre har talt ${tal(data.andres)}. `
+          + `I alt ${tal(data.total)} på varen.`,
+      }
+      : null)
+    await hentStatus(optaelling.id)
+  }
+
   async function fortryd(itemNo: string) {
     if (!optaelling) return
     await fetch(`/api/lager/optaelling/${optaelling.id}/linje?itemNo=${encodeURIComponent(itemNo)}`, { method: 'DELETE' })
@@ -340,6 +384,11 @@ export default function OptaellingSide() {
   const laast = optaelling.status !== 'aaben'
   const afvigelser = varer.filter(v => v.afvigelse !== null && Math.abs(v.afvigelse) >= 0.001).length
   const anslaaede = varer.filter(v => v.estimated).length
+  // Handlingerne på varekortet deler én linje. Hvor mange der er, afgør bredden:
+  // tre når BC er uenig, ellers to.
+  const gemKlar = beregn(antalTekst)
+  const visStemmer = !!aktiv && aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001
+  const handlinger = (visStemmer ? 1 : 0) + (aktiv && !scanLager ? 2 : 0)
 
   return (
     // Fast app-ramme: skærmen fylder PRÆCIS skærmen, og siden ruller ikke. En
@@ -506,16 +555,46 @@ export default function OptaellingSide() {
                   <MessageSquare size={15} className="mr-1 inline" /> Note
                 </button>
               </div>
-              {aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001 && (
-                // "BC har ret": det talte slettes, så de to ikke lægges sammen.
-                <button
-                  onClick={() => stemmer(aktiv.itemNo, true)}
-                  disabled={travl}
-                  className="mt-1.5 w-full rounded-xl bg-sky-700 py-2 text-sm font-semibold text-white disabled:opacity-40"
+              {/* Handlingerne på varen står side om side, en tredjedel hver. De hører
+                  sammen — og taltastaturet skal bruge pladsen nedenunder, så de to
+                  gem-knapper er flyttet herop fra tastaturet (Claus 21-11). */}
+              {handlinger > 0 && (
+                <div
+                  className={
+                    'mt-1.5 grid gap-2 ' +
+                    (handlinger === 3 ? 'grid-cols-3' : handlinger === 2 ? 'grid-cols-2' : 'grid-cols-1')
+                  }
                 >
-                  <CircleCheck size={15} className="mr-1 inline" />
-                  Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom}
-                </button>
+                  {visStemmer && aktiv.bcAntal !== null && (
+                    // "BC har ret": det talte slettes, så de to ikke lægges sammen.
+                    <button
+                      onClick={() => stemmer(aktiv.itemNo, true)}
+                      disabled={travl}
+                      className="rounded-xl bg-sky-700 px-1 py-2 text-xs font-semibold leading-tight text-white disabled:opacity-40"
+                    >
+                      <CircleCheck size={13} className="mr-1 inline" />
+                      Stemmer på {tal(aktiv.bcAntal)} {aktiv.uom}
+                    </button>
+                  )}
+                  {!scanLager && (
+                    <>
+                      <button
+                        onClick={() => gemAntal(false)}
+                        disabled={gemKlar === null || travl}
+                        className="rounded-xl bg-emerald-700 px-1 py-2 text-xs font-semibold leading-tight text-white disabled:opacity-40"
+                      >
+                        <Check size={13} className="mr-1 inline" /> Gem antal
+                      </button>
+                      <button
+                        onClick={() => gemAntal(true)}
+                        disabled={gemKlar === null || travl}
+                        className="rounded-xl bg-amber-600 px-1 py-2 text-xs font-semibold leading-tight text-white disabled:opacity-40"
+                      >
+                        <Pencil size={13} className="mr-1 inline" /> Gem som anslået
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -529,32 +608,8 @@ export default function OptaellingSide() {
               nuvaerende={aktiv.mit}
               deaktiveret={travl}
               fyld
-              onGem={async (antal, anslaaet) => {
-                const res = await fetch(`/api/lager/optaelling/${optaelling.id}/linje`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
-                    estimated: anslaaet, shelfCode: hylde || undefined, saet: true,
-                    bcQty: aktiv.bcAntal ?? undefined, idempotencyKey: nyNoegle(),
-                  }),
-                })
-                const data = await res.json()
-                if (res.ok) {
-                  bip(760, 100)
-                  setAktiv({ ...aktiv, total: data.total, antal: data.antal, mit: data.mit ?? antal })
-                  // Har andre talt den samme vare, er varens total større end det du tastede.
-                  // Uden en linje her ligner det, at tallet ikke blev gemt rigtigt.
-                  setBesked(data.andres > 0
-                    ? {
-                      slags: 'ok',
-                      tekst: `Du satte ${tal(antal)} ${aktiv.uom} — andre har talt ${tal(data.andres)}. `
-                        + `I alt ${tal(data.total)} på varen.`,
-                    }
-                    : null)
-                  await hentStatus(optaelling.id)
-                }
-              }}
+              tekst={antalTekst}
+              onTekst={setAntalTekst}
             />
           )}
 
@@ -632,19 +687,21 @@ export default function OptaellingSide() {
                 </p>
               </div>
               {!laast && (
-                <div className="flex shrink-0 gap-1">
+                // Luft imellem, og tasteflader man rammer med en handske på: de to
+                // gør vidt forskellige ting, og de må ikke kunne forveksles i farten.
+                <div className="flex shrink-0 gap-3">
                   {/* Bemærkningen skal kunne nås på HVER vare i listen, ikke kun på
                       den man står med — ellers skal man scanne varen igen for at
                       skrive noget til kontoret. */}
                   <button
                     onClick={() => setBemaerkVare(v.itemNo)}
-                    className={v.remark ? 'text-amber-600' : 'text-gray-300'}
+                    className={'p-1.5 ' + (v.remark ? 'text-amber-600' : 'text-gray-400')}
                     aria-label="Bemærkning"
                   >
-                    <MessageSquare size={16} />
+                    <MessageSquare size={22} />
                   </button>
-                  <button onClick={() => fortryd(v.itemNo)} className="text-gray-300" aria-label="Fortryd">
-                    <Trash2 size={16} />
+                  <button onClick={() => fortryd(v.itemNo)} className="p-1.5 text-gray-400" aria-label="Fortryd">
+                    <Trash2 size={22} />
                   </button>
                 </div>
               )}
