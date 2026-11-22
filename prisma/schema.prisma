@@ -914,3 +914,54 @@ model KanbanSignal {
   @@index([status, lastAt])
   @@index([itemNo, status])
 }
+
+// ─── Bestillingsapp: scanningsordrer ────────────────────────────────────────
+// En bestilling er en KURV, ikke en koebsordre. Lagermanden scanner frit hen over
+// hylderne; BC deler op pr. leverandoer og laver koebsordrerne, naar kurven sendes.
+//
+// Status 'aaben' kan fyldes paa; 'sendt' kan den IKKE. Det var hele betingelsen:
+// er ordren naaet til BC, maa appen ikke kunne lappe mere paa (Claus 22-11).
+model BestillingOrdre {
+  id            String    @id
+  no            String    @unique
+  locationCode  String    @default("")
+  // aaben | sendt
+  status        String    @default("aaben")
+  startedAt     DateTime  @default(now())
+  closedAt      DateTime?
+  createdById   String?
+  createdByName String    @default("")
+  note          String?
+  // Svaret fra BC: hvilke koebsordrer kurven blev, og hvad der ikke kunne oprettes.
+  bcOrderNos    String?
+  bcLines       Int?
+  bcFailed      Int?
+  bcError       String?
+
+  @@index([status, startedAt])
+}
+
+// EN linje pr. vare. Et scan af samme vare laegger ORDREKVANTUM til paa den
+// linje der allerede er der — det er "en kasse mere", ikke en ny linje.
+model BestillingLinje {
+  id          String   @id
+  ordreId     String
+  itemNo      String
+  description String   @default("")
+  qty         Decimal  @db.Decimal(18, 5)
+  uom         String   @default("")
+  // Varekortets leverandoer, eller et valg fra appen. Tom = BC bruger varekortets.
+  vendorNo    String   @default("")
+  vendorName  String   @default("")
+  // Hvad appen foreslog. Gemmes, saa kontoret kan se om antallet er forslaget
+  // eller et menneskes valg.
+  reorderQty  Decimal? @db.Decimal(18, 5)
+  remark      String?
+  barcode     String?
+  scanCount   Int      @default(1)
+  orderedBy   String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@unique([ordreId, itemNo])
+  @@index([ordreId, vendorNo])
+}

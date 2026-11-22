@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import {
-  AlertTriangle, Check, ClipboardList, CloudOff, Database, LogOut, PackageSearch, RotateCcw, Tag, X,
+  AlertTriangle, Check, ClipboardList, CloudOff, Database, LogOut, PackageSearch, RotateCcw,
+  ShoppingCart, Tag, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import OmAppen from '@/components/lager/OmAppen'
@@ -180,6 +181,17 @@ export default function LagerForside() {
           <span className="block text-sm text-gray-300">Blind tælling pr. hylde — BC får totalen</span>
         </span>
         <ClipboardList size={22} />
+      </Link>
+
+      <Link
+        href="/lager/bestilling"
+        className="mt-2 flex items-center justify-between rounded-2xl bg-emerald-700 px-4 py-4 text-white"
+      >
+        <span>
+          <span className="block font-semibold">Bestilling</span>
+          <span className="block text-sm text-emerald-100">Scan hvad der mangler — BC laver købsordrerne</span>
+        </span>
+        <ShoppingCart size={22} />
       </Link>
 
       <ul className="mt-4 space-y-2">
