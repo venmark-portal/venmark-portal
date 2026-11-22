@@ -905,6 +905,20 @@ model LagerCountLine {
   @@index([countId, itemNo])
 }
 
+// ─── Print fra haandterminalen ───────────────────────────────────────────────
+// Hvilken printer den enkelte portalbruger printer hylde-labels paa.
+//
+// Valget bor HER og ikke i BC, fordi alle terminaler kalder BC ind som OAuth-appen:
+// BC's eget "min printer" pr. bruger ville ramme appen og ikke manden med terminalen.
+// Printer-ID'et er BC's eget (virtuel tabel Printer), saa listen og valget ikke kan
+// komme ud af trit med PrintNode.
+model LagerPrinterValg {
+  brugerId    String   @id
+  printerId   String
+  printerNavn String   @default("")
+  valgtAt     DateTime @default(now())
+}
+
 // ─── Kanban: "tom hylde" ─────────────────────────────────────────────────────
 // Et signal er en MELDING, ikke en bestilling. Nogen scanner kanban-QR'en på
 // hylde-labelen, og varen står på kontorskærmen, indtil den er bestilt.

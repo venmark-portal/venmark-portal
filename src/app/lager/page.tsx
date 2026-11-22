@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import {
-  AlertTriangle, Check, ClipboardList, CloudOff, Database, LogOut, PackageSearch, RotateCcw,
-  ShoppingCart, Tag, X,
+  AlertTriangle, Check, ClipboardList, CloudOff, Database, LogOut, PackageSearch, Printer,
+  RotateCcw, ShoppingCart, Tag, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import OmAppen from '@/components/lager/OmAppen'
@@ -192,6 +192,17 @@ export default function LagerForside() {
           <span className="block text-sm text-emerald-100">Scan hvad der mangler — BC laver købsordrerne</span>
         </span>
         <ShoppingCart size={22} />
+      </Link>
+
+      <Link
+        href="/lager/labels"
+        className="mt-2 flex items-center justify-between rounded-2xl bg-sky-700 px-4 py-4 text-white"
+      >
+        <span>
+          <span className="block font-semibold">Print hylde-label</span>
+          <span className="block text-sm text-sky-100">Scan varen — labelen kommer på din printer</span>
+        </span>
+        <Printer size={22} />
       </Link>
 
       <ul className="mt-4 space-y-2">
