@@ -7,7 +7,9 @@ import { usePathname } from 'next/navigation'
 // Sider der er APPS, ikke hjemmeside: de tegner deres egen ramme og regner med at have
 // hele skærmen. Får de marketing-headeren ovenpå, bliver en app-skærm der er sat til
 // præcis én skærmhøjde klemt sammen — det var dét der mosede taltastaturet på lageret.
-const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/leverandoer', '/skaerm', '/lager']
+// '/k/' MED skråstreg: uden den dækkede den også /kontakt og alt andet der
+// tilfældigvis begynder med k.
+const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/leverandoer', '/skaerm', '/lager', '/k/']
 
 export default function NavHeader() {
   const [open, setOpen] = useState(false)

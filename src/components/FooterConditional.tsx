@@ -2,7 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 
-const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/skaerm', '/lager']
+// '/k/' MED skråstreg: uden den dækkede den også /kontakt og alt andet der
+// tilfældigvis begynder med k.
+const APP_PREFIXES = ['/portal', '/admin', '/chauffeur', '/pod', '/skaerm', '/lager', '/k/']
 
 export default function FooterConditional() {
   const pathname = usePathname()

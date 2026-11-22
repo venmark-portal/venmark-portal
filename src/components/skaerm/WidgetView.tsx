@@ -4,7 +4,7 @@
 // læses på 3-5 meters afstand, ikke fra en kontorstol.
 
 import { useEffect, useRef } from 'react'
-import type { DagensSalgData, LeveringerIDagData } from '@/lib/signage/widgets'
+import type { DagensSalgData, LeveringerIDagData, TommeHylderData } from '@/lib/signage/widgets'
 import type { ProduktionNu, UdbytteRaekke } from '@/lib/produktion'
 import type { AfvistLinje, BeskedFeed, Reklamation, TabtKunde } from '@/lib/kontor'
 import type { PakkeriStatus } from '@/lib/pakkeri'
@@ -48,6 +48,7 @@ export default function WidgetView({ payload }: { payload: WidgetPayload | undef
     case 'saelger-linjer':   return <Saelgere data={payload.data as SaelgerStat} />
     case 'telefoni':         return <Telefoni data={payload.data as TelefoniStat} />
     case 'kalender':         return <Kalender data={payload.data as KalenderSvar} />
+    case 'tomme-hylder':     return <TommeHylder data={payload.data as TommeHylderData} />
     default:                 return <Frame title="Ukendt widget"><p /></Frame>
   }
 }
@@ -120,6 +121,41 @@ function Afviste({ data }: { data: AfvistLinje[] }) {
           <span className="min-w-0 flex-1 truncate text-[1.8vh] text-white" title={r.kunde}>{r.vare}</span>
           <span className="shrink-0 font-mono text-[1.6vh] text-slate-500">{r.ordre}</span>
           <span className="shrink-0 text-[1.8vh] font-semibold tabular-nums text-rose-400">−{nf1.format(r.oversolgt)}</span>
+        </div>
+      ))}
+    </Frame>
+  )
+}
+
+/**
+ * Tomme hylder — kanban-meldinger, der endnu ikke er bestilt.
+ *
+ * Den eneste widget uden BC bag: navnet blev gemt, da hylden blev meldt tom. Derfor
+ * kan den stå på skærmen, også når BC er nede — og en tom hylde er netop noget, man
+ * ikke skal holde op med at kunne se.
+ *
+ * Tidspunktet står til højre, fordi det afgør, om man gør noget NU: en melding fra
+ * for ti minutter siden og en fra i forgårs ser ellers helt ens ud.
+ */
+function TommeHylder({ data }: { data: TommeHylderData }) {
+  const raekker = data?.raekker ?? []
+  return (
+    <Frame title="Tomme hylder">
+      {raekker.length === 0 && (
+        <p className="text-[2.2vh] text-slate-400">Ingen tomme hylder meldt.</p>
+      )}
+      {raekker.map(r => (
+        <div key={r.id} className="flex items-baseline gap-[0.6vw] border-b border-white/10 py-[0.5vh]">
+          <span className="w-[5vw] shrink-0 font-mono text-[1.8vh] text-slate-500">{r.itemNo}</span>
+          <span className="min-w-0 flex-1 truncate text-[2.2vh] font-semibold text-white">
+            {r.description || '—'}
+          </span>
+          {r.antal > 1 && (
+            <span className="shrink-0 rounded bg-rose-500/20 px-[0.5vw] text-[1.6vh] font-bold text-rose-300">
+              {r.antal}×
+            </span>
+          )}
+          <span className="shrink-0 text-[1.8vh] tabular-nums text-amber-300">{klokkeslaet(r.lastAt)}</span>
         </div>
       ))}
     </Frame>

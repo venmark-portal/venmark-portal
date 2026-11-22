@@ -886,3 +886,31 @@ model LagerCountLine {
 
   @@index([countId, itemNo])
 }
+
+// ─── Kanban: "tom hylde" ─────────────────────────────────────────────────────
+// Et signal er en MELDING, ikke en bestilling. Nogen scanner kanban-QR'en på
+// hylde-labelen, og varen står på kontorskærmen, indtil den er bestilt.
+//
+// Varenavn, enhed og beholdning gemmes som SNAPSHOT ved meldingen. To grunde:
+// skærmen kan vises uden et BC-kald pr. vare, og man kan bagefter se, hvad der
+// faktisk stod på lageret, da nogen meldte hylden tom.
+model KanbanSignal {
+  id          String   @id @default(cuid())
+  itemNo      String
+  description String   @default("")
+  baseUom     String   @default("")
+  bcInventory Decimal? @db.Decimal(18, 5)
+  // aaben | bestilt
+  status      String   @default("aaben")
+  // Samme vare meldt igen bumper tælleren i stedet for at lave en ny række.
+  // Ellers fyldte én tom hylde hele listen, og "de 5 nyeste" blev meningsløst.
+  antal       Int      @default(1)
+  firstAt     DateTime @default(now())
+  lastAt      DateTime @default(now())
+  meldtAf     String   @default("")
+  bestiltAt   DateTime?
+  bestiltAf   String   @default("")
+
+  @@index([status, lastAt])
+  @@index([itemNo, status])
+}

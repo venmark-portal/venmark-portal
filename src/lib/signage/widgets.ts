@@ -15,6 +15,7 @@ import { pakkeriStatus, type PakkeriStatus } from '@/lib/pakkeri'
 import { saelgerStat, type SaelgerStat } from '@/lib/saelgere'
 import { telefoniStat, type TelefoniStat } from '@/lib/telefoni'
 import { kalenderIDagOgIMorgen, type KalenderSvar } from '@/lib/kalender'
+import { aabneSignaler, type KanbanRaekke } from '@/lib/kanban'
 
 export interface WidgetParamDef {
   key:     string
@@ -45,6 +46,10 @@ function todayCopenhagen(): string {
 export interface DagensSalgData {
   dato:  string
   raekker: { itemNo: string; description: string; uom: string; salg: number }[]
+}
+
+export interface TommeHylderData {
+  raekker: KanbanRaekke[]
 }
 
 export interface LeveringerIDagData {
@@ -230,6 +235,25 @@ DEFS.push(
     ttlSec:      300,
     params: [],
     async fetch(): Promise<KalenderSvar> { return kalenderIDagOgIMorgen() },
+  },
+)
+
+// ─── Kanban ──────────────────────────────────────────────────────────────────
+// Den eneste widget der IKKE spørger BC: meldingerne ligger i portalens egen
+// database, og varenavn og beholdning blev gemt som snapshot, da hylden blev
+// meldt tom. Derfor er ttl kort — en melding skal op på skærmen med det samme.
+DEFS.push(
+  {
+    id:          'tomme-hylder',
+    name:        'Tomme hylder (kanban)',
+    description: 'Varer der er meldt tomme ved at scanne kanban-QR-koden på en hylde-label, og som endnu ikke er bestilt. Kun varenumre under 90000 — resten er indkøberens, ikke salgets.',
+    ttlSec:      20,
+    params: [
+      { key: 'top', label: 'Antal varer der vises', type: 'number', default: 5, min: 3, max: 12 },
+    ],
+    async fetch(params): Promise<TommeHylderData> {
+      return { raekker: await aabneSignaler(params.top ?? 5) }
+    },
   },
 )
 
