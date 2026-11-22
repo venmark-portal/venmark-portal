@@ -9,6 +9,8 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { ensureLagerSchema } from '@/lib/lager/db'
 import { resolveBarcode, sendCountToBC } from '@/lib/lager/bc'
+import { vurderForslag, type Forslag, type Planlaegning } from '@/lib/lager/forslagsregel'
+import { hentLinjer } from '@/lib/bestilling/bestilling'
 
 /** Hvem der skal tjekke og bogføre optællingen. */
 const OPTAELLING_MAIL = 'fisk@venmark.dk'
@@ -64,6 +66,18 @@ export async function ensureOptaellingSchema() {
   // Kassetype og produktion: værnet mod at tælle en samlekasse OG dens enkeltkasser.
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "boxType" TEXT`
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "productionNo" TEXT`
+  // Tilføjet 22-11: optælling og bestilling kan gå samme tur ned langs hylderne.
+  // `bestilling` er valget pr. optælling; `bestillingId` er den kurv den fylder, og
+  // den oprettes FØRST når det første forslag bliver accepteret — en tom kurv pr.
+  // optælling ville være støj på bestillingslisten.
+  await prisma.$executeRaw`ALTER TABLE "LagerCount" ADD COLUMN IF NOT EXISTS "bestilling" BOOLEAN NOT NULL DEFAULT false`
+  await prisma.$executeRaw`ALTER TABLE "LagerCount" ADD COLUMN IF NOT EXISTS "bestillingId" TEXT`
+  // Planlægningsfelterne gemmes PÅ LINJEN ligesom bcQty: så kan listen til sidst vise
+  // hvad der bør bestilles, uden et BC-kald pr. vare — også hvis BC er nede bagefter.
+  // NULL betyder "BC fortalte os ingenting", og det er ikke det samme som 0/tom.
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "vendorNo" TEXT`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "reorderPoint" DECIMAL(18,5)`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "reorderQty" DECIMAL(18,5)`
   ensured = true
 }
 
@@ -77,13 +91,17 @@ export interface Optaelling {
   note: string | null
   /** true = tælleren ser ikke BC's tal. Standard er false: det meste stemmer. */
   blind: boolean
+  /** true = varer under genbestillingspunktet foreslås bestilt mens man tæller. */
+  bestilling: boolean
+  /** Kurven denne optælling fylder. null indtil det første forslag accepteres. */
+  bestillingId: string | null
   bcLinesWritten: number | null
   bcDiffLines: number | null
   bcError: string | null
 }
 
 const FELTER = `id, "no", "locationCode", status, "startedAt", "createdByName", note, blind,
-                "bcLinesWritten", "bcDiffLines", "bcError"`
+                bestilling, "bestillingId", "bcLinesWritten", "bcDiffLines", "bcError"`
 
 /** OPT-ÅÅMMDD-NN. Lokal dato — toISOString() ville give gårsdagens nummer om aftenen. */
 async function nytNummer(): Promise<string> {
@@ -105,13 +123,14 @@ export async function startOptaelling(
   brugerId: string,
   brugerNavn: string,
   blind = false,
+  bestilling = false,
 ): Promise<Optaelling> {
   await ensureOptaellingSchema()
   const id = `cnt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   const no = await nytNummer()
   await prisma.$executeRaw`
-    INSERT INTO "LagerCount" ("id", "no", "locationCode", "createdById", "createdByName", blind)
-    VALUES (${id}, ${no}, ${locationCode}, ${brugerId}, ${brugerNavn}, ${blind})
+    INSERT INTO "LagerCount" ("id", "no", "locationCode", "createdById", "createdByName", blind, bestilling)
+    VALUES (${id}, ${no}, ${locationCode}, ${brugerId}, ${brugerNavn}, ${blind}, ${bestilling})
   `
   return (await hentOptaelling(id))!
 }
@@ -151,6 +170,11 @@ export interface NyLinje {
   /** BC-beholdningen som opslaget gav. Gemmes, så oversigten kan vise forskellen
    *  uden et nyt BC-kald pr. vare. */
   bcQty?: number | null
+  /** Varens planlægningsfelter fra opslaget. null/undefined = BC fortalte os ingenting
+   *  (app-versionen med indkøbsfelterne er ikke synkroniseret), og så foreslås intet. */
+  vendorNo?: string | null
+  reorderPoint?: number | null
+  reorderQty?: number | null
 }
 
 /**
@@ -166,13 +190,14 @@ export async function tilfoejLinje(
   const id = `cl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   await prisma.$executeRaw`
     INSERT INTO "LagerCountLine"
-      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark","boxType","productionNo")
+      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark","boxType","productionNo","vendorNo","reorderPoint","reorderQty")
     VALUES
       (${id}, ${countId}, ${linje.itemNo.toUpperCase()}, ${linje.description ?? ''}, ${linje.qty},
        ${linje.uom ?? ''}, ${!!linje.estimated}, ${!!linje.confirmed},
        ${linje.shelfCode ?? null}, ${linje.lotNo ?? null}, ${linje.barcode ?? null}, ${brugerNavn},
        ${linje.bcQty ?? null}, ${linje.remark?.slice(0, 150) ?? null},
-       ${linje.boxType ?? null}, ${linje.productionNo ?? null})
+       ${linje.boxType ?? null}, ${linje.productionNo ?? null},
+       ${linje.vendorNo ?? null}, ${linje.reorderPoint ?? null}, ${linje.reorderQty ?? null})
   `
   const i_alt = await vareTotal(countId, linje.itemNo)
   // Hvad DENNE optæller har talt netop her. Et tastet tal erstatter kun det, så
@@ -378,6 +403,11 @@ export async function bekraeftVare(
       uom: bc.baseUnitOfMeasure,
       confirmed: true,
       bcQty: bc.inventory,
+      // En bekræftet vare er også et tal på hylden: er BC's beholdning under
+      // genbestillingspunktet, skal den foreslås bestilt som alle andre.
+      vendorNo: bc.planlaegning?.vendorNo ?? null,
+      reorderPoint: bc.planlaegning?.reorderPoint ?? null,
+      reorderQty: bc.planlaegning?.reorderQuantity ?? null,
     },
     brugerNavn,
   )
@@ -398,6 +428,10 @@ export interface OptaellingLinje {
   /** BC's beholdning da varen blev registreret. null på en blind tælling. */
   bcAntal: number | null
   afvigelse: number | null
+  /** Varens planlægningsfelter som de stod ved tællingen. null = BC leverede ingenting. */
+  planlaegning: Planlaegning | null
+  /** Bør varen bestilles? Regnet på det TALTE — se `vurderForslag`. */
+  forslag: Forslag | null
 }
 
 /**
@@ -418,7 +452,13 @@ export async function summerPrVare(countId: string, skjulBC = false): Promise<Op
            STRING_AGG(DISTINCT COALESCE("shelfCode",''), ', ') AS shelves,
            MAX(COALESCE("lotNo",''))                           AS lotno,
            MAX(COALESCE(remark,''))                            AS remark,
-           MAX("bcQty")                                        AS bcqty
+           MAX("bcQty")                                        AS bcqty,
+           -- MAX springer NULL over, så en vare der blev talt både før og efter
+           -- planlægningsfelterne kom med, får dem alligevel. Er ALLE linjer NULL,
+           -- bliver resultatet NULL — og det betyder stadig "BC sagde ingenting".
+           MAX("vendorNo")                                     AS vendorno,
+           MAX("reorderPoint")                                 AS reorderpoint,
+           MAX("reorderQty")                                   AS reorderqty
     FROM "LagerCountLine"
     WHERE "countId" = ${countId}
     GROUP BY "itemNo"
@@ -427,7 +467,21 @@ export async function summerPrVare(countId: string, skjulBC = false): Promise<Op
   return rows.map(r => {
     const total = Number(r.total ?? 0)
     const bcAntal = skjulBC || r.bcqty === null || r.bcqty === undefined ? null : Number(r.bcqty)
+    // Blind tælling skjuler BC's BEHOLDNING, ikke varens planlægning. Et
+    // genbestillingspunkt er ikke en beholdning, og forslaget regnes på det talte —
+    // så en blind tælling kan godt foreslå en bestilling uden at holde op med at
+    // være blind.
+    const planlaegning =
+      r.vendorno === null || r.vendorno === undefined
+        ? null
+        : {
+            vendorNo: String(r.vendorno),
+            reorderPoint: Number(r.reorderpoint ?? 0),
+            reorderQuantity: Number(r.reorderqty ?? 0),
+          }
     return {
+      planlaegning,
+      forslag: vurderForslag(total, planlaegning),
       itemNo: r.itemNo,
       description: r.description ?? '',
       total,
@@ -485,7 +539,12 @@ export async function sendOptaelling(
   // Besked til kontoret: kladden ligger og venter på at blive tjekket og bogført.
   // Mail må ALDRIG vælte afsendelsen — tællingen er landet i BC uanset hvad.
   try {
-    await sendOptaellingMail(optaelling, linjer, svar.afvigelser ?? 0)
+    // Hvilke af forslagene der faktisk blev lagt i kurven. Kontoret skal kunne se
+    // forskel på "lageret har bestilt den" og "lageret gik forbi den".
+    const iKurv = optaelling.bestillingId
+      ? new Set((await hentLinjer(optaelling.bestillingId)).map(l => l.itemNo))
+      : new Set<string>()
+    await sendOptaellingMail(optaelling, linjer, svar.afvigelser ?? 0, iKurv)
   } catch (e: any) {
     console.error(`[lager optaelling] mail for ${optaelling.no} fejlede: ${e?.message ?? e}`)
   }
@@ -497,6 +556,7 @@ async function sendOptaellingMail(
   optaelling: Optaelling,
   linjer: OptaellingLinje[],
   afvigelser: number,
+  iKurv: Set<string>,
 ) {
   const anslaaede = linjer.filter(l => l.estimated)
   const bekraeftede = linjer.filter(l => l.confirmed)
@@ -511,6 +571,16 @@ async function sendOptaellingMail(
     (l.confirmed ? '   [bekræftet, ikke talt]' : '') +
     (l.remark ? `\n      ${l.remark}` : '')
 
+  // Varer der bør bestilles. Med i mailen uanset om lageret trykkede på forslaget:
+  // en tom hylde, ingen har bestilt, er netop den kontoret skal se.
+  const boerBestilles = linjer.filter(l => l.forslag)
+  const bestilLinje = (l: OptaellingLinje) =>
+    `  ${l.itemNo.padEnd(10)} ${l.description.slice(0, 32).padEnd(34)} ` +
+    `talt ${nr(l.total).padStart(9)} ${l.uom.padEnd(4)}` +
+    (l.forslag!.punkt > 0 ? `  punkt ${nr(l.forslag!.punkt).padStart(8)}` : '  intet punkt    ') +
+    `  foreslået ${nr(l.forslag!.foreslaaet).padStart(8)}` +
+    (iKurv.has(l.itemNo) ? '   [LAGT I KURVEN]' : '   [ikke bestilt]')
+
   const tekst = [
     `Optælling ${optaelling.no} er sendt til Business Central.`,
     '',
@@ -520,6 +590,9 @@ async function sendOptaellingMail(
     `Med afvigelse: ${afvigelser}`,
     `Anslåede tal:  ${anslaaede.length}`,
     `Bekræftede:    ${bekraeftede.length}`,
+    boerBestilles.length > 0
+      ? `Bør bestilles: ${boerBestilles.length} (${iKurv.size} lagt i bestillingskurven)`
+      : '',
     optaelling.note ? `Bemærkning:    ${optaelling.note}` : '',
     '',
     'Linjerne ligger i lageropgørelseskladden (kladdenavn LAGERAPP) og skal tjekkes og bogføres.',
@@ -531,6 +604,15 @@ async function sendOptaellingMail(
     anslaaede.length > 0 ? `ANSLÅEDE TAL (${anslaaede.length}) — der er ikke talt, men skønnet:` : '',
     ...anslaaede.map(linje),
     '',
+    boerBestilles.length > 0
+      ? `BØR BESTILLES (${boerBestilles.length}) — talt på eller under genbestillingspunktet:`
+      : '',
+    ...boerBestilles.map(bestilLinje),
+    boerBestilles.length > 0 && iKurv.size > 0
+      ? `\n  Det der står som lagt i kurven, ligger i en ÅBEN bestilling i portalen. ` +
+        'Den er IKKE sendt til BC — det gør lageret eller indkøberen selv.'
+      : '',
+    '',
     `Alle ${linjer.length} linjer:`,
     ...linjer.map(linje),
   ]
@@ -541,7 +623,8 @@ async function sendOptaellingMail(
     to: OPTAELLING_MAIL,
     subject:
       `Optælling ${optaelling.no} — ${optaelling.locationCode}, ${linjer.length} varer, ` +
-      `${afvigelser} afvigelse${afvigelser === 1 ? '' : 'r'}`,
+      `${afvigelser} afvigelse${afvigelser === 1 ? '' : 'r'}` +
+      (boerBestilles.length > 0 ? `, ${boerBestilles.length} bør bestilles` : ''),
     text: tekst,
   })
   console.log(`[lager optaelling] mail sendt til ${OPTAELLING_MAIL} for ${optaelling.no}`)

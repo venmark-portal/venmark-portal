@@ -70,6 +70,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       bcQty: Number.isFinite(Number(body?.bcQty)) ? Number(body.bcQty) : null,
       boxType: boxType || undefined,
       productionNo: productionNo || undefined,
+      // Planlægningsfelterne kom også med fra opslaget, og de gemmes på linjen af
+      // samme grund som bcQty: så listen over hvad der bør bestilles kan laves bagefter
+      // uden et BC-kald pr. vare.
+      //
+      // En TOM streng betyder "varen har ingen leverandør". Et MANGLENDE felt betyder
+      // "BC fortalte os ingenting". De to må ikke blandes sammen — det første
+      // filtrerer varen væk, det andet slår forslaget fra. Derfor typeof og ikke ?? ''.
+      vendorNo: typeof body?.vendorNo === 'string' ? body.vendorNo : null,
+      reorderPoint: Number.isFinite(Number(body?.reorderPoint)) ? Number(body.reorderPoint) : null,
+      reorderQty: Number.isFinite(Number(body?.reorderQty)) ? Number(body.reorderQty) : null,
     },
     bruger.navn,
   )

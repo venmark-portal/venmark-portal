@@ -25,9 +25,15 @@ export async function POST(req: NextRequest) {
 
   // Blind tælling er et valg, ikke en regel: det meste stemmer, og så er det
   // hurtigere at se forskellen med det samme.
-  const optaelling = await startOptaelling(lokation, bruger.id, bruger.navn, !!body?.blind)
+  // bestilling = tæl og bestil på samme tur ned langs hylderne: varer på eller under
+  // genbestillingspunktet foreslås lagt i en bestillingskurv. Optællingen opretter
+  // ALDRIG købsordren selv — kurven sendes for sig.
+  const optaelling = await startOptaelling(
+    lokation, bruger.id, bruger.navn, !!body?.blind, !!body?.bestilling,
+  )
   console.log(
-    `[lager optaelling] ${optaelling.no} startet på ${lokation} af ${bruger.navn}${optaelling.blind ? ' (blind)' : ''}`,
+    `[lager optaelling] ${optaelling.no} startet på ${lokation} af ${bruger.navn}` +
+    `${optaelling.blind ? ' (blind)' : ''}${optaelling.bestilling ? ' (med bestillingsforslag)' : ''}`,
   )
   return NextResponse.json(optaelling)
 }

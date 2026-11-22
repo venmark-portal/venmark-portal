@@ -847,6 +847,14 @@ model LagerCount {
   // Blind tælling: skjul BC's tal for tælleren. Som standard FRA — det meste
   // stemmer, og så er det hurtigere at se forskellen med det samme.
   blind          Boolean  @default(false)
+  // Taell og bestil paa samme tur: varer paa eller under genbestillingspunktet
+  // foreslaas lagt i en bestillingskurv. Optaellingen opretter ALDRIG koebsordren —
+  // det er to dokumenter i BC, og de maa ikke haenge paa een knap.
+  bestilling     Boolean  @default(false)
+  // Kurven denne optaelling fylder. Med vilje IKKE en relation: kurven er et
+  // selvstaendigt dokument, der skal kunne sendes og leve videre uden at roere
+  // optaellingen. Null indtil det foerste forslag bliver accepteret.
+  bestillingId   String?
   bcLinesWritten Int?
   bcDiffLines    Int?
   bcError        String?
@@ -882,6 +890,16 @@ model LagerCountLine {
   // Kassetype og produktion: vaernet mod at taelle en samlekasse OG dens enkeltkasser.
   boxType      String?
   productionNo String?
+  // Varens planlaegning fra opslaget, gemt af samme grund som bcQty: saa listen over
+  // hvad der boer bestilles kan laves bagefter uden et BC-kald pr. vare.
+  //
+  // NULL og tom streng betyder IKKE det samme. vendorNo = '' er "varen har ingen
+  // leverandoer" (= ikke en indkoebsvare). vendorNo = NULL er "BC fortalte os
+  // ingenting", fordi app-versionen med indkoebsfelterne ikke var synkroniseret.
+  // Det foerste filtrerer varen vaek; det andet slaar forslaget fra.
+  vendorNo     String?
+  reorderPoint Decimal? @db.Decimal(18, 5)
+  reorderQty   Decimal? @db.Decimal(18, 5)
   createdAt   DateTime @default(now())
 
   @@index([countId, itemNo])
@@ -898,6 +916,9 @@ model KanbanSignal {
   id          String   @id @default(cuid())
   itemNo      String
   description String   @default("")
+  // Varens hylde fra varekortet. Med i snapshottet, saa den der skal hente varen
+  // kan se HVOR den staar — baade paa kontorskaermen og i bestillingsappen.
+  shelfNo     String   @default("")
   baseUom     String   @default("")
   bcInventory Decimal? @db.Decimal(18, 5)
   // aaben | bestilt

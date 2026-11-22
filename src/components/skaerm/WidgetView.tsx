@@ -150,6 +150,11 @@ function TommeHylder({ data }: { data: TommeHylderData }) {
           <span className="min-w-0 flex-1 truncate text-[2.2vh] font-semibold text-white">
             {r.description || '—'}
           </span>
+          {/* Hylden står MED varen: navnet er det man læser, hylden er det man går
+              efter. Tom når varekortet ikke har en hylde. */}
+          {r.shelfNo && (
+            <span className="shrink-0 font-mono text-[1.8vh] text-sky-300">{r.shelfNo}</span>
+          )}
           {r.antal > 1 && (
             <span className="shrink-0 rounded bg-rose-500/20 px-[0.5vw] text-[1.6vh] font-bold text-rose-300">
               {r.antal}×

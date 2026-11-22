@@ -55,6 +55,8 @@ interface Signal {
   id: string
   itemNo: string
   description: string
+  /** Varens hylde, som den stod da hylden blev meldt tom. */
+  shelfNo: string
   baseUom: string
   antal: number
   firstAt: string
@@ -323,6 +325,9 @@ export default function BestillingSkaerm() {
                     </span>
                     <span className="block text-xs text-gray-500">
                       {s.itemNo}
+                      {/* Hylden med: meldingen kommer fra en hylde-label, og den der
+                          skal hente varen skal vide hvor den står. */}
+                      {s.shelfNo && <span className="ml-2 font-mono text-sky-700">{s.shelfNo}</span>}
                       {s.antal > 1 && <span className="ml-2 font-semibold text-rose-700">{s.antal}×</span>}
                       <span className="ml-2">
                         {new Date(s.firstAt).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit' })}

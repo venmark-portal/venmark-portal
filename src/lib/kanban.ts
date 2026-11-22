@@ -13,6 +13,7 @@
 
 import { getItemsByNumbers } from '@/lib/businesscentral'
 import { prisma } from '@/lib/prisma'
+import { resolveBarcode } from '@/lib/lager/bc'
 
 /**
  * Varenumre fra og med dette tal vises IKKE på salgsskærmen (Claus 22-11).
@@ -33,6 +34,8 @@ export interface KanbanRaekke {
   id:          string
   itemNo:      string
   description: string
+  /** Varens hylde fra varekortet, som den stod ved meldingen. Tom når BC ikke har en. */
+  shelfNo:     string
   baseUom:     string
   bcInventory: number | null
   antal:       number
@@ -71,6 +74,9 @@ export async function ensureKanbanSchema() {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "KanbanSignal_itemNo_status_idx" ON "KanbanSignal"("itemNo", "status")
   `
+  // Tilføjet 22-11: hylden med i snapshottet, så den der skal hente varen kan se
+  // HVOR den står — både på kontorskærmen og i bestillingsappen.
+  await prisma.$executeRaw`ALTER TABLE "KanbanSignal" ADD COLUMN IF NOT EXISTS "shelfNo" TEXT NOT NULL DEFAULT ''`
   ensured = true
 }
 
@@ -85,6 +91,21 @@ export async function hentVare(itemNo: string) {
     baseUom:     vare.baseUnitOfMeasureCode ?? '',
     inventory:   typeof vare.inventory === 'number' ? vare.inventory : null,
   }
+}
+
+/**
+ * Varens hylde. Et selvstændigt opslag, fordi hylden ikke findes i standard-API'ets
+ * varefelter — kun i vores eget stregkodeopslag (side 50600).
+ *
+ * Det er bevidst et EKSTRA kald og ikke en erstatning for `hentVare`: beholdningen på
+ * kontorskærmen kommer derfra i dag, og de to kilder tæller ikke nødvendigvis på samme
+ * lokationer. Et pænere kald, der ændrede tallet på væggen, ville ikke være pænere.
+ *
+ * Kaldet sker kun når en hylde meldes tom FØRSTE gang — nogle gange om dagen.
+ */
+export async function hentHylde(itemNo: string): Promise<string> {
+  const svar = await resolveBarcode(itemNo, '', 'kanban').catch(() => null)
+  return svar?.found ? svar.shelfNo : ''
 }
 
 /** Den åbne melding på varen, hvis der er en. */
@@ -120,12 +141,16 @@ export async function meldTom(itemNo: string, meldtAf: string) {
 
   // Snapshot af varen, så skærmen kan vises uden et BC-kald pr. række. Svarer BC
   // ikke, melder vi alligevel: en tom hylde er en tom hylde, også når BC er nede.
-  const vare = await hentVare(itemNo).catch(() => null)
+  const [vare, hylde] = await Promise.all([
+    hentVare(itemNo).catch(() => null),
+    hentHylde(itemNo).catch(() => ''),
+  ])
 
   return prisma.kanbanSignal.create({
     data: {
       itemNo,
       description: vare?.description ?? '',
+      shelfNo:     hylde,
       baseUom:     vare?.baseUom ?? '',
       bcInventory: vare?.inventory ?? null,
       meldtAf,
@@ -169,6 +194,7 @@ export async function aabneSignaler(limit = 5): Promise<KanbanRaekke[]> {
       id:          r.id,
       itemNo:      r.itemNo,
       description: r.description,
+      shelfNo:     r.shelfNo ?? '',
       baseUom:     r.baseUom,
       bcInventory: r.bcInventory === null ? null : Number(r.bcInventory),
       antal:       r.antal,
@@ -201,6 +227,7 @@ export async function alleAabneSignaler(limit = 50): Promise<KanbanRaekke[]> {
     id:          r.id,
     itemNo:      r.itemNo,
     description: r.description,
+    shelfNo:     r.shelfNo ?? '',
     baseUom:     r.baseUom,
     bcInventory: r.bcInventory === null ? null : Number(r.bcInventory),
     antal:       r.antal,

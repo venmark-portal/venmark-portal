@@ -34,6 +34,14 @@ export interface ScanResult {
   boxType: string
   productionNo: string
   boxEntryNo: number
+  /** Varens hylde på varekortet. Tom når BC ikke har en. */
+  shelfNo: string
+  /**
+   * Planlægningsfelterne, som bestillingsforslaget under en optælling hviler på.
+   * null = BC-appen leverer dem ikke endnu. Se mapningen nedenfor for hvorfor det
+   * ikke er det samme som "varen har ingen leverandør".
+   */
+  planlaegning: { vendorNo: string; reorderPoint: number; reorderQuantity: number } | null
   errorText: string
 }
 
@@ -109,6 +117,22 @@ export async function resolveBarcode(
     boxType: row.boxType ?? '',
     productionNo: row.productionNo ?? '',
     boxEntryNo: Number(row.boxEntryNo ?? 0),
+    shelfNo: row.shelfNo ?? '',
+    // `undefined` og `''` betyder IKKE det samme her, og forskellen er hele grunden
+    // til at feltet er et objekt og ikke tre tal:
+    //   ''        = BC siger, varen har ingen leverandør → ikke en indkøbsvare.
+    //   undefined = BC har ikke fortalt os noget, fordi app-versionen med
+    //               indkøbsfelterne ikke er synkroniseret endnu.
+    // Det første er et filter, det andet er en funktion der ikke virker. Blandede
+    // man dem, ville bestillingsforslaget være tavst dødt i stedet for at sige hvorfor.
+    planlaegning:
+      row.vendorNo === undefined
+        ? null
+        : {
+            vendorNo: row.vendorNo ?? '',
+            reorderPoint: Number(row.reorderPoint ?? 0),
+            reorderQuantity: Number(row.reorderQuantity ?? 0),
+          },
     errorText: row.errorText ?? '',
   }
 }

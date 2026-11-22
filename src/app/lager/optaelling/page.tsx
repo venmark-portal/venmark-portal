@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  AlertTriangle, ArrowLeft, Camera, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Pencil, Plus, Send, Trash2, X,
+  AlertTriangle, ArrowLeft, Camera, Check, CircleCheck, ImagePlus, Layers, MessageSquare, Pencil, Plus,
+  Send, ShoppingCart, Trash2, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur, { beregn } from '@/components/lager/Taltastatur'
 import Bemaerkning from '@/components/lager/Bemaerkning'
 import { nyNoegle } from '@/lib/lager/device'
+import { forslagstekst, vurderForslag, type Forslag, type Planlaegning } from '@/lib/lager/forslagsregel'
 
 interface Hylde { id: string; locationCode: string; code: string; name: string; sortOrder: number }
 interface Vare {
@@ -16,11 +18,25 @@ interface Vare {
   antal: number; estimated: boolean; confirmed: boolean; shelves: string
   remark: string
   bcAntal: number | null; afvigelse: number | null
+  planlaegning: Planlaegning | null; forslag: Forslag | null
 }
 interface Optaelling {
   id: string; no: string; locationCode: string; status: string; createdByName: string
   blind: boolean
+  /** true = varer under genbestillingspunktet foreslås bestilt mens man tæller. */
+  bestilling: boolean
+  bestillingId: string | null
   bcLinesWritten: number | null; bcDiffLines: number | null
+}
+interface ForslagsLinje {
+  itemNo: string; description: string; uom: string; shelves: string
+  forslag: Forslag; iKurv: number | null
+}
+interface ForslagsSvar {
+  tilgaengelig: boolean; forslag: ForslagsLinje[]
+  /** Alt i kurven — også varer der ikke længere er et forslag. */
+  kurv: { itemNo: string; qty: number }[]
+  bestillingId: string | null; bestillingNo: string | null
 }
 
 /** Tal som lageret læser dem: 1.250,5 — og uden decimalhalehæng på hele tal. */
@@ -39,9 +55,19 @@ export default function OptaellingSide() {
   const [aktiv, setAktiv] = useState<
     // mit = hvad DU har talt på den hylde du står ved. Et tastet tal erstatter kun det —
     // ikke hvad en kollega har talt på den samme vare et andet sted.
-    { itemNo: string; navn: string; uom: string; total: number; antal: number; mit: number; bcAntal: number | null } | null
+    {
+      itemNo: string; navn: string; uom: string; total: number; antal: number; mit: number
+      bcAntal: number | null
+      // Varens planlægning fra opslaget. Forslaget REGNES ud fra den og det talte ved
+      // hver tegning, så skærmen ikke kan vise et forslag der ikke passer til tallet.
+      planlaegning: Planlaegning | null
+    } | null
   >(null)
   const [blind, setBlind] = useState(false)
+  const [bestil, setBestil] = useState(false)
+  const [forslagSvar, setForslagSvar] = useState<ForslagsSvar | null>(null)
+  const [forslagAaben, setForslagAaben] = useState(false)
+  const [forslagTravl, setForslagTravl] = useState('')
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
   const [travl, setTravl] = useState(false)
   const [stemmerDialog, setStemmerDialog] = useState(false)
@@ -100,10 +126,85 @@ export default function OptaellingSide() {
         setHylde('')
         setAktiv(null)
         setBesked(null)
+        setForslagSvar(null)
+        // Åbner man en optælling der er i gang, skal man kunne se hvad der allerede
+        // ligger i kurven — ellers bestiller to mand den samme vare.
+        if (r.optaelling?.bestilling) hentForslag(r.optaelling.id)
       }
       return r.optaelling
     })
     setVarer(r.varer ?? [])
+  }
+
+  /**
+   * Listen over hvad der bør bestilles. Hentes IKKE ved hvert scan: forslaget på den
+   * vare man står med regnes i skærmen (gratis, og det er den samme regel serveren
+   * bruger), og listen hentes når man åbner den, og efter noget er lagt i kurven.
+   * Et ekstra kald pr. scan ville koste på det eneste der kan føles i hånden.
+   */
+  const hentForslag = useCallback(async (id: string) => {
+    const r = await fetch(`/api/lager/optaelling/${id}/forslag`).then(x => x.json()).catch(() => null)
+    if (r && !r.error) setForslagSvar(r)
+  }, [])
+
+  // Et forslag SÆTTER antallet i kurven, så to tryk ikke bliver dobbelt op.
+  async function laegIKurv(itemNo: string, antal?: number) {
+    if (!optaelling) return
+    setForslagTravl(itemNo)
+    try {
+      const r = await fetch(`/api/lager/optaelling/${optaelling.id}/forslag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemNo, antal }),
+      })
+      const data = await r.json()
+      if (!r.ok) {
+        bip(300, 220)
+        setBesked({ slags: 'advar', tekst: data.error ?? 'Kunne ikke lægges i kurven' })
+        return
+      }
+      bip(990, 90)
+      setBesked({
+        slags: 'ok',
+        tekst: `${itemNo}: ${tal(data.qty ?? 0)} lagt i bestilling ${data.bestillingNo ?? ''}`,
+      })
+      await hentForslag(optaelling.id)
+      await hentStatus(optaelling.id)
+    } finally { setForslagTravl('') }
+  }
+
+  async function udKurv(itemNo: string) {
+    if (!optaelling) return
+    setForslagTravl(itemNo)
+    try {
+      const r = await fetch(
+        `/api/lager/optaelling/${optaelling.id}/forslag?itemNo=${encodeURIComponent(itemNo)}`,
+        { method: 'DELETE' },
+      )
+      const data = await r.json()
+      if (!r.ok) { setBesked({ slags: 'advar', tekst: data.error ?? 'Kunne ikke tages ud' }); return }
+      await hentForslag(optaelling.id)
+    } finally { setForslagTravl('') }
+  }
+
+  async function laegAlleIKurv() {
+    if (!optaelling) return
+    setForslagTravl('ALLE')
+    try {
+      const r = await fetch(`/api/lager/optaelling/${optaelling.id}/forslag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alle: true }),
+      })
+      const data = await r.json()
+      setBesked(
+        data.fejlede
+          ? { slags: 'advar', tekst: `${data.lagt} lagt i kurven, ${data.fejlede} fejlede: ${data.fejl}` }
+          : { slags: 'ok', tekst: `${data.lagt} varer lagt i bestilling ${data.bestillingNo ?? ''}` },
+      )
+      await hentForslag(optaelling.id)
+      await hentStatus(optaelling.id)
+    } finally { setForslagTravl('') }
   }
 
   async function start() {
@@ -112,11 +213,12 @@ export default function OptaellingSide() {
       const r = await fetch('/api/lager/optaelling', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationCode: lokation, blind }),
+        body: JSON.stringify({ locationCode: lokation, blind, bestilling: bestil }),
       }).then(x => x.json())
       if (r.id) {
         setOptaelling(r)
         setVarer([])
+        setForslagSvar(null)
         // Ny runde, nyt hyldevalg. Ellers står den forrige hylde og ser ud som om
         // man stadig tæller dér.
         setHylde('')
@@ -156,6 +258,16 @@ export default function OptaellingSide() {
           uom: v.baseUnitOfMeasure, shelfCode: hylde || undefined, lotNo: v.lotNo || undefined,
           barcode: kode, unikKasse, bcQty: v.inventory,
           boxType: v.boxType || undefined, productionNo: v.productionNo || undefined,
+          // Planlægningen følger linjen, så listen over hvad der bør bestilles kan
+          // laves til sidst uden et BC-kald pr. vare. Felterne udelades HELT når BC
+          // ikke leverede dem — tom streng ville betyde "ingen leverandør".
+          ...(v.planlaegning
+            ? {
+              vendorNo: v.planlaegning.vendorNo,
+              reorderPoint: v.planlaegning.reorderPoint,
+              reorderQty: v.planlaegning.reorderQuantity,
+            }
+            : {}),
           idempotencyKey: nyNoegle(),
         }),
       })
@@ -173,6 +285,7 @@ export default function OptaellingSide() {
         itemNo: v.itemNo, navn: v.description, uom: v.baseUnitOfMeasure,
         total: data.total, antal: data.antal, mit: data.mit ?? data.total,
         bcAntal: optaelling.blind ? null : v.inventory,
+        planlaegning: v.planlaegning ?? null,
       })
       setVarer(await fetch(`/api/lager/optaelling/${optaelling.id}`).then(x => x.json()).then(x => x.varer ?? []))
     } finally { setTravl(false) }
@@ -250,7 +363,18 @@ export default function OptaellingSide() {
       body: JSON.stringify({
         itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
         estimated: anslaaet, shelfCode: hylde || undefined, saet: true,
-        bcQty: aktiv.bcAntal ?? undefined, idempotencyKey: nyNoegle(),
+        bcQty: aktiv.bcAntal ?? undefined,
+        // Et tastet antal SLETTER og skriver linjen igen. Følger planlægningen ikke
+        // med, forsvinder den ved et tastet tal — og så ville netop de varer man
+        // havde talt manuelt mangle i bestillingsforslaget.
+        ...(aktiv.planlaegning
+          ? {
+            vendorNo: aktiv.planlaegning.vendorNo,
+            reorderPoint: aktiv.planlaegning.reorderPoint,
+            reorderQty: aktiv.planlaegning.reorderQuantity,
+          }
+          : {}),
+        idempotencyKey: nyNoegle(),
       }),
     })
     const data = await res.json()
@@ -327,24 +451,22 @@ export default function OptaellingSide() {
             </optgroup>
           </select>
 
-          <button
-            type="button"
-            onClick={() => setBlind(b => !b)}
-            className="flex w-full items-center justify-between rounded-xl px-1 py-2 text-left"
-          >
-            <span>
-              <span className="block text-sm font-medium text-gray-700">Blind tælling</span>
-              <span className="block text-xs text-gray-500">Skjul BC&apos;s tal — du får kun at vide om det stemmer</span>
-            </span>
-            <span
-              className={
-                'ml-3 flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition ' +
-                (blind ? 'bg-gray-900' : 'bg-gray-300')
-              }
-            >
-              <span className={'h-5 w-5 rounded-full bg-white transition ' + (blind ? 'translate-x-5' : '')} />
-            </span>
-          </button>
+          <Skifter
+            titel="Blind tælling"
+            forklaring="Skjul BC's tal — du får kun at vide om det stemmer"
+            til={blind}
+            onSkift={() => setBlind(b => !b)}
+          />
+
+          {/* Tæl og bestil på samme tur. Begrundelsen er, at man netop HAR målt
+              hylden: beslutningen om at bestille hænger på beholdningen, og under en
+              optælling er BC's beholdning det tal man lige har modbevist. */}
+          <Skifter
+            titel="Foreslå bestilling"
+            forklaring="Varer på eller under genbestillingspunktet foreslås lagt i en bestillingskurv. Købsordren laves IKKE herfra."
+            til={bestil}
+            onSkift={() => setBestil(b => !b)}
+          />
 
           <button
             onClick={start}
@@ -366,7 +488,11 @@ export default function OptaellingSide() {
                     className="w-full rounded-2xl bg-white p-3 text-left ring-1 ring-gray-200"
                   >
                     <span className="font-semibold text-gray-900">{o.no}</span>
-                    <span className="ml-2 text-sm text-gray-500">{o.locationCode} · {o.createdByName}</span>
+                    <span className="ml-2 text-sm text-gray-500">
+                      {o.locationCode} · {o.createdByName}
+                      {o.blind && ' · blind'}
+                      {o.bestilling && ' · bestilling'}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -389,6 +515,13 @@ export default function OptaellingSide() {
   const gemKlar = beregn(antalTekst)
   const visStemmer = !!aktiv && aktiv.bcAntal !== null && Math.abs(aktiv.total - aktiv.bcAntal) >= 0.001
   const handlinger = (visStemmer ? 1 : 0) + (aktiv && !scanLager ? 2 : 0)
+
+  // Forslaget regnes her og ikke i en state: så kan skærmen ikke komme til at vise et
+  // forslag, der hører til et ældre tal. Reglen er den samme som serverens.
+  const aktivForslag = optaelling.bestilling && aktiv ? vurderForslag(aktiv.total, aktiv.planlaegning) : null
+  const iKurv = new Map((forslagSvar?.kurv ?? []).map(k => [k.itemNo, k.qty]))
+  const aktivIKurv = aktiv ? iKurv.get(aktiv.itemNo) ?? null : null
+  const mangler = (forslagSvar?.forslag ?? []).filter(f => f.iKurv === null)
 
   return (
     // Fast app-ramme: skærmen fylder PRÆCIS skærmen, og siden ruller ikke. En
@@ -414,6 +547,16 @@ export default function OptaellingSide() {
             {optaelling.bcLinesWritten} linjer i lageropgørelseskladden, {optaelling.bcDiffLines} med afvigelse.
             Kladden skal bogføres i BC.
           </p>
+          {/* Tællingen er færdig — indkøbet er det ikke. Listen virker videre, så
+              kontoret kan bestille ud fra den færdige optælling. */}
+          {optaelling.bestilling && (
+            <button
+              onClick={() => { setForslagAaben(true); hentForslag(optaelling.id) }}
+              className="mt-3 w-full rounded-xl bg-white py-2.5 text-sm font-semibold text-emerald-900 ring-1 ring-emerald-300"
+            >
+              <ShoppingCart size={15} className="mr-1.5 inline" /> Se hvad der bør bestilles
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -466,7 +609,7 @@ export default function OptaellingSide() {
               onScan={scan}
               travl={travl}
               placeholder={scanLager ? 'Scan kasse' : 'Scan vare eller kasse'}
-              pause={stemmerDialog || !!bemaerkVare || billedeAabent || sendDialog}
+              pause={stemmerDialog || !!bemaerkVare || billedeAabent || sendDialog || forslagAaben}
             />
 
             {scanLager && (
@@ -594,6 +737,43 @@ export default function OptaellingSide() {
                       </button>
                     </>
                   )}
+                </div>
+              )}
+              {/* Bestillingsforslaget. Kun når optællingen er startet med det slået
+                  til — ellers skal skærmen se ud som den altid har gjort. */}
+              {optaelling.bestilling && aktivIKurv !== null && (
+                <div className="mt-1.5 flex items-center gap-2 rounded-xl bg-emerald-50 px-2.5 py-2 ring-1 ring-emerald-200">
+                  <ShoppingCart size={15} className="shrink-0 text-emerald-700" />
+                  <p className="min-w-0 flex-1 text-xs font-semibold text-emerald-900">
+                    {tal(aktivIKurv)} {aktiv.uom} i bestillingskurven
+                  </p>
+                  <button
+                    onClick={() => udKurv(aktiv.itemNo)}
+                    disabled={!!forslagTravl}
+                    className="shrink-0 rounded-lg bg-white px-2 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-300 disabled:opacity-40"
+                  >
+                    Fortryd
+                  </button>
+                </div>
+              )}
+              {optaelling.bestilling && aktivIKurv === null && aktivForslag && (
+                <div className="mt-1.5 rounded-xl bg-amber-50 px-2.5 py-2 ring-1 ring-amber-300">
+                  <p className="text-[11px] font-medium leading-tight text-amber-900">
+                    {forslagstekst(aktivForslag, aktiv.uom)}
+                  </p>
+                  {/* Forslaget er et FORSLAG: ét tryk lægger det i kurven. Fyldte det
+                      kurven af sig selv, ville en optælling af hele lageret placere en
+                      stor ordre, ingen havde set på. */}
+                  <button
+                    onClick={() => laegIKurv(aktiv.itemNo)}
+                    disabled={!!forslagTravl}
+                    className="mt-1.5 w-full rounded-lg bg-amber-600 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                  >
+                    <ShoppingCart size={13} className="mr-1 inline" />
+                    {forslagTravl === aktiv.itemNo
+                      ? 'Lægger i kurven…'
+                      : `Bestil ${tal(aktivForslag.foreslaaet)} ${aktiv.uom}`}
+                  </button>
                 </div>
               )}
             </div>
@@ -726,6 +906,15 @@ export default function OptaellingSide() {
               Tallene lægges i lageropgørelseskladden i BC, og optællingen lukkes — du kan ikke tælle
               videre på den bagefter. Kladden skal stadig bogføres i BC.
             </p>
+            {/* Det er to dokumenter, og de sendes hver for sig. Siger vi ikke det her,
+                tror man at bestillingen er på vej — og så bliver den aldrig sendt. */}
+            {optaelling.bestilling && (forslagSvar?.kurv.length ?? 0) > 0 && (
+              <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+                Bestillingen <strong>{forslagSvar?.bestillingNo}</strong> med{' '}
+                {forslagSvar?.kurv.length} varer følger <strong>ikke</strong> med. Den skal sendes
+                for sig fra <strong>Bestilling</strong>.
+              </p>
+            )}
             <div className="mt-4 flex gap-2">
               <button
                 onClick={send}
@@ -737,6 +926,132 @@ export default function OptaellingSide() {
               <button onClick={() => setSendDialog(false)} className="rounded-xl px-4 text-gray-500">
                 Fortryd
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bestillingsstribe over bundlinjen. Den ligger her og ikke i bundlinjen, fordi
+          bundlinjen skal rumme "Send til BC" i fuld bredde — en fjerde knap dernede
+          ville presse de tre andre sammen. Striben vises kun når der er noget at vise. */}
+      {!laast && optaelling.bestilling && forslagSvar && (forslagSvar.forslag.length > 0 || forslagSvar.kurv.length > 0) && (
+        <button
+          onClick={() => { setForslagAaben(true); hentForslag(optaelling.id) }}
+          className="flex shrink-0 items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-left"
+        >
+          <ShoppingCart size={16} className="shrink-0 text-amber-700" />
+          <span className="min-w-0 flex-1 text-sm font-semibold text-amber-900">
+            {mangler.length > 0
+              ? `${mangler.length} bør bestilles`
+              : 'Alle forslag er lagt i kurven'}
+            {forslagSvar.kurv.length > 0 && (
+              <span className="font-normal text-amber-800"> · {forslagSvar.kurv.length} i kurven</span>
+            )}
+          </span>
+          <span className="shrink-0 text-xs font-semibold text-amber-800">Se listen</span>
+        </button>
+      )}
+
+      {/* Listen over hvad der bør bestilles. Åbnes som en plade nedefra, så
+          hovedskærmen aldrig ruller. */}
+      {forslagAaben && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40" onClick={() => setForslagAaben(false)}>
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-t-3xl bg-gray-100 p-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-1 flex shrink-0 items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-gray-900">Bør bestilles</h2>
+                <p className="text-xs text-gray-500">
+                  Regnet på det du har TALT — ikke på BC&apos;s beholdning, for den er ikke
+                  rettet endnu.
+                </p>
+              </div>
+              <button onClick={() => setForslagAaben(false)} className="shrink-0 rounded-full bg-white p-2 ring-1 ring-gray-300">
+                <X size={18} />
+              </button>
+            </div>
+
+            {forslagSvar && !forslagSvar.tilgaengelig && (
+              // Ikke en tom liste, men en forklaring: funktionen kan ikke virke endnu.
+              // En tom skærm havde set ud som "der er ingen varer at bestille".
+              <p className="mt-2 rounded-xl bg-white p-3 text-sm text-gray-700 ring-1 ring-gray-200">
+                BC leverer ikke varernes <strong>leverandør og genbestillingspunkt</strong> endnu.
+                Det kræver, at BC-appen er synkroniseret. Indtil da kan der ikke foreslås
+                bestillinger — tællingen virker som før.
+              </p>
+            )}
+
+            {forslagSvar?.tilgaengelig && forslagSvar.forslag.length === 0 && (
+              <p className="mt-2 rounded-xl bg-white p-3 text-sm text-gray-700 ring-1 ring-gray-200">
+                Intet at bestille indtil nu. Varer uden leverandør på varekortet foreslås
+                ikke — de er ikke indkøbsvarer.
+              </p>
+            )}
+
+            <ul className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto">
+              {(forslagSvar?.forslag ?? []).map(f => (
+                <li key={f.itemNo} className="rounded-2xl bg-white p-3 ring-1 ring-gray-200">
+                  <p className="truncate font-medium text-gray-900">{f.itemNo} · {f.description}</p>
+                  <p className="mt-0.5 text-xs text-gray-600">{forslagstekst(f.forslag, f.uom)}</p>
+                  {/* Hylderne med: en vare talt på én af to hylder har et
+                      ufuldstændigt tal, og det skal kunne ses før man bestiller på det. */}
+                  {f.shelves && <p className="text-xs text-gray-400">talt på {f.shelves}</p>}
+                  <div className="mt-2">
+                    {f.iKurv !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 rounded-lg bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-900 ring-1 ring-emerald-200">
+                          <Check size={13} className="mr-1 inline" />
+                          {tal(f.iKurv)} {f.uom} i kurven
+                        </span>
+                        <button
+                          onClick={() => udKurv(f.itemNo)}
+                          disabled={!!forslagTravl}
+                          className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 ring-1 ring-gray-300 disabled:opacity-40"
+                        >
+                          Fortryd
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => laegIKurv(f.itemNo)}
+                        disabled={!!forslagTravl}
+                        className="w-full rounded-lg bg-amber-600 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                      >
+                        <ShoppingCart size={13} className="mr-1 inline" />
+                        {forslagTravl === f.itemNo ? 'Lægger i kurven…' : `Bestil ${tal(f.forslag.foreslaaet)} ${f.uom}`}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-3 shrink-0 space-y-2">
+              {mangler.length > 1 && (
+                <button
+                  onClick={laegAlleIKurv}
+                  disabled={!!forslagTravl}
+                  className="w-full rounded-xl bg-amber-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  {forslagTravl === 'ALLE'
+                    ? 'Lægger i kurven…'
+                    : `Læg alle ${mangler.length} i kurven`}
+                </button>
+              )}
+              {forslagSvar?.bestillingId && (
+                <Link
+                  href={`/lager/bestilling/${forslagSvar.bestillingId}`}
+                  className="block w-full rounded-xl bg-gray-900 py-3 text-center text-sm font-semibold text-white"
+                >
+                  Åbn bestillingen {forslagSvar.bestillingNo}
+                </Link>
+              )}
+              {/* Det vigtigste at vide: optællingen sender ikke bestillingen. */}
+              <p className="text-center text-xs text-gray-500">
+                Kurven sendes for sig. Optællingen laver <strong>ingen</strong> købsordre.
+              </p>
             </div>
           </div>
         </div>
@@ -767,6 +1082,37 @@ export default function OptaellingSide() {
         </footer>
       )}
     </div>
+  )
+}
+
+/** Til/fra med forklaring. Knappen er HELE rækken: en vante rammer ikke en lille kontakt. */
+function Skifter({
+  titel, forklaring, til, onSkift,
+}: {
+  titel: string
+  forklaring: string
+  til: boolean
+  onSkift: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSkift}
+      className="flex w-full items-center justify-between rounded-xl px-1 py-2 text-left"
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-gray-700">{titel}</span>
+        <span className="block text-xs text-gray-500">{forklaring}</span>
+      </span>
+      <span
+        className={
+          'ml-3 flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition ' +
+          (til ? 'bg-gray-900' : 'bg-gray-300')
+        }
+      >
+        <span className={'h-5 w-5 rounded-full bg-white transition ' + (til ? 'translate-x-5' : '')} />
+      </span>
+    </button>
   )
 }
 
