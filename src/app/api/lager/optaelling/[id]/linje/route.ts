@@ -80,6 +80,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       vendorNo: typeof body?.vendorNo === 'string' ? body.vendorNo : null,
       reorderPoint: Number.isFinite(Number(body?.reorderPoint)) ? Number(body.reorderPoint) : null,
       reorderQty: Number.isFinite(Number(body?.reorderQty)) ? Number(body.reorderQty) : null,
+      // Hvad der allerede var i købsordre. Uden det ville forslaget bede om at
+      // bestille noget, der er på vej.
+      paaOrdre: Number.isFinite(Number(body?.paaOrdre)) ? Number(body.paaOrdre) : null,
+      paaOrdreSnart: Number.isFinite(Number(body?.paaOrdreSnart)) ? Number(body.paaOrdreSnart) : null,
+      naesteModtagelse: typeof body?.naesteModtagelse === 'string' ? body.naesteModtagelse : null,
+      horisontDage: Number.isFinite(Number(body?.horisontDage)) ? Number(body.horisontDage) : null,
     },
     bruger.navn,
   )

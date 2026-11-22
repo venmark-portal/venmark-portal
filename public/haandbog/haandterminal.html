@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="da">
+<meta charset="utf-8">
+<title>Håndterminalen · Venmark-håndbogen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/haandbog/haandbog.css">
+
+<nav class="topbar" aria-label="Håndbogen">
+  <div class="wrap">
+    <a class="home" href="/haandbog/index.html">Venmark-håndbogen</a>
+    <a href="/haandbog/salg.html">Salg</a>
+    <a href="/haandbog/portal.html">Portalen</a>
+    <a href="/haandbog/disponibel.html">Disponibel</a>
+    <a href="/haandbog/priser.html">Priser</a>
+    <a href="/haandbog/produktion.html">Produktion</a>
+    <a href="/haandbog/pakkeri.html">Pakkeri</a>
+    <a href="/haandbog/haandterminal.html" aria-current="page">Håndterminal</a>
+    <a href="/haandbog/koeb.html">Køb</a>
+    <a href="/haandbog/sporbarhed.html">Sporbarhed</a>
+    <a href="/haandbog/mails.html">Mails &amp; økonomi</a>
+    <a href="/haandbog/drift.html">Drift</a>
+  </div>
+</nav>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <p class="kicker">Lager · håndterminal</p>
+    <h1 class="title">Håndterminalen</h1>
+    <p class="lede">Fri scanning, lageroptælling, bestilling, print af hylde-labels og "tom hylde"-meldinger. Alt på én skærm i hånden — og hvad du gør, når den ikke svarer.</p>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Indhold">
+    <p class="toc-label">Indhold</p>
+    <ol>
+      <li><a href="#login">Kom i gang</a></li>
+      <li><a href="#scan">Fri scanning</a></li>
+      <li><a href="#koder">Hvad scanneren forstår</a></li>
+      <li><a href="#laer">Ukendt kode — lær den</a></li>
+      <li><a href="#optaelling">Lageroptælling</a></li>
+      <li><a href="#hylder">Hylder &amp; flere tællere</a></li>
+      <li><a href="#kasser">Scan lager (kasser)</a></li>
+      <li><a href="#forslag">Foreslå bestilling</a></li>
+      <li><a href="#bestilling">Bestilling</a></li>
+      <li><a href="#labels">Print hylde-label</a></li>
+      <li><a href="#kanban">Meld en hylde tom</a></li>
+      <li><a href="#driller">Når den driller</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section class="blk" id="login">
+      <p class="eyebrow">Adgang</p>
+      <h2>Kom i gang</h2>
+      <p>Håndterminalen er <strong>portalen</strong> — ikke et program, der skal installeres. Åbn <span class="mono">portal.venmark.dk/lager</span> og log ind med dit eget login.</p>
+      <p>Du skal have rollen <strong>Lager</strong> eller <strong>Admin</strong>. Har du flere roller, skifter du i øverste højre hjørne. Står der "kunde" i hjørnet, er du på den forkerte rolle — chippen lyver ikke.</p>
+      <div class="note tip">
+        <strong>Læg den på hjemmeskærmen.</strong> Så fylder den hele skærmen og opfører sig som en app. I Chrome: menuen ⋮ → <span class="btn">Føj til startskærm</span>.
+      </div>
+      <p>Forsiden har fire veje: fri scanning (øverst), <span class="btn">Lageroptælling</span>, <span class="btn">Bestilling</span> og <span class="btn">Print hylde-label</span>.</p>
+    </section>
+
+    <section class="blk" id="scan">
+      <p class="eyebrow">Opslag</p>
+      <h2>Fri scanning</h2>
+      <p>Scan en kode uden at starte noget først. Du får varenummer, navn, enhed, beholdning og — hvis koden bærer det — vægt og lotnummer. Intet bliver gemt eller ændret; det er et opslag.</p>
+      <p>Scannefeltet <strong>holder fokus af sig selv</strong>. Du skal ikke trykke i feltet først. Kan din scanner ikke sættes op til at sende Enter, sender appen selv, når tegnene kom i maskinfart og holdt op.</p>
+      <div class="note">
+        <strong>Kataloget ligger på terminalen.</strong> Varenumre og navne er hentet ned, så søgning virker uden net. Scanninger, der ikke kunne nå BC, lægges i en udbakke og sendes, når der er forbindelse igen.
+      </div>
+    </section>
+
+    <section class="blk" id="koder">
+      <p class="eyebrow">Stregkoder</p>
+      <h2>Hvad scanneren forstår</h2>
+      <p>Du behøver ikke vide hvilken slags kode du har i hånden — BC fortolker den. Den kender:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Slags</th><th>Hvad den betyder</th></tr></thead>
+          <tbody>
+            <tr><td>Kassekode</td><td>Én bestemt fysisk kasse fra produktionen, med sin egen vægt</td></tr>
+            <tr><td>Vægtkode</td><td>Bærer en faktisk vægt, fx 7,4 kg</td></tr>
+            <tr><td>Lotnummer</td><td>Et parti</td></tr>
+            <tr><td>Varereference / EAN</td><td>Leverandørens eller vores egen kode på varen</td></tr>
+            <tr><td>Modtagelsesnummer</td><td>En hel varemodtagelse</td></tr>
+            <tr><td>Varenummer</td><td>Tastet eller scannet direkte</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <strong>Minus bliver plus.</strong> Scannere med amerikansk tastaturopsætning sender <span class="mono">-</span> som <span class="mono">+</span>. Det retter vi automatisk, så du skal ikke jagte en fejl, der ikke findes. Men undgå <span class="mono">/ : * ;</span> i nye koder — dem findes der ingen rettelse for.
+      </div>
+    </section>
+
+    <section class="blk" id="laer">
+      <p class="eyebrow">Nye koder</p>
+      <h2>Ukendt kode — lær den</h2>
+      <div class="msg">
+        <q>Ukendt kode … — lær den på forsiden, eller find varen i søgningen</q>
+        <span class="why">BC kender ikke koden. Det er ikke en fejl: mange varer har en leverandørkode, vi aldrig har fået ind.</span>
+        <span class="do">Tryk <span class="btn">Lær koden</span>, find varen, og gem. Koden bliver en <strong>ægte varereference</strong> i BC og virker derefter overalt — også i pakkeriet og på salg.</span>
+      </div>
+      <p>Er koden allerede i brug på en anden vare, siger appen det og ændrer ingenting. Så er det den anden vare, der skal rettes — ikke koden, der skal overskrives.</p>
+    </section>
+
+    <section class="blk" id="optaelling">
+      <p class="eyebrow">Optælling</p>
+      <h2>Lageroptælling</h2>
+      <ol class="steps">
+        <li>Tryk <span class="btn">Lageroptælling</span> og vælg lokation. Vores eget lager står øverst.</li>
+        <li>Vælg eventuelt <strong>Blind tælling</strong> og <strong>Foreslå bestilling</strong> (se nedenfor) — begge er valg pr. optælling.</li>
+        <li>Tryk <span class="btn">Start ny optælling</span>. Du får et nummer, fx <span class="mono">OPT-261122-01</span>.</li>
+        <li>Vælg den hylde du står ved, og scan eller tast.</li>
+        <li>Når alt er talt: <span class="btn">Send til BC</span>.</li>
+      </ol>
+      <p><strong>Scan lægger til. Et tastet tal sætter.</strong> Scanner du en vare og taster 43, står der 43 — ikke 44. 0 fjerner varen.</p>
+      <p>Som standard <strong>ser du BC's tal</strong> mens du tæller, og afvigelsen med det samme. Det meste stemmer, og så er det hurtigere at se forskellen nu end at lede efter den bagefter.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Knap</th><th>Hvad den gør</th></tr></thead>
+          <tbody>
+            <tr><td><span class="btn">Færdig</span></td><td>Tjekker varen mod BC og siger om det stemmer</td></tr>
+            <tr><td><span class="btn">Fortryd</span></td><td>Fjerner din seneste registrering på varen</td></tr>
+            <tr><td><span class="btn">Note</span></td><td>Besked til kontoret. Kan indtales</td></tr>
+            <tr><td><span class="btn">Gem antal</span></td><td>Gemmer det tastede tal</td></tr>
+            <tr><td><span class="btn">Gem som anslået</span></td><td>Samme, men mærket som skøn — du har ikke vejet</td></tr>
+            <tr><td><span class="btn">Stemmer på …</span></td><td>BC har ret: dit talte slettes, og BC's tal bruges</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <strong>Afsendelsen kan ikke fortrydes.</strong> Optællingen lukkes, og tallene lægges i lageropgørelseskladden i BC. Kladden skal stadig <strong>bogføres</strong> af en på kontoret — først dér ændres lageret. Kontoret får en mail med afvigelser, anslåede tal og noter.
+      </div>
+    </section>
+
+    <section class="blk" id="hylder">
+      <p class="eyebrow">Flere tællere</p>
+      <h2>Hylder &amp; flere tællere</h2>
+      <p>Flere kan tælle på <strong>den samme optælling</strong> — én mand pr. hylde, og appen lægger sammen. Derfor er igangværende optællinger en liste, alle kan åbne, og ikke "min".</p>
+      <p>Står du ved en reol, der ikke er oprettet, så tryk <span class="btn">Ny hylde</span>. Du behøver ikke gå ind på kontoret først.</p>
+      <div class="note">
+        <strong>Dit tastede tal rører kun dit eget.</strong> Sætter du 43 på en vare, slettes kun det, <em>du</em> har talt <em>på den hylde</em>. Har en kollega talt den samme vare et andet sted, står hans tal der stadig — og appen skriver, hvad varens total så er.
+      </div>
+    </section>
+
+    <section class="blk" id="kasser">
+      <p class="eyebrow">Egne varer</p>
+      <h2>Scan lager (kasser)</h2>
+      <p>Egenproducerede varer har variabel vægt: hver kasse bærer sin egen. Skift til <span class="btn">Scan lager</span> og scan kasserne — der er ikke noget at taste, vægten følger med.</p>
+      <div class="note warn">
+        <strong>Enten samlekasser eller enkeltkasser pr. produktion — aldrig begge.</strong> En samlekasse dækker flere enkeltkasser. Scanner du begge, tæller du den samme vægt to gange. Appen stopper dig, men reglen er værd at kunne: det er den fejl, der har givet dobbelt udbytte i produktionen.
+      </div>
+      <p>Den samme kassekode kan kun scannes én gang pr. optælling. Scanner du den igen, er det en fejl og ikke en kasse mere.</p>
+    </section>
+
+    <section class="blk" id="forslag">
+      <p class="eyebrow">Optælling · bestilling</p>
+      <h2>Foreslå bestilling</h2>
+      <p>Slår du <strong>Foreslå bestilling</strong> til, når du starter optællingen, foreslår appen undervejs at bestille de varer, der er ved at løbe tør. Grunden er enkel: du har netop <em>målt</em> hylden, og det er dét tal, beslutningen skal hænge på.</p>
+      <p>Står du med varen, kommer der en gul stribe:</p>
+      <div class="msg">
+        <q>Talt 2 KG — genbestillingspunkt 100 (mangler 98)</q>
+        <span class="why">Det du har talt, ligger på eller under varens genbestillingspunkt, og der er ikke nok på vej.</span>
+        <span class="do">Tryk <span class="btn">Bestil 24</span>. Varen lægges i en bestillingskurv med varens ordrekvantum. Trykker du to gange, bliver det ikke dobbelt op.</span>
+      </div>
+      <p>Nederst står <span class="btn">14 bør bestilles · 3 i kurven</span>. Trykker du der, får du hele listen, og kan lægge alle i kurven på én gang. Tomme hylder står øverst.</p>
+
+      <h3 id="forslag-regler">Hvornår foreslås der?</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Varen</th><th>Foreslås når</th></tr></thead>
+          <tbody>
+            <tr><td>Har et genbestillingspunkt</td><td>talt + det på vej ligger <strong>på eller under</strong> punktet</td></tr>
+            <tr><td>Har intet genbestillingspunkt</td><td>der er talt <strong>0</strong>, og der er intet på vej</td></tr>
+            <tr><td>Har ingen leverandør på varekortet</td><td>foreslås <strong>ikke</strong> — den er ikke en indkøbsvare</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="forslag-paavej">Det, der allerede er bestilt, tæller med</h3>
+      <p>Appen ser på åbne købsordrer, så du ikke bestiller noget, der er på vej. Men kun det, der kommer <strong>i tide</strong>:</p>
+      <div class="msg">
+        <q>200 KG i købsordre, men først 15-12 — det dækker ikke de næste 14 dage</q>
+        <span class="why">Der <em>er</em> bestilt, men leveringen kommer senere, end du kunne skaffe varen på en ny ordre. Så dækker den ikke den hylde, der er tom nu.</span>
+        <span class="do">Vurdér selv. Haster det, så bestil; kan det vente til den 15., så lad den stå.</span>
+      </div>
+      <p>Hvor langt frem der kigges, afhænger af varen:</p>
+      <ul>
+        <li>Har varen en <strong>leveringstid</strong> eller en <strong>bestillingsfrist</strong>: frem til den dato, varen tidligst kan skaffes igen. Det er samme dato, som portalen bruger.</li>
+        <li>Ellers: <strong>14 dage</strong> frem. Tallet kan ændres i <em>Venmark opsætning</em> i BC.</li>
+      </ul>
+
+      <div class="note warn">
+        <strong>Optællingen bestiller ingenting.</strong> Den fylder en kurv. Kurven skal sendes for sig fra <span class="btn">Bestilling</span> — og selv dér bliver det en <em>åben</em> købsordre, som kontoret godkender. Sender du optællingen, følger kurven <strong>ikke</strong> med, og appen siger det.
+      </div>
+      <p>Listen virker videre, efter optællingen er sendt: tællingen er færdig, men indkøbet er det ikke. Kontoret får også "bør bestilles"-listen i mailen, med om hver vare blev lagt i kurven eller ikke.</p>
+      <details class="tech">
+        <summary>Teknik</summary>
+        <p>Reglen ligger i <span class="mono">src/lib/lager/forslagsregel.ts</span> og bruges både af skærmen og serveren. Det på vej kommer fra <span class="mono">Item."Qty. on Purch. Order"</span> med datofilter — samme kilde som disponibel-motoren (cu 50319), så de to ikke kan blive uenige. Horisonten er <span class="mono">CalcGenbestilDate</span>, ellers <span class="mono">Venmark Setup."Forslag Horisont Dage"</span>.</p>
+      </details>
+    </section>
+
+    <section class="blk" id="bestilling">
+      <p class="eyebrow">Indkøb</p>
+      <h2>Bestilling</h2>
+      <p>Gå rækken igennem og scan det, der mangler. Kurven ligger i portalen, indtil du sender den — ligesom en optælling.</p>
+      <ol class="steps">
+        <li>Tryk <span class="btn">Bestilling</span> → <span class="btn">Ny bestilling</span>, eller åbn en, der er i gang.</li>
+        <li>Scan frit hen over hylderne. Du behøver ikke holde leverandørerne adskilt.</li>
+        <li>Ret antal med − og +. Antallet er varens <strong>ordrekvantum</strong>.</li>
+        <li>Tryk <span class="btn">Send til BC — 3 købsordrer</span>.</li>
+      </ol>
+      <p>På varen ser du hylde, leverandør, leverandørens varenummer, leveringstid, beholdning, genbestillingspunkt og <strong>de tre sidste køb med dato</strong> — så du kan se, hvad I plejer at tage ind.</p>
+      <p><strong>Du ser ingen priser.</strong> Det er med vilje. BC henter prisen, når købsordren oprettes.</p>
+      <p>BC laver <strong>én åben købsordre pr. leverandør</strong>. Appen viser opdelingen, før du sender, så du kan se, hvor mange ordrer det bliver.</p>
+      <div class="msg">
+        <q>Uden leverandør — kan ikke bestilles</q>
+        <span class="why">Varen har ingen leverandør på varekortet, og BC kan ikke lave en købsordre uden.</span>
+        <span class="do">Tryk på varen og vælg leverandør i appen. Du behøver ikke ringe til kontoret.</span>
+      </div>
+      <div class="note warn">
+        <strong>Sendt er sendt.</strong> En kurv, der har ramt BC, kan ikke fyldes på — ellers kunne du lægge varer på en ordre, nogen måske har sendt til leverandøren. Start en ny kurv i stedet. Kvitteringen viser købsordrenumrene.
+      </div>
+      <p><strong>Appen sender ikke til leverandøren.</strong> Den laver åbne købsordrer, som kontoret godkender og sender.</p>
+    </section>
+
+    <section class="blk" id="labels">
+      <p class="eyebrow">Labels</p>
+      <h2>Print hylde-label</h2>
+      <p>Hylde-labelen er til de varer, der <strong>slet ikke har en stregkode</strong>: emballage, tørvarer, arbejdstøj, rengøring, reservedele. Den gør det id, varen allerede har, scanbart — den opfinder ikke et nyt.</p>
+      <ol class="steps">
+        <li>Tryk <span class="btn">Print hylde-label</span>.</li>
+        <li>Første gang: vælg din <strong>printer</strong>. Den huskes.</li>
+        <li>Scan eller tast varerne. Samme vare igen = én label mere.</li>
+        <li>Ret antal, og tryk <span class="btn">Print</span>.</li>
+      </ol>
+      <p>Flytter du sted, trykker du på printernavnet øverst og vælger en anden. Listen er BC's egne printere — er en printer væk derfra, er den væk her.</p>
+      <div class="note">
+        <strong>Labelen printes af BC</strong>, ikke af terminalen. Derfor er en label printet ved hylden den samme som en printet på kontoret.
+      </div>
+      <div class="msg">
+        <q>Ukendt kode … Hylde-labelen er netop til varer UDEN stregkode — tast varenummeret i stedet</q>
+        <span class="why">Der er ingen kode at genkende, og det er jo pointen med labelen.</span>
+        <span class="do">Tast varenummeret.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="kanban">
+      <p class="eyebrow">Tom hylde</p>
+      <h2>Meld en hylde tom</h2>
+      <p>På hylde-labelen er der en <strong>QR-kode</strong>. Scan den — med terminalen eller med et almindeligt telefonkamera — og du kommer til varens side. Den, der tømmer hylden, er sjældent den, der går med terminalen, og derfor virker koden med alt.</p>
+      <ol class="steps">
+        <li>Scan QR-koden på hylden.</li>
+        <li>Tryk <span class="btn">Meld tom</span>. <em>Et scan alene melder ingenting</em> — der skal trykkes.</li>
+        <li>Meldingen står på kontorskærmen og i bestillingsappen, indtil den er bestilt.</li>
+      </ol>
+      <p>I <span class="btn">Bestilling</span> står meldingerne øverst som <strong>Meldt tomt</strong>, med hylde og dato. Ét tryk lægger varen i kurven og lukker meldingen — så to mand ikke bestiller den samme vare. Scanner du hylde-labelen i stedet, lukkes den også.</p>
+      <div class="note">
+        Er den samme vare meldt igen, tælles der op på den melding, der er — der laves ikke en ny linje. Ellers fyldte én tom hylde hele skærmen.
+      </div>
+      <p>Kontorskærmen viser kun varenumre <strong>under 90000</strong>. Resten — emballage, rengøring, reservedele — er indkøberens, og de står i bestillingsappen. Meldingen gemmes altid.</p>
+    </section>
+
+    <section class="blk" id="driller">
+      <p class="eyebrow">Fejlfinding</p>
+      <h2>Når den driller</h2>
+      <div class="msg">
+        <q>BC svarer ikke — prøv igen</q>
+        <span class="why">Forbindelsen til BC er væk, eller BC er nede. Det er <strong>ikke</strong> det samme som en ukendt kode.</span>
+        <span class="do">Prøv igen. Bliver det ved, så tæl videre — det du har talt, er gemt — og sig det til kontoret.</span>
+      </div>
+      <div class="msg">
+        <q>Kassen er allerede talt på denne optælling</q>
+        <span class="why">Kassekoden sidder på én bestemt fysisk kasse.</span>
+        <span class="do">Gå videre til næste kasse. Er du i tvivl, så åbn listen <span class="btn">N varer</span> og se, hvad der står.</span>
+      </div>
+      <div class="msg">
+        <q>Vælg først en printer</q>
+        <span class="why">Terminalen ved ikke, hvor labelen skal komme ud.</span>
+        <span class="do">Tryk på printernavnet øverst og vælg. Står listen tom, er det PrintNode-opsætningen i BC, der mangler printere — ikke appen.</span>
+      </div>
+      <p><strong>Scannefeltet mister fokus</strong> hvis du har trykket et andet sted på skærmen. Tryk i scannefeltet igen. Åbner du en dialog, holder appen selv fingrene væk, indtil du lukker den.</p>
+      <p><strong>Taltastaturet mangler, eller siden ser forkert ud?</strong> Sig det — det er en opsætningsfejl i portalen, ikke noget du kan rette i terminalen.</p>
+      <div class="note tip">
+        <strong>Står du som "kunde" i hjørnet?</strong> Skift rolle i øverste højre hjørne. Mangler rollen Lager helt, skal kontoret sætte den på dit login — og pakkere skal <em>både</em> have brugerrolle Lager og en sælgerkode i BC.
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Venmark-håndbogen · Håndterminalen</span>
+    <span class="mono">Opdateret november 2026</span>
+  </div>
+</footer>
+</html>

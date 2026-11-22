@@ -78,6 +78,13 @@ export async function ensureOptaellingSchema() {
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "vendorNo" TEXT`
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "reorderPoint" DECIMAL(18,5)`
   await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "reorderQty" DECIMAL(18,5)`
+  // Hvad der allerede var i købsordre, da varen blev talt. Uden det ville forslaget
+  // bede om at bestille noget, der er på vej. `paaOrdreSnart` er kun det, der kommer
+  // inden horisonten — det eneste, der reelt dækker.
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "paaOrdre" DECIMAL(18,5)`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "paaOrdreSnart" DECIMAL(18,5)`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "naesteModtagelse" TEXT`
+  await prisma.$executeRaw`ALTER TABLE "LagerCountLine" ADD COLUMN IF NOT EXISTS "horisontDage" INTEGER`
   ensured = true
 }
 
@@ -175,6 +182,11 @@ export interface NyLinje {
   vendorNo?: string | null
   reorderPoint?: number | null
   reorderQty?: number | null
+  /** Hvad der allerede er i købsordre. `paaOrdreSnart` = det der kommer i tide. */
+  paaOrdre?: number | null
+  paaOrdreSnart?: number | null
+  naesteModtagelse?: string | null
+  horisontDage?: number | null
 }
 
 /**
@@ -190,14 +202,16 @@ export async function tilfoejLinje(
   const id = `cl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
   await prisma.$executeRaw`
     INSERT INTO "LagerCountLine"
-      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark","boxType","productionNo","vendorNo","reorderPoint","reorderQty")
+      ("id","countId","itemNo","description","qty","uom","estimated","confirmed","shelfCode","lotNo","barcode","countedBy","bcQty","remark","boxType","productionNo","vendorNo","reorderPoint","reorderQty","paaOrdre","paaOrdreSnart","naesteModtagelse","horisontDage")
     VALUES
       (${id}, ${countId}, ${linje.itemNo.toUpperCase()}, ${linje.description ?? ''}, ${linje.qty},
        ${linje.uom ?? ''}, ${!!linje.estimated}, ${!!linje.confirmed},
        ${linje.shelfCode ?? null}, ${linje.lotNo ?? null}, ${linje.barcode ?? null}, ${brugerNavn},
        ${linje.bcQty ?? null}, ${linje.remark?.slice(0, 150) ?? null},
        ${linje.boxType ?? null}, ${linje.productionNo ?? null},
-       ${linje.vendorNo ?? null}, ${linje.reorderPoint ?? null}, ${linje.reorderQty ?? null})
+       ${linje.vendorNo ?? null}, ${linje.reorderPoint ?? null}, ${linje.reorderQty ?? null},
+       ${linje.paaOrdre ?? null}, ${linje.paaOrdreSnart ?? null},
+       ${linje.naesteModtagelse ?? null}, ${linje.horisontDage ?? null})
   `
   const i_alt = await vareTotal(countId, linje.itemNo)
   // Hvad DENNE optæller har talt netop her. Et tastet tal erstatter kun det, så
@@ -382,7 +396,10 @@ export async function bekraeftVare(
   brugerNavn: string,
   erstat = false,
 ): Promise<{ ok: boolean; fejl?: string; antal?: number }> {
-  const bc = await resolveBarcode(itemNo, locationCode, 'optaelling')
+  // En bekræftet vare skal kunne foreslås bestilt som alle andre, så købsordrerne
+  // skal med — men kun når optællingen faktisk foreslår bestillinger.
+  const optaelling = await hentOptaelling(countId)
+  const bc = await resolveBarcode(itemNo, locationCode, 'optaelling', !!optaelling?.bestilling)
   if (!bc || !bc.found) return { ok: false, fejl: 'Varen kunne ikke slås op i BC' }
   const { antal } = await vareTotal(countId, itemNo)
   // "Stemmer på antal" midt i en optælling: man har talt noget, kigget på BC's tal
@@ -408,6 +425,10 @@ export async function bekraeftVare(
       vendorNo: bc.planlaegning?.vendorNo ?? null,
       reorderPoint: bc.planlaegning?.reorderPoint ?? null,
       reorderQty: bc.planlaegning?.reorderQuantity ?? null,
+      paaOrdre: bc.planlaegning?.paaOrdre ?? null,
+      paaOrdreSnart: bc.planlaegning?.paaOrdreSnart ?? null,
+      naesteModtagelse: bc.planlaegning?.naesteModtagelse ?? null,
+      horisontDage: bc.planlaegning?.horisontDage ?? null,
     },
     brugerNavn,
   )
@@ -458,7 +479,13 @@ export async function summerPrVare(countId: string, skjulBC = false): Promise<Op
            -- bliver resultatet NULL — og det betyder stadig "BC sagde ingenting".
            MAX("vendorNo")                                     AS vendorno,
            MAX("reorderPoint")                                 AS reorderpoint,
-           MAX("reorderQty")                                   AS reorderqty
+           MAX("reorderQty")                                   AS reorderqty,
+           -- Købsordren hører til VAREN og ikke til hyldens linje, så MAX er rigtigt:
+           -- alle linjer på samme vare har det samme tal, og de ældste har NULL.
+           MAX("paaOrdre")                                      AS paaordre,
+           MAX("paaOrdreSnart")                                 AS paaordresnart,
+           MAX("naesteModtagelse")                              AS naestemodtagelse,
+           MAX("horisontDage")                                  AS horisontdage
     FROM "LagerCountLine"
     WHERE "countId" = ${countId}
     GROUP BY "itemNo"
@@ -478,6 +505,10 @@ export async function summerPrVare(countId: string, skjulBC = false): Promise<Op
             vendorNo: String(r.vendorno),
             reorderPoint: Number(r.reorderpoint ?? 0),
             reorderQuantity: Number(r.reorderqty ?? 0),
+            paaOrdre: Number(r.paaordre ?? 0),
+            paaOrdreSnart: Number(r.paaordresnart ?? 0),
+            naesteModtagelse: r.naestemodtagelse ?? '',
+            horisontDage: Number(r.horisontdage ?? 0),
           }
     return {
       planlaegning,
@@ -578,6 +609,11 @@ async function sendOptaellingMail(
     `  ${l.itemNo.padEnd(10)} ${l.description.slice(0, 32).padEnd(34)} ` +
     `talt ${nr(l.total).padStart(9)} ${l.uom.padEnd(4)}` +
     (l.forslag!.punkt > 0 ? `  punkt ${nr(l.forslag!.punkt).padStart(8)}` : '  intet punkt    ') +
+    // På vej med: ellers ser et forslag ud som om ingen havde set på købsordrerne.
+    (l.forslag!.paaOrdre > 0.001
+      ? `  på vej ${nr(l.forslag!.paaOrdre).padStart(8)}` +
+        (l.forslag!.paaOrdreSnart <= 0.001 ? ' (for sent)' : '')
+      : '  intet på vej     ') +
     `  foreslået ${nr(l.forslag!.foreslaaet).padStart(8)}` +
     (iKurv.has(l.itemNo) ? '   [LAGT I KURVEN]' : '   [ikke bestilt]')
 
@@ -605,7 +641,8 @@ async function sendOptaellingMail(
     ...anslaaede.map(linje),
     '',
     boerBestilles.length > 0
-      ? `BØR BESTILLES (${boerBestilles.length}) — talt på eller under genbestillingspunktet:`
+      ? `BØR BESTILLES (${boerBestilles.length}) — talt på eller under genbestillingspunktet,` +
+        ' efter det der allerede er i købsordre og kommer i tide:'
       : '',
     ...boerBestilles.map(bestilLinje),
     boerBestilles.length > 0 && iKurv.size > 0

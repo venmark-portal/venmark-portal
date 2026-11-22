@@ -5,6 +5,13 @@
 // API-siderne er scanLookups (side 50600) og barcodeLearns (side 50601).
 
 import { bcBaseUrl, bcPortalBaseUrl, getAccessToken } from '@/lib/businesscentral'
+import type { Planlaegning } from '@/lib/lager/forslagsregel'
+
+/** BC sender 0001-01-01 for en tom dato. Den skal ikke blive en dato på en skærm. */
+function dato(v: unknown): string {
+  const s = String(v ?? '')
+  return !s || s.startsWith('0001') ? '' : s.slice(0, 10)
+}
 
 export interface ScanResult {
   found: boolean
@@ -41,7 +48,7 @@ export interface ScanResult {
    * null = BC-appen leverer dem ikke endnu. Se mapningen nedenfor for hvorfor det
    * ikke er det samme som "varen har ingen leverandør".
    */
-  planlaegning: { vendorNo: string; reorderPoint: number; reorderQuantity: number } | null
+  planlaegning: Planlaegning | null
   errorText: string
 }
 
@@ -87,10 +94,13 @@ export async function resolveBarcode(
   barcode: string,
   locationCode = '',
   context = '',
+  /** Bed BC om at tælle indgående købsordrer med. Koster et par opslag, så det
+   *  spørges kun om, hvor svaret bruges — ikke ved hvert scan i pakkeriet. */
+  withOnOrder = false,
 ): Promise<ScanResult | null> {
   const row = await postPortal(
     'scanLookups',
-    { barcode, locationCode, context },
+    { barcode, locationCode, context, withOnOrder },
     'scan',
   )
   if (!row) return null
@@ -132,6 +142,13 @@ export async function resolveBarcode(
             vendorNo: row.vendorNo ?? '',
             reorderPoint: Number(row.reorderPoint ?? 0),
             reorderQuantity: Number(row.reorderQuantity ?? 0),
+            // Købsordrerne er kun med i svaret når withPurchInfo var sat — pakkeriet
+            // skal ikke betale for beregningen ved hvert scan. Mangler de, er
+            // dækningen 0, og så foreslås der som før.
+            paaOrdre: Number(row.qtyOnPurchOrder ?? 0),
+            paaOrdreSnart: Number(row.qtyOnPurchSoon ?? 0),
+            naesteModtagelse: dato(row.nextReceiptDate),
+            horisontDage: Number(row.purchHorizonDays ?? 0),
           },
     errorText: row.errorText ?? '',
   }

@@ -900,6 +900,14 @@ model LagerCountLine {
   vendorNo     String?
   reorderPoint Decimal? @db.Decimal(18, 5)
   reorderQty   Decimal? @db.Decimal(18, 5)
+  // Hvad der allerede var i koebsordre, da varen blev talt. Uden det ville forslaget
+  // bede om at bestille noget, der er paa vej - og det er den fejl, der giver dobbelt
+  // lager. paaOrdreSnart er KUN det, der kommer inden horisonten: en levering, der
+  // lander efter at varen kunne skaffes igen alligevel, daekker ikke hylden i dag.
+  paaOrdre         Decimal? @db.Decimal(18, 5)
+  paaOrdreSnart    Decimal? @db.Decimal(18, 5)
+  naesteModtagelse String?
+  horisontDage     Int?
   createdAt   DateTime @default(now())
 
   @@index([countId, itemNo])

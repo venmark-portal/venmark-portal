@@ -18,6 +18,18 @@ export interface Planlaegning {
   reorderPoint: number
   /** Ordrekvantum (varekortets felt 36). 0 = ikke sat. */
   reorderQuantity: number
+  /** Hvad der ligger i åbne købsordrer i alt — uanset hvornår det kommer. */
+  paaOrdre: number
+  /**
+   * Hvad der kommer INDEN horisonten. Det er det eneste, der reelt dækker: en
+   * levering, der lander efter at varen kunne skaffes igen alligevel, hjælper ikke
+   * den hylde, der er tom nu.
+   */
+  paaOrdreSnart: number
+  /** Førstkommende forventede modtagelse (ISO-dato), eller '' når der ingen er. */
+  naesteModtagelse: string
+  /** Hvor langt frem der blev kigget. Vises, så ingen skal gætte på tallet. */
+  horisontDage: number
 }
 
 export interface Forslag {
@@ -26,10 +38,16 @@ export interface Forslag {
   talt: number
   /** Genbestillingspunktet, eller 0 når varen ikke har et. */
   punkt: number
-  /** Hvad der mangler op til punktet. 0 når varen ikke har et punkt. */
+  /** Hvad der mangler op til punktet, EFTER det der allerede er på vej. */
   mangler: number
   /** Det antal der foreslås bestilt. Altid i basisenheden. */
   foreslaaet: number
+  /** Det på vej inden horisonten, som allerede er regnet fra. */
+  paaOrdreSnart: number
+  /** Det på vej i alt. Større end `paaOrdreSnart` = noget kommer for sent. */
+  paaOrdre: number
+  naesteModtagelse: string
+  horisontDage: number
 }
 
 /**
@@ -53,17 +71,25 @@ export function vurderForslag(talt: number, p: Planlaegning | null): Forslag | n
   if (!p.vendorNo) return null
 
   const punkt = p.reorderPoint > 0 ? p.reorderPoint : 0
-  const mangler = punkt > 0 ? Math.max(0, punkt - talt) : 0
+
+  // DÆKNINGEN er det talte PLUS det der allerede er bestilt og kommer i tide. Uden den
+  // ville forslaget bede om at bestille noget, der er på vej — og det er den fejl, der
+  // giver dobbelt lager. Kun det inden horisonten tæller: en levering, der lander efter
+  // at varen kunne skaffes igen alligevel, dækker ikke den hylde, der er tom nu.
+  const paaOrdreSnart = p.paaOrdreSnart > 0 ? p.paaOrdreSnart : 0
+  const daekning = talt + paaOrdreSnart
+  const mangler = punkt > 0 ? Math.max(0, punkt - daekning) : 0
 
   let grund: Forslagsgrund
   if (punkt > 0) {
     // Afrunding: en vægtvare kan stå 0,0000001 under punktet uden at nogen mangler noget.
-    if (talt > punkt + 0.001) return null
+    if (daekning > punkt + 0.001) return null
     grund = 'under-punkt'
   } else {
     // Varen har intet genbestillingspunkt — de færreste har. Så er den tomme hylde det
     // eneste utvetydige signal vi har, og det er godt nok: har man talt 0, er der 0.
-    if (talt > 0.001) return null
+    // Men er der noget på vej i tide, er hylden ikke et problem, nogen skal handle på.
+    if (daekning > 0.001) return null
     grund = 'tom-hylde'
   }
 
@@ -72,16 +98,57 @@ export function vurderForslag(talt: number, p: Planlaegning | null): Forslag | n
   // lagermanden det selv.
   const foreslaaet = p.reorderQuantity > 0 ? p.reorderQuantity : mangler > 0 ? mangler : 1
 
-  return { grund, talt, punkt, mangler, foreslaaet }
+  return {
+    grund, talt, punkt, mangler, foreslaaet,
+    paaOrdreSnart,
+    paaOrdre: p.paaOrdre > 0 ? p.paaOrdre : 0,
+    naesteModtagelse: p.naesteModtagelse ?? '',
+    horisontDage: p.horisontDage ?? 0,
+  }
 }
 
 /** Én linje til skærmen. Kort, for den skal kunne læses mellem to scanninger. */
 export function forslagstekst(f: Forslag, enhed = ''): string {
   const tal = (n: number) => n.toLocaleString('da-DK', { maximumFractionDigits: 3 })
   const e = enhed ? ` ${enhed}` : ''
-  if (f.grund === 'tom-hylde') return `Hylden er tom — intet genbestillingspunkt på varen`
+  if (f.grund === 'tom-hylde') return 'Hylden er tom — intet genbestillingspunkt på varen'
   return (
     `Talt ${tal(f.talt)}${e} — genbestillingspunkt ${tal(f.punkt)}` +
+    (f.paaOrdreSnart > 0.001 ? ` + ${tal(f.paaOrdreSnart)} på vej` : '') +
     (f.mangler > 0.001 ? ` (mangler ${tal(f.mangler)})` : '')
   )
+}
+
+/**
+ * Linjen om købsordrer, eller tom når der ikke er nogen.
+ *
+ * Den står for sig, fordi den skal vises OGSÅ når varen foreslås bestilt: "der kommer
+ * 200 kg, men først den 15." er et svar, lagermanden kan handle på — og det er en helt
+ * anden besked end "der er intet på vej".
+ */
+export function paaVejTekst(f: Forslag, enhed = ''): string {
+  if (f.paaOrdre <= 0.001) return ''
+  const tal = (n: number) => n.toLocaleString('da-DK', { maximumFractionDigits: 3 })
+  const dato = (s: string) => {
+    if (!s) return ''
+    const [aar, md, dag] = s.slice(0, 10).split('-')
+    return `${dag}-${md}-${aar.slice(2)}`
+  }
+  const e = enhed ? ` ${enhed}` : ''
+  const d = dato(f.naesteModtagelse)
+
+  // For sent: der ER noget bestilt, men intet af det når frem inden for horisonten.
+  if (f.paaOrdreSnart <= 0.001) {
+    return (
+      `${tal(f.paaOrdre)}${e} i købsordre` +
+      (d ? `, men først ${d}` : ' uden forventet dato') +
+      ` — det dækker ikke de næste ${f.horisontDage} dage`
+    )
+  }
+  // Delvist: noget kommer i tide, resten senere.
+  if (f.paaOrdre - f.paaOrdreSnart > 0.001) {
+    return `${tal(f.paaOrdreSnart)}${e} kommer inden ${f.horisontDage} dage` +
+      ` (${tal(f.paaOrdre)} i alt i købsordre)` + (d ? `, første ${d}` : '')
+  }
+  return `${tal(f.paaOrdre)}${e} i købsordre` + (d ? `, kommer ${d}` : '')
 }

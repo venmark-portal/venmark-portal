@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
   const context = String(body?.context ?? 'lager').slice(0, 30)
 
   const t0 = Date.now()
-  const result = await resolveBarcode(barcode, locationCode, context)
+  // withOnOrder beder BC tælle indgående købsordrer med. Kun optællingens
+  // bestillingsforslag har brug for det — pakkeriet skal ikke betale for beregningen
+  // ved hvert scan, og derfor er det et valg og ikke altid med.
+  const result = await resolveBarcode(barcode, locationCode, context, !!body?.withOnOrder)
   // Opslagstiden er det tal der afgør om scanning føles rigtigt i hånden. Den skal
   // kunne læses i loggen bagefter, ikke gættes på.
   console.log(`[lager scan] ${barcode} → ${result?.itemNo || (result ? 'ukendt' : 'FEJL')} (${Date.now() - t0} ms)`)

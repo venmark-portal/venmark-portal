@@ -10,7 +10,9 @@ import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur, { beregn } from '@/components/lager/Taltastatur'
 import Bemaerkning from '@/components/lager/Bemaerkning'
 import { nyNoegle } from '@/lib/lager/device'
-import { forslagstekst, vurderForslag, type Forslag, type Planlaegning } from '@/lib/lager/forslagsregel'
+import {
+  forslagstekst, paaVejTekst, vurderForslag, type Forslag, type Planlaegning,
+} from '@/lib/lager/forslagsregel'
 
 interface Hylde { id: string; locationCode: string; code: string; name: string; sortOrder: number }
 interface Vare {
@@ -42,6 +44,27 @@ interface ForslagsSvar {
 /** Tal som lageret læser dem: 1.250,5 — og uden decimalhalehæng på hele tal. */
 function tal(n: number): string {
   return n.toLocaleString('da-DK', { maximumFractionDigits: 3 })
+}
+
+/**
+ * Planlægningsfelterne, som de sendes til serveren. Mapningen står ÉT sted, fordi den
+ * bruges både ved et scan og ved et tastet antal — og et tastet antal sletter linjen
+ * og skriver den igen, så glemmes felterne dér, mangler netop de manuelt talte varer
+ * i bestillingsforslaget.
+ *
+ * Udelades HELT når BC ikke leverede dem: en tom streng ville betyde "ingen leverandør".
+ */
+function planlaegningsFelter(p: Planlaegning | null) {
+  if (!p) return {}
+  return {
+    vendorNo: p.vendorNo,
+    reorderPoint: p.reorderPoint,
+    reorderQty: p.reorderQuantity,
+    paaOrdre: p.paaOrdre,
+    paaOrdreSnart: p.paaOrdreSnart,
+    naesteModtagelse: p.naesteModtagelse,
+    horisontDage: p.horisontDage,
+  }
 }
 
 export default function OptaellingSide() {
@@ -236,7 +259,14 @@ export default function OptaellingSide() {
       const r = await fetch('/api/lager/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: kode, locationCode: optaelling.locationCode, context: 'optaelling' }),
+        body: JSON.stringify({
+          barcode: kode,
+          locationCode: optaelling.locationCode,
+          context: 'optaelling',
+          // Kun når der skal foreslås bestillinger. Ellers skal tællingen ikke betale
+          // for at BC regner indgående købsordrer ud ved hvert scan.
+          withOnOrder: optaelling.bestilling,
+        }),
       })
       if (!r.ok) { bip(220, 250); setBesked({ slags: 'fejl', tekst: 'BC svarer ikke — prøv igen' }); return }
 
@@ -259,15 +289,8 @@ export default function OptaellingSide() {
           barcode: kode, unikKasse, bcQty: v.inventory,
           boxType: v.boxType || undefined, productionNo: v.productionNo || undefined,
           // Planlægningen følger linjen, så listen over hvad der bør bestilles kan
-          // laves til sidst uden et BC-kald pr. vare. Felterne udelades HELT når BC
-          // ikke leverede dem — tom streng ville betyde "ingen leverandør".
-          ...(v.planlaegning
-            ? {
-              vendorNo: v.planlaegning.vendorNo,
-              reorderPoint: v.planlaegning.reorderPoint,
-              reorderQty: v.planlaegning.reorderQuantity,
-            }
-            : {}),
+          // laves til sidst uden et BC-kald pr. vare.
+          ...planlaegningsFelter(v.planlaegning ?? null),
           idempotencyKey: nyNoegle(),
         }),
       })
@@ -364,16 +387,8 @@ export default function OptaellingSide() {
         itemNo: aktiv.itemNo, description: aktiv.navn, qty: antal, uom: aktiv.uom,
         estimated: anslaaet, shelfCode: hylde || undefined, saet: true,
         bcQty: aktiv.bcAntal ?? undefined,
-        // Et tastet antal SLETTER og skriver linjen igen. Følger planlægningen ikke
-        // med, forsvinder den ved et tastet tal — og så ville netop de varer man
-        // havde talt manuelt mangle i bestillingsforslaget.
-        ...(aktiv.planlaegning
-          ? {
-            vendorNo: aktiv.planlaegning.vendorNo,
-            reorderPoint: aktiv.planlaegning.reorderPoint,
-            reorderQty: aktiv.planlaegning.reorderQuantity,
-          }
-          : {}),
+        // Et tastet antal SLETTER og skriver linjen igen, så planlægningen skal med.
+        ...planlaegningsFelter(aktiv.planlaegning),
         idempotencyKey: nyNoegle(),
       }),
     })
@@ -761,6 +776,14 @@ export default function OptaellingSide() {
                   <p className="text-[11px] font-medium leading-tight text-amber-900">
                     {forslagstekst(aktivForslag, aktiv.uom)}
                   </p>
+                  {/* Står der noget i købsordre, som IKKE dækker, skal man kunne se
+                      hvorfor der stadig foreslås: "der kommer 200, men først den 15."
+                      er et svar man kan handle på. */}
+                  {paaVejTekst(aktivForslag, aktiv.uom) && (
+                    <p className="text-[11px] leading-tight text-amber-700">
+                      {paaVejTekst(aktivForslag, aktiv.uom)}
+                    </p>
+                  )}
                   {/* Forslaget er et FORSLAG: ét tryk lægger det i kurven. Fyldte det
                       kurven af sig selv, ville en optælling af hele lageret placere en
                       stor ordre, ingen havde set på. */}
@@ -995,6 +1018,9 @@ export default function OptaellingSide() {
                 <li key={f.itemNo} className="rounded-2xl bg-white p-3 ring-1 ring-gray-200">
                   <p className="truncate font-medium text-gray-900">{f.itemNo} · {f.description}</p>
                   <p className="mt-0.5 text-xs text-gray-600">{forslagstekst(f.forslag, f.uom)}</p>
+                  {paaVejTekst(f.forslag, f.uom) && (
+                    <p className="text-xs text-amber-700">{paaVejTekst(f.forslag, f.uom)}</p>
+                  )}
                   {/* Hylderne med: en vare talt på én af to hylder har et
                       ufuldstændigt tal, og det skal kunne ses før man bestiller på det. */}
                   {f.shelves && <p className="text-xs text-gray-400">talt på {f.shelves}</p>}
