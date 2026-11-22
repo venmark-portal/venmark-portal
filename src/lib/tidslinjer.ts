@@ -449,3 +449,247 @@ export async function pakkeriTidslinje(fra: string, til: string, jobNr = '16'): 
     starter: dage.length ? dage[0].dato : null,
   }
 }
+
+// ─── Produktion: kg pr. mandetime pr. afdeling ───────────────────────────────
+//
+// Kg kommer fra BC (prodYields = tabel 50205, én række pr. produkt pr. bogført
+// montage). Afdelingen er montagens Dan-Time-jobnummer (postedProdOrders), og
+// timerne er Dan-Time-stemplinger på samme job samme dag.
+//
+// DAGEN er afslutningsdagen ("Afsluttet Kl."), ikke bogføringsdagen — der
+// bogføres ofte dagen efter, og så ville kiloene lande på en dag uden timer.
+//
+// KUN DÆKKEDE DAGE tæller i forholdstallene. Dan-Time samples af portalen; er
+// samplingen nede en dag (14.-15. og 22.-23. oktober 2026), mangler timerne mens
+// kiloene står der stadig, og kg pr. time ville springe til det dobbelte. En dag
+// er dækket når der i alt er stemplet mindst DAEKKET_MIN_TIMER — en normal
+// hverdag ligger på 300+. Stemplingerne findes fra 08-09-2026.
+
+const DAEKKET_MIN_TIMER = 100
+
+export interface ProdPerson { navn: string; timer: number }
+
+export interface ProdAfdeling {
+  jobNr:        string
+  jobNavn:      string
+  produktioner: number
+  raaKg:        number
+  outKg:        number
+  timer:        number
+  /** Null når der ingen timer er, eller råvaren ikke bogføres på montagen. */
+  raaPrTime:    number | null
+  outPrTime:    number | null
+  udbytte:      number | null
+  personer:     ProdPerson[]
+  /** Sat når tallene ikke kan bruges — forklaringen står her. */
+  advarsel?:    string
+}
+
+export interface ProdDagAfdeling { jobNr: string; raaKg: number; outKg: number; timer: number }
+
+export interface ProdDag {
+  dato:      string
+  ugedag:    number
+  daekket:   boolean
+  /** Stemplede timer i alt den dag (alle job) — viser hvorfor en dag er udækket. */
+  timerIAlt: number
+  afdelinger: ProdDagAfdeling[]
+}
+
+export interface ProduktionTidslinje {
+  dage:        ProdDag[]
+  /** Sorteret efter råvare-kg, størst først. */
+  afdelinger:  ProdAfdeling[]
+  /** Montager uden jobnummer — kan ikke lægges på en afdeling. */
+  udenJob:     { produktioner: number; raaKg: number; outKg: number }
+  udaekkede:   string[]
+  /** Første dag med Dan-Time-data overhovedet. */
+  timerFra:    string | null
+  mangler?:    string
+}
+
+const minAf = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+const r1 = (n: number) => Math.round(n * 10) / 10
+
+export async function produktionTidslinje(fra: string, til: string): Promise<ProduktionTidslinje> {
+  // ── BC: bogførte montager + udbytterækker. Én uge ad gangen: BC returnerer i
+  // nøglerækkefølge og nextLink udløber på brede kald (se produktionsskærmen).
+  // Bogføringsvinduet går en uge ud over perioden, så en montage afsluttet den
+  // 30. og bogført den 1. stadig kommer med.
+  const vinduer: [string, string][] = []
+  const slut = flytDage(til, 7)
+  for (let d = fra; d <= slut; d = flytDage(d, 7)) {
+    const t = flytDage(d, 6)
+    vinduer.push([d, t > slut ? slut : t])
+  }
+  const svar = await Promise.all(vinduer.map(async ([f, t]) => {
+    const filter = encodeURIComponent(`postingDate ge ${f} and postingDate le ${t}`)
+    const [o, y] = await Promise.all([
+      hentAlle(`postedProdOrders?$filter=${filter}&$select=no,orderNo,postingDate,afsluttetKl,danTimeJobNo`),
+      hentAlle(`prodYields?$filter=${filter}&$select=productionNo,actualQty,rawQty`),
+    ])
+    return { o, y }
+  }))
+  if (svar.some(s => s.o === null || s.y === null)) {
+    return { dage: [], afdelinger: [], udenJob: { produktioner: 0, raaKg: 0, outKg: 0 }, udaekkede: [], timerFra: null,
+             mangler: 'BC-appen mangler postedProdOrders eller prodYields' }
+  }
+
+  const tilDag = (s: string) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date(s))
+  const montage = new Map<string, { job: string; dag: string }>()
+  for (const { o } of svar) for (const r of o!) {
+    const kl = String(r.afsluttetKl ?? '')
+    const dag = kl && !kl.startsWith('0001') ? tilDag(kl) : dagAf(r.postingDate)
+    const m = { job: String(r.danTimeJobNo ?? '').trim(), dag }
+    // Udbytterækkerne bærer montagens nummer; det er det samme før og efter bogføring.
+    if (r.no) montage.set(String(r.no), m)
+    if (r.orderNo) montage.set(String(r.orderNo), m)
+  }
+
+  // Pr. montage: output = summen af produkterne; råvaren står på hver række og
+  // er den samme for hele montagen, så den tages én gang (største værdi).
+  const kg = new Map<string, { raa: number; out: number }>()
+  for (const { y } of svar) for (const r of y!) {
+    const nr = String(r.productionNo ?? '')
+    if (!nr) continue
+    const k = kg.get(nr) ?? { raa: 0, out: 0 }
+    k.raa = Math.max(k.raa, Number(r.rawQty ?? 0))
+    k.out += Number(r.actualQty ?? 0)
+    kg.set(nr, k)
+  }
+
+  // ── Dan-Time ──
+  const stempl = await prisma.$queryRaw<{
+    dato: string; navn: string; jobNr: string | null; jobNavn: string | null; ind: string; ud: string | null
+  }[]>`
+    SELECT dato, navn, "jobNr", "jobNavn", ind, ud FROM "DanTimeStempling"
+    WHERE dato >= ${fra} AND dato <= ${til}
+  `
+  const foerste = await prisma.$queryRaw<{ min: string | null }[]>`SELECT MIN(dato) AS min FROM "DanTimeStempling"`
+
+  const idag = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date())
+  const nu = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Copenhagen', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  }).format(new Date())
+
+  const timerIAlt = new Map<string, number>()
+  const navne = new Map<string, string>()
+  // dag → job → { minutter, person → minutter }
+  const tid = new Map<string, Map<string, { min: number; folk: Map<string, number> }>>()
+  for (const s of stempl) {
+    // Uden UD: i dag er personen stadig på arbejde; en tidligere dag har en
+    // glemt udstempling, og den kan vi ikke gætte længden af.
+    const ud = s.ud ?? (s.dato === idag ? nu : null)
+    if (!ud) continue
+    let m = minAf(ud) - minAf(s.ind)
+    if (m < 0) m += 24 * 60
+    if (m <= 0) continue
+    timerIAlt.set(s.dato, (timerIAlt.get(s.dato) ?? 0) + m)
+    const job = String(s.jobNr ?? '').trim()
+    if (!job) continue
+    if (s.jobNavn) navne.set(job, s.jobNavn)
+    const dag = tid.get(s.dato) ?? new Map()
+    const j = dag.get(job) ?? { min: 0, folk: new Map<string, number>() }
+    j.min += m
+    j.folk.set(s.navn, (j.folk.get(s.navn) ?? 0) + m)
+    dag.set(job, j)
+    tid.set(s.dato, dag)
+  }
+  const daekket = (d: string) => (timerIAlt.get(d) ?? 0) >= DAEKKET_MIN_TIMER * 60
+
+  // ── Saml pr. dag og pr. afdeling ──
+  type Akk = { produktioner: number; raa: number; out: number; min: number; folk: Map<string, number> }
+  const afd = new Map<string, Akk>()
+  const A = (j: string) => {
+    let a = afd.get(j)
+    if (!a) { a = { produktioner: 0, raa: 0, out: 0, min: 0, folk: new Map() }; afd.set(j, a) }
+    return a
+  }
+  const pDag = new Map<string, Map<string, ProdDagAfdeling>>()
+  const P = (d: string, j: string) => {
+    const dag = pDag.get(d) ?? new Map<string, ProdDagAfdeling>()
+    pDag.set(d, dag)
+    let x = dag.get(j)
+    if (!x) { x = { jobNr: j, raaKg: 0, outKg: 0, timer: 0 }; dag.set(j, x) }
+    return x
+  }
+  const udenJob = { produktioner: 0, raaKg: 0, outKg: 0 }
+
+  for (const [nr, k] of Array.from(kg)) {
+    const m = montage.get(nr)
+    if (!m || m.dag < fra || m.dag > til) continue
+    // Uden jobnummer tælles hele perioden: det er en liste over hvad der
+    // mangler, ikke et forholdstal.
+    if (!m.job) {
+      udenJob.produktioner++; udenJob.raaKg += k.raa; udenJob.outKg += k.out
+      continue
+    }
+    const p = P(m.dag, m.job)
+    p.raaKg += k.raa; p.outKg += k.out
+    if (!daekket(m.dag)) continue
+    const a = A(m.job)
+    a.produktioner++; a.raa += k.raa; a.out += k.out
+  }
+
+  for (const [d, jobs] of Array.from(tid)) {
+    for (const [j, t] of Array.from(jobs)) {
+      P(d, j).timer += t.min / 60
+      if (!daekket(d)) continue
+      const a = A(j)
+      a.min += t.min
+      for (const [n, m] of Array.from(t.folk)) a.folk.set(n, (a.folk.get(n) ?? 0) + m)
+    }
+  }
+
+  // Kun afdelinger der har produceret noget i perioden — ellers fyldes listen
+  // med vasketøj, ferie og kontorrengøring.
+  const afdelinger: ProdAfdeling[] = Array.from(afd)
+    .filter(([, a]) => a.produktioner > 0)
+    .map(([jobNr, a]) => {
+      const timer = a.min / 60
+      // Råvaren bogføres ikke altid på montagen (skrabe-linjen: 14 kg råvare mod
+      // 751 kg output i oktober 2026). Så er både kg/time på råvare og udbyttet
+      // meningsløse — de skjules frem for at stå med et tal der ser rigtigt ud.
+      const raaMangler = a.out > 0 && a.raa < a.out * 0.5
+      return {
+        jobNr,
+        jobNavn:      navne.get(jobNr) ?? `Job ${jobNr}`,
+        produktioner: a.produktioner,
+        raaKg:        Math.round(a.raa),
+        outKg:        Math.round(a.out),
+        timer:        r1(timer),
+        raaPrTime:    timer > 0 && !raaMangler ? r1(a.raa / timer) : null,
+        outPrTime:    timer > 0 ? r1(a.out / timer) : null,
+        udbytte:      a.raa > 0 && !raaMangler ? r1((a.out / a.raa) * 100) : null,
+        personer:     Array.from(a.folk).map(([navn, m]) => ({ navn, timer: r1(m / 60) }))
+                        .sort((x, y) => y.timer - x.timer),
+        advarsel:     raaMangler
+          ? 'Råvaren bogføres ikke på montagerne her — kun output kan regnes.'
+          : timer === 0 ? 'Ingen stemplede timer på afdelingen.' : undefined,
+      }
+    })
+    .sort((a, b) => b.raaKg - a.raaKg || b.outKg - a.outKg)
+
+  const vist = new Set(afdelinger.map(a => a.jobNr))
+  const dage: ProdDag[] = []
+  for (let d = fra; d <= til; d = flytDage(d, 1)) {
+    const jobs = Array.from(pDag.get(d)?.values() ?? []).filter(x => vist.has(x.jobNr))
+    const t = (timerIAlt.get(d) ?? 0) / 60
+    // Weekender uden hverken kg eller timer springes over, som på de andre tavler.
+    if (!jobs.some(x => x.raaKg || x.outKg) && t < 1) continue
+    dage.push({
+      dato: d, ugedag: ugedagAf(d), daekket: daekket(d), timerIAlt: r1(t),
+      afdelinger: jobs.map(x => ({ ...x, raaKg: Math.round(x.raaKg), outKg: Math.round(x.outKg), timer: r1(x.timer) })),
+    })
+  }
+
+  return {
+    dage,
+    afdelinger,
+    udenJob: { produktioner: udenJob.produktioner, raaKg: Math.round(udenJob.raaKg), outKg: Math.round(udenJob.outKg) },
+    // Kun hverdage med NOGET stemplet men for lidt — en weekend er ikke et hul.
+    udaekkede: dage.filter(d => !d.daekket && d.afdelinger.some(x => x.raaKg || x.outKg)).map(d => d.dato),
+    timerFra: foerste[0]?.min ?? null,
+  }
+}

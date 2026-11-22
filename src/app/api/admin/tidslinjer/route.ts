@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { finansTidslinje, pakkeriTidslinje, salgTidslinje } from '@/lib/tidslinjer'
+import { finansTidslinje, pakkeriTidslinje, produktionTidslinje, salgTidslinje } from '@/lib/tidslinjer'
 import { telefonTidslinje } from '@/lib/telefoni'
 
 export const runtime = 'nodejs'
@@ -28,12 +28,13 @@ export async function GET(req: NextRequest) {
 
   // De to sider af tavlen hentes uafhængigt: BC kan svare dårligt på den ene
   // uden at den anden skal gå ned med den.
-  const [finans, pakkeri, telefon, salg] = await Promise.all([
+  const [finans, pakkeri, telefon, salg, produktion] = await Promise.all([
     finansTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
     pakkeriTidslinje(fra, til, jobNr).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
     telefonTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
     salgTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
+    produktionTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
   ])
 
-  return NextResponse.json({ fra, til, finans, pakkeri, telefon, salg })
+  return NextResponse.json({ fra, til, finans, pakkeri, telefon, salg, produktion })
 }

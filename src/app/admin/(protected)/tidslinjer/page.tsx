@@ -1,4 +1,4 @@
-import { finansTidslinje, pakkeriTidslinje, salgTidslinje } from '@/lib/tidslinjer'
+import { finansTidslinje, pakkeriTidslinje, produktionTidslinje, salgTidslinje } from '@/lib/tidslinjer'
 import { telefonTidslinje } from '@/lib/telefoni'
 import Tidslinjer, { type TidslinjeSvar } from '@/components/admin/Tidslinjer'
 
@@ -32,7 +32,7 @@ export default async function TidslinjerPage({
   const jobNr = /^\d+$/.test(searchParams.job ?? '') ? searchParams.job! : '16'
 
   // Hentes uafhængigt: BC kan svare dårligt på den ene uden at tage de andre med.
-  const [finans, pakkeri, telefon, salg] = await Promise.all([
+  const [finans, pakkeri, telefon, salg, produktion] = await Promise.all([
     finansTidslinje(fra, til).catch(e => ({ fejl: e instanceof Error ? e.message : String(e) })),
     pakkeriTidslinje(fra, til, jobNr).catch(e => ({
       dage: [], pakkere: [], starter: null,
@@ -46,15 +46,19 @@ export default async function TidslinjerPage({
       dage: [], saelgere: [],
       fejl: e instanceof Error ? e.message : String(e),
     })),
+    produktionTidslinje(fra, til).catch(e => ({
+      dage: [], afdelinger: [], udenJob: { produktioner: 0, raaKg: 0, outKg: 0 }, udaekkede: [], timerFra: null,
+      fejl: e instanceof Error ? e.message : String(e),
+    })),
   ])
 
-  const data = { fra, til, finans, pakkeri, telefon, salg } as TidslinjeSvar
+  const data = { fra, til, finans, pakkeri, telefon, salg, produktion } as TidslinjeSvar
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
       <h1 className="text-xl font-bold text-gray-900">Tidslinjer</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Dag for dag: hvad pakkeriet nåede, hvad telefonen bragte ind, og hvad der blev faktureret.
+        Dag for dag: hvad produktionen skar, hvad pakkeriet nåede, hvad telefonen bragte ind, og hvad der blev faktureret.
       </p>
 
       <div className="mt-5">
@@ -62,7 +66,11 @@ export default async function TidslinjerPage({
       </div>
 
       <p className="mt-6 text-xs leading-relaxed text-gray-500">
-        <strong>Om tallene.</strong> Omsætning er faktureret beløb ekskl. moms fra bogførte
+        <strong>Om tallene.</strong> Produktionens kg er råvare og output fra bogførte montager
+        (udbyttetabellen i BC), lagt på den dag montagen blev afsluttet og på montagens Dan-Time-job.
+        Mandetimer er stemplet tid på samme job samme dag. Dage hvor Dan-Time-indsamlingen har været
+        nede, tæller ikke med i kg pr. mandetime — ellers ville kiloene stå mod for få timer.
+        Omsætning er faktureret beløb ekskl. moms fra bogførte
         fakturalinjer; kreditnotaer indgår ikke, så det er fakturering og ikke nettoomsætning.
         Pakketallene kommer fra salgslinje-loggen, som først skriver fra 14-09-2026 — før den
         dato findes de ikke, fordi salgslinjerne blev slettet ved bogføring.

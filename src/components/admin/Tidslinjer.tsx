@@ -71,12 +71,31 @@ interface SaelgerDag { kode: string; linjer: number; hurtig: number }
 interface SalgDag { dato: string; ugedag: number; linjer: number; saelgere: SaelgerDag[] }
 interface SalgData { dage: SalgDag[]; saelgere: string[]; mangler?: string; fejl?: string }
 
+interface ProdAfdeling {
+  jobNr: string; jobNavn: string; produktioner: number
+  raaKg: number; outKg: number; timer: number
+  raaPrTime: number | null; outPrTime: number | null; udbytte: number | null
+  personer: { navn: string; timer: number }[]
+  advarsel?: string
+}
+interface ProdDag {
+  dato: string; ugedag: number; daekket: boolean; timerIAlt: number
+  afdelinger: { jobNr: string; raaKg: number; outKg: number; timer: number }[]
+}
+interface ProduktionData {
+  dage: ProdDag[]; afdelinger: ProdAfdeling[]
+  udenJob: { produktioner: number; raaKg: number; outKg: number }
+  udaekkede: string[]; timerFra: string | null
+  mangler?: string; fejl?: string
+}
+
 export interface TidslinjeSvar {
   fra: string; til: string
   finans: FinansData
   pakkeri: PakkeriData
   telefon: TelefonData
   salg?: SalgData
+  produktion?: ProduktionData
 }
 
 // ─── Formatering ─────────────────────────────────────────────────────────────
@@ -549,6 +568,62 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
   const tUbesvarede = telefon.dage?.reduce((s, d) => s + d.ubesvarede, 0) ?? 0
   const tDageMed    = telefon.dage?.filter(d => d.opkald > 0).length ?? 0
 
+  // ── Produktion ──
+  // Farve følger afdelingen (jobnummeret), i den rækkefølge listen står i.
+  const produktion = data.produktion ?? {
+    dage: [], afdelinger: [], udenJob: { produktioner: 0, raaKg: 0, outKg: 0 }, udaekkede: [], timerFra: null,
+  }
+  const prFarveAf = useMemo(() => {
+    const kort = new Map<string, string>()
+    produktion.afdelinger?.forEach((a, i) => kort.set(a.jobNavn, SERIE[i % SERIE.length]))
+    return (n: string) => kort.get(n) ?? DAEMPET
+  }, [produktion.afdelinger])
+  const prDatoer = produktion.dage?.map(d => d.dato) ?? []
+  // Udækkede dage skygges som lukkedage: kiloene er der, timerne mangler.
+  const prUdaekket = new Map((produktion.dage ?? []).filter(d => !d.daekket)
+    .map(d => [d.dato, `Dan-Time mangler timer (${en1.format(d.timerIAlt)} t stemplet)`]))
+  const prAfd = produktion.afdelinger ?? []
+  const prDagJob = (d: ProdDag, jobNr: string) => d.afdelinger.find(x => x.jobNr === jobNr)
+  const prRaaSerier = prAfd.map(a => ({
+    navn: a.jobNavn, vaerdier: produktion.dage.map(d => prDagJob(d, a.jobNr)?.raaKg ?? 0),
+  }))
+  const prPrTime = (felt: 'raaKg' | 'outKg') => prAfd
+    .filter(a => felt === 'outKg' || a.raaPrTime !== null)
+    .map(a => ({
+      navn: a.jobNavn,
+      vaerdier: produktion.dage.map(d => {
+        const x = prDagJob(d, a.jobNr)
+        return d.daekket && x && x.timer > 0 && x[felt] > 0 ? Math.round(x[felt] / x.timer) : null
+      }),
+    }))
+  const prRaaPrTime = prPrTime('raaKg')
+  const prOutPrTime = prPrTime('outKg')
+  // Samlede forholdstal: afdelinger hvor råvaren ikke bogføres, er taget ud af
+  // BÅDE tæller og nævner for råvare-tallet — ellers trækker deres timer det ned.
+  const prMedRaa   = prAfd.filter(a => a.raaPrTime !== null)
+  const prRaaIAlt  = prAfd.reduce((s, a) => s + a.raaKg, 0)
+  const prOutIAlt  = prAfd.reduce((s, a) => s + a.outKg, 0)
+  const prTimerIAlt = prAfd.reduce((s, a) => s + a.timer, 0)
+  const prRaaRate  = (() => {
+    const t = prMedRaa.reduce((s, a) => s + a.timer, 0)
+    return t > 0 ? prMedRaa.reduce((s, a) => s + a.raaKg, 0) / t : null
+  })()
+  const prOutRate  = prTimerIAlt > 0 ? prOutIAlt / prTimerIAlt : null
+  const [prAaben, setPrAaben] = useState<string | null>(null)
+
+  // Hele måneder som genveje — det er sådan tallene typisk efterspørges.
+  const maaneder = (() => {
+    const [y, m] = til.split('-').map(Number)
+    return [0, 1, 2, 3].map(n => {
+      const d = new Date(Date.UTC(y, m - 1 - n, 1))
+      const sidste = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
+      return {
+        navn: d.toLocaleDateString('da-DK', { month: 'short', timeZone: 'UTC' }).replace('.', ''),
+        fra: d.toISOString().slice(0, 10), til: sidste.toISOString().slice(0, 10),
+      }
+    }).reverse()
+  })()
+
   // ── Pakkeri-serier ──
   const pDatoer = pakkeri.dage?.map(d => d.dato) ?? []
   const pSerier = (pakkeri.pakkere ?? []).map(navn => ({
@@ -684,7 +759,14 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
           Vis
         </button>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {maaneder.map(m => (
+            <a key={m.fra} href={`?fra=${m.fra}&til=${m.til}`}
+               className={'rounded-lg border px-3 py-1.5 text-xs font-medium capitalize hover:bg-gray-50 ' +
+                 (fra === m.fra && til === m.til ? 'border-blue-600 text-blue-700' : 'border-gray-300 text-gray-700')}>
+              {m.navn}
+            </a>
+          ))}
           {[[14, '14 dage'], [30, '30 dage'], [90, '90 dage']].map(([n, tekst]) => (
             <a key={String(n)} href={`?dage=${n}`}
                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
@@ -879,6 +961,114 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
         </>
       )}
 
+      <h2 className="pt-2 text-base font-bold text-gray-900">Produktion — kg pr. mandetime</h2>
+
+      {produktion.fejl || produktion.mangler ? (
+        <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+          {produktion.fejl ?? produktion.mangler}
+        </div>
+      ) : prAfd.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-gray-500 ring-1 ring-gray-200">
+          Ingen afsluttede montager med både kg og stemplede timer i perioden.
+          {produktion.timerFra && ` Dan-Time-timerne findes fra ${kortDato(produktion.timerFra)}-${produktion.timerFra.slice(0, 4)}.`}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Noegletal titel="Råvare" vaerdi={`${kr.format(prRaaIAlt)} kg`} />
+            <Noegletal titel="Output" vaerdi={`${kr.format(prOutIAlt)} kg`} />
+            <Noegletal titel="Mandetimer" vaerdi={kr.format(prTimerIAlt)} />
+            <Noegletal titel="Kg pr. mandetime"
+                       vaerdi={`${prRaaRate !== null ? kr.format(prRaaRate) : '—'} / ${prOutRate !== null ? kr.format(prOutRate) : '—'}`} />
+          </div>
+          <p className="-mt-1 text-xs text-gray-500">
+            Kg pr. mandetime står som <strong>råvare / output</strong>.
+            {produktion.udaekkede.length > 0 && (
+              <> Dage hvor Dan-Time ikke har timerne, er taget ud af tallene (skygget i figurerne):{' '}
+                {produktion.udaekkede.map(kortDato).join(', ')}.</>
+            )}
+            {produktion.timerFra && fra < produktion.timerFra && (
+              <> Dan-Time-timerne findes først fra {kortDato(produktion.timerFra)}-{produktion.timerFra.slice(0, 4)}; dagene før tæller ikke.</>
+            )}
+          </p>
+
+          <section className="rounded-xl bg-white p-4 ring-1 ring-gray-200">
+            <h3 className="text-sm font-semibold text-gray-900">Pr. afdeling</h3>
+            <p className="mt-0.5 text-xs text-gray-500">Afdeling = Dan-Time-job på montagen. Tryk på en afdeling for at se hvem der har stået der.</p>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-max border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
+                    {['Afdeling', 'Montager', 'Råvare kg', 'Output kg', 'Udbytte', 'Mandetimer', 'Råvare kg/t', 'Output kg/t', 'Personer']
+                      .map((h, i) => <th key={h} className={'px-2 py-1.5 font-medium whitespace-nowrap ' + (i ? 'text-right' : '')}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {prAfd.map(a => {
+                    const aaben = prAaben === a.jobNr
+                    return [
+                      <tr key={a.jobNr} onClick={() => setPrAaben(aaben ? null : a.jobNr)}
+                          className="cursor-pointer border-b border-gray-100 tabular-nums hover:bg-gray-50">
+                        <td className="px-2 py-2 whitespace-nowrap text-gray-900">
+                          <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: prFarveAf(a.jobNavn) }} />
+                          <span className="text-gray-400">{a.jobNr}</span> {a.jobNavn}
+                          <span className="ml-1 text-xs text-gray-400">{aaben ? '▾' : '▸'}</span>
+                          {a.advarsel && <div className="mt-0.5 text-xs text-amber-700">{a.advarsel}</div>}
+                        </td>
+                        <td className="px-2 py-2 text-right">{kr.format(a.produktioner)}</td>
+                        <td className="px-2 py-2 text-right">{kr.format(a.raaKg)}</td>
+                        <td className="px-2 py-2 text-right">{kr.format(a.outKg)}</td>
+                        <td className="px-2 py-2 text-right">{a.udbytte !== null ? `${en1.format(a.udbytte)} %` : '—'}</td>
+                        <td className="px-2 py-2 text-right">{en1.format(a.timer)}</td>
+                        <td className="px-2 py-2 text-right font-semibold text-gray-900">{a.raaPrTime !== null ? en1.format(a.raaPrTime) : '—'}</td>
+                        <td className="px-2 py-2 text-right font-semibold text-gray-900">{a.outPrTime !== null ? en1.format(a.outPrTime) : '—'}</td>
+                        <td className="px-2 py-2 text-right">{a.personer.length}</td>
+                      </tr>,
+                      aaben && (
+                        <tr key={`${a.jobNr}-folk`} className="border-b border-gray-100 bg-gray-50">
+                          <td colSpan={9} className="px-2 py-2">
+                            <ul className="flex flex-wrap gap-1.5">
+                              {a.personer.map(p => (
+                                <li key={p.navn} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-gray-800 ring-1 ring-gray-200">
+                                  {p.navn} <span className="tabular-nums text-gray-500">{en1.format(p.timer)} t</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      ),
+                    ]
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {produktion.udenJob.produktioner > 0 && (
+              <p className="mt-3 text-xs text-amber-800">
+                {kr.format(produktion.udenJob.produktioner)} montager ({kr.format(produktion.udenJob.raaKg)} kg råvare,{' '}
+                {kr.format(produktion.udenJob.outKg)} kg output) har intet Dan-Time-job og kan ikke lægges på en afdeling.
+                Sæt linjen på family-kortet (eller varekortet) i BC, så kommer de med fremover.
+              </p>
+            )}
+          </section>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Ramme titel="Råvare kg pr. mandetime" undertitel="Pr. afdeling pr. dag. Skyggede dage mangler timer i Dan-Time.">
+              <Linjer datoer={prDatoer} serier={prRaaPrTime} farve={prFarveAf} format={v => kr.format(v)} lukkede={prUdaekket} />
+              <Forklaring navne={prRaaPrTime.map(s => s.navn)} farve={prFarveAf} />
+            </Ramme>
+            <Ramme titel="Output kg pr. mandetime" undertitel="Samme dage — færdigvare i stedet for råvare.">
+              <Linjer datoer={prDatoer} serier={prOutPrTime} farve={prFarveAf} format={v => kr.format(v)} lukkede={prUdaekket} />
+              <Forklaring navne={prOutPrTime.map(s => s.navn)} farve={prFarveAf} />
+            </Ramme>
+          </div>
+
+          <Ramme titel="Råvare kg pr. dag" undertitel="Stablet pr. afdeling, efter den dag montagen blev afsluttet.">
+            <StakketSoejler datoer={prDatoer} serier={prRaaSerier} farve={prFarveAf} format={v => `${kr.format(v)} kg`} lukkede={prUdaekket} />
+            <Forklaring navne={prAfd.map(a => a.jobNavn)} farve={prFarveAf} />
+          </Ramme>
+        </>
+      )}
+
       <h2 className="pt-2 text-base font-bold text-gray-900">Pakkeri</h2>
 
       {pakkeri.fejl || pakkeri.mangler ? (
@@ -947,6 +1137,25 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
       {/* ── Tabelvisning: aflastning for farverne, og tallene til at tage med ── */}
       {visTabel && (
         <>
+          {prDatoer.length > 0 && (
+            <Tabel
+              titel="Produktion dag for dag"
+              hoveder={['Dato', 'Ugedag', 'Timer i alt', 'Note',
+                        ...prAfd.flatMap(a => [`${a.jobNavn} råvare`, `${a.jobNr} output`, `${a.jobNr} timer`, `${a.jobNr} råv./t`, `${a.jobNr} outp./t`])]}
+              raekker={produktion.dage.map(d => [
+                kortDato(d.dato), ugedagNavn(d.ugedag), en1.format(d.timerIAlt), d.daekket ? '' : 'mangler timer',
+                ...prAfd.flatMap(a => {
+                  const x = prDagJob(d, a.jobNr)
+                  if (!x) return ['—', '—', '—', '—', '—']
+                  return [
+                    kr.format(x.raaKg), kr.format(x.outKg), en1.format(x.timer),
+                    d.daekket && x.timer && a.raaPrTime !== null ? kr.format(x.raaKg / x.timer) : '—',
+                    d.daekket && x.timer ? kr.format(x.outKg / x.timer) : '—',
+                  ]
+                }),
+              ])}
+            />
+          )}
           {pDatoer.length > 0 && (
             <Tabel
               titel="Pakkeri dag for dag"
