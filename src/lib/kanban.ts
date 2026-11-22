@@ -21,9 +21,11 @@ import { prisma } from '@/lib/prisma'
  * 90000 — emballage, rengøring, reservedele — men netop de varer er salgsafdelingen
  * uvedkommende. Deres meldinger er indkøberens.
  *
- * Signalet gemmes altid. Det er kun skærmen, der filtrerer.
- * (BC cu 50652 har en tilsvarende `SalgsskaermMaxItemNo()` liggende ubrugt. Når
- *  bestillingsappen kommer, skal den ene af dem væk — to tal er ét for mange.)
+ * Signalet gemmes altid. Det er kun skærmen, der filtrerer — bestillingsappen viser
+ * ALLE åbne meldinger, se `alleAabneSignaler`.
+ *
+ * Tallet står KUN her. Dubletten i BC cu 50652 blev fjernet 22-11: to tal der skal
+ * betyde det samme er ét for mange.
  */
 export const SALGSSKAERM_MAX_VARENR = 90000
 
@@ -174,4 +176,36 @@ export async function aabneSignaler(limit = 5): Promise<KanbanRaekke[]> {
       lastAt:      r.lastAt.toISOString(),
       meldtAf:     r.meldtAf,
     }))
+}
+
+/**
+ * ALLE åbne meldinger — til bestillingsappen.
+ *
+ * Her er der INGEN 90000-grænse, og det er hele pointen: kanban-kortene bruges mest
+ * over 90000 (emballage, rengøring, reservedele), og netop de meldinger er
+ * indkøberens. Uden denne liste ville de blive meldt og aldrig set af nogen: de står
+ * ikke på salgsskærmen, og ingen går og leder i en database.
+ *
+ * Ældste først: en hylde der har været tom længst, skal bestilles først.
+ */
+export async function alleAabneSignaler(limit = 50): Promise<KanbanRaekke[]> {
+  await ensureKanbanSchema()
+
+  const raekker = await prisma.kanbanSignal.findMany({
+    where:   { status: 'aaben' },
+    orderBy: { firstAt: 'asc' },
+    take:    Math.min(limit, 200),
+  })
+
+  return raekker.map(r => ({
+    id:          r.id,
+    itemNo:      r.itemNo,
+    description: r.description,
+    baseUom:     r.baseUom,
+    bcInventory: r.bcInventory === null ? null : Number(r.bcInventory),
+    antal:       r.antal,
+    firstAt:     r.firstAt.toISOString(),
+    lastAt:      r.lastAt.toISOString(),
+    meldtAf:     r.meldtAf,
+  }))
 }

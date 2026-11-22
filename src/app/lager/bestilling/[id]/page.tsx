@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
-  AlertTriangle, ArrowLeft, Check, History, Minus, Plus, Search, Send, StickyNote, Store, Trash2, X,
+  AlertTriangle, ArrowLeft, Check, History, Inbox, Minus, Plus, Search, Send, StickyNote, Store,
+  Trash2, X,
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import Bemaerkning from '@/components/lager/Bemaerkning'
@@ -49,6 +50,17 @@ interface Linje {
 
 interface Gruppe { vendorNo: string; vendorName: string; linjer: Linje[] }
 
+/** En "tom hylde"-melding fra kanban-QR'en på en hylde-label. */
+interface Signal {
+  id: string
+  itemNo: string
+  description: string
+  baseUom: string
+  antal: number
+  firstAt: string
+  meldtAf: string
+}
+
 interface Kurv {
   bestilling: {
     id: string; no: string; status: string; locationCode: string
@@ -82,6 +94,7 @@ export default function BestillingSkaerm() {
   const id = String(params?.id ?? '')
 
   const [kurv, setKurv] = useState<Kurv | null>(null)
+  const [signaler, setSignaler] = useState<Signal[]>([])
   const [sidste, setSidste] = useState<Sidste | null>(null)
   const [travl, setTravl] = useState(false)
   const [fejl, setFejl] = useState('')
@@ -120,7 +133,14 @@ export default function BestillingSkaerm() {
     setKurv(await res.json())
   }, [id])
 
-  useEffect(() => { hent() }, [hent])
+  const hentSignaler = useCallback(async () => {
+    const res = await fetch('/api/lager/bestilling/kanban', { cache: 'no-store' })
+    if (!res.ok) return
+    const d = await res.json()
+    setSignaler(d.signaler ?? [])
+  }, [])
+
+  useEffect(() => { hent(); hentSignaler() }, [hent, hentSignaler])
 
   const laast = kurv?.bestilling.status !== 'aaben'
 
@@ -159,9 +179,23 @@ export default function BestillingSkaerm() {
         scanCount: data.linje.scanCount,
       })
       await hent()
+      // Er varen meldt tom, er der nu handlet på meldingen. Den lukkes uanset om man
+      // kom fra listen eller scannede hylde-labelen — ellers bestiller to mand den
+      // samme vare, fordi meldingen stadig står og lyser.
+      await lukSignal(data.opslag.itemNo)
     } finally {
       setTravl(false)
     }
+  }
+
+  async function lukSignal(itemNo: string) {
+    if (!signaler.some(s => s.itemNo === itemNo)) return
+    await fetch('/api/lager/bestilling/kanban', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemNo }),
+    }).catch(() => {})
+    await hentSignaler()
   }
 
   /** Retter en linje: antal, bemærkning eller leverandør. */
@@ -265,6 +299,43 @@ export default function BestillingSkaerm() {
         <p className="mt-3 flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" /> {fejl}
         </p>
+      )}
+
+      {/* "Tom hylde"-meldinger fra kanban-QR'en. Her er INGEN 90000-grænse, modsat
+          salgsskærmen: kortene bruges mest over 90000, og netop de meldinger er
+          indkøberens. Ét tryk lægger varen i kurven og lukker meldingen. */}
+      {!laast && signaler.length > 0 && (
+        <section className="mt-4 rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-200">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-rose-900">
+            <Inbox size={15} /> Meldt tomt ({signaler.length})
+          </h2>
+          <ul className="space-y-1">
+            {signaler.map(s => (
+              <li key={s.id}>
+                <button
+                  onClick={() => scan(s.itemNo)}
+                  disabled={travl}
+                  className="flex w-full items-center justify-between gap-2 rounded-xl bg-white px-3 py-2.5 text-left ring-1 ring-rose-200 disabled:opacity-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-gray-900">
+                      {s.description || s.itemNo}
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      {s.itemNo}
+                      {s.antal > 1 && <span className="ml-2 font-semibold text-rose-700">{s.antal}×</span>}
+                      <span className="ml-2">
+                        {new Date(s.firstAt).toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit' })}
+                        {s.meldtAf ? ` · ${s.meldtAf}` : ''}
+                      </span>
+                    </span>
+                  </span>
+                  <Plus size={18} className="shrink-0 text-rose-700" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* Det senest scannede. Her står alt det man skal vide for at afgøre antallet:
