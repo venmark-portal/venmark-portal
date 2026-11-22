@@ -505,6 +505,12 @@ export interface ProduktionTidslinje {
   udaekkede:   string[]
   /** Første dag med Dan-Time-data overhovedet. */
   timerFra:    string | null
+  /**
+   * Gns. timeløn (kr./time) fra Virksomhedsoplysninger — samme sats som
+   * styklisteberegningen af UnitCost1 bruger. Null hvis den ikke kunne hentes;
+   * 0 hvis den ikke er udfyldt.
+   */
+  timeloen:    number | null
   mangler?:    string
 }
 
@@ -532,8 +538,12 @@ export async function produktionTidslinje(fra: string, til: string): Promise<Pro
   }))
   if (svar.some(s => s.o === null || s.y === null)) {
     return { dage: [], afdelinger: [], udenJob: { produktioner: 0, raaKg: 0, outKg: 0 }, udaekkede: [], timerFra: null,
-             mangler: 'BC-appen mangler postedProdOrders eller prodYields' }
+             timeloen: null, mangler: 'BC-appen mangler postedProdOrders eller prodYields' }
   }
+  // Satsen må ikke vælte tavlen: uden den vises kg-tallene stadig, bare ikke kr.
+  const timeloen = await hentAlle('costSetups?$select=avgHourlyWage')
+    .then(r => (r && r.length ? Number(r[0].avgHourlyWage ?? 0) : null))
+    .catch(e => { console.error('[tidslinjer] costSetups:', e instanceof Error ? e.message : e); return null })
 
   const tilDag = (s: string) =>
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen' }).format(new Date(s))
@@ -691,5 +701,6 @@ export async function produktionTidslinje(fra: string, til: string): Promise<Pro
     // Kun hverdage med NOGET stemplet men for lidt — en weekend er ikke et hul.
     udaekkede: dage.filter(d => !d.daekket && d.afdelinger.some(x => x.raaKg || x.outKg)).map(d => d.dato),
     timerFra: foerste[0]?.min ?? null,
+    timeloen,
   }
 }

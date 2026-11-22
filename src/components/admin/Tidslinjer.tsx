@@ -86,6 +86,8 @@ interface ProduktionData {
   dage: ProdDag[]; afdelinger: ProdAfdeling[]
   udenJob: { produktioner: number; raaKg: number; outKg: number }
   udaekkede: string[]; timerFra: string | null
+  /** Gns. timeløn fra Virksomhedsoplysninger. 0 = ikke udfyldt, null = kunne ikke hentes. */
+  timeloen?: number | null
   mangler?: string; fejl?: string
 }
 
@@ -609,6 +611,10 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
     return t > 0 ? prMedRaa.reduce((s, a) => s + a.raaKg, 0) / t : null
   })()
   const prOutRate  = prTimerIAlt > 0 ? prOutIAlt / prTimerIAlt : null
+  // Lønkroner pr. kg = timeløn ÷ kg pr. mandetime. Kun løn, ikke fuld kostpris.
+  const loen = produktion.timeloen && produktion.timeloen > 0 ? produktion.timeloen : null
+  const krPrKg = (kgPrTime: number | null) => (loen && kgPrTime ? loen / kgPrTime : null)
+  const kr2 = (v: number | null) => (v === null ? '—' : v.toLocaleString('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
   const [prAaben, setPrAaben] = useState<string | null>(null)
 
   // Hele måneder som genveje — det er sådan tallene typisk efterspørges.
@@ -974,15 +980,27 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <Noegletal titel="Råvare" vaerdi={`${kr.format(prRaaIAlt)} kg`} />
             <Noegletal titel="Output" vaerdi={`${kr.format(prOutIAlt)} kg`} />
             <Noegletal titel="Mandetimer" vaerdi={kr.format(prTimerIAlt)} />
             <Noegletal titel="Kg pr. mandetime"
                        vaerdi={`${prRaaRate !== null ? kr.format(prRaaRate) : '—'} / ${prOutRate !== null ? kr.format(prOutRate) : '—'}`} />
+            <div className="col-span-2 md:col-span-1">
+              <Noegletal titel="Løn kr. pr. kg"
+                         vaerdi={loen ? `${kr2(krPrKg(prRaaRate))} / ${kr2(krPrKg(prOutRate))}` : '—'} />
+            </div>
           </div>
+          {!loen && (
+            <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+              {produktion.timeloen === 0
+                ? 'Gns. timeløn står på 0 i Virksomhedsoplysninger i BC. Udfyld den, så vises lønkroner pr. kg.'
+                : 'Gns. timeløn kunne ikke hentes fra BC — lønkroner pr. kg vises ikke.'}
+            </div>
+          )}
           <p className="-mt-1 text-xs text-gray-500">
-            Kg pr. mandetime står som <strong>råvare / output</strong>.
+            Kg pr. mandetime og kr. pr. kg står som <strong>råvare / output</strong>.
+            {loen && <> Løn kr. pr. kg = gns. timeløn {kr2(loen)} kr. ÷ kg pr. mandetime — kun løn, ikke fuld kostpris.</>}
             {produktion.udaekkede.length > 0 && (
               <> Dage hvor Dan-Time ikke har timerne, er taget ud af tallene (skygget i figurerne):{' '}
                 {produktion.udaekkede.map(kortDato).join(', ')}.</>
@@ -999,7 +1017,8 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
               <table className="w-full min-w-max border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                    {['Afdeling', 'Montager', 'Råvare kg', 'Output kg', 'Udbytte', 'Mandetimer', 'Råvare kg/t', 'Output kg/t', 'Personer']
+                    {['Afdeling', 'Montager', 'Råvare kg', 'Output kg', 'Udbytte', 'Mandetimer', 'Råvare kg/t', 'Output kg/t',
+                      'Løn kr/kg råvare', 'Løn kr/kg output', 'Personer']
                       .map((h, i) => <th key={h} className={'px-2 py-1.5 font-medium whitespace-nowrap ' + (i ? 'text-right' : '')}>{h}</th>)}
                   </tr>
                 </thead>
@@ -1022,11 +1041,13 @@ export default function Tidslinjer({ data, fra, til }: { data: TidslinjeSvar; fr
                         <td className="px-2 py-2 text-right">{en1.format(a.timer)}</td>
                         <td className="px-2 py-2 text-right font-semibold text-gray-900">{a.raaPrTime !== null ? en1.format(a.raaPrTime) : '—'}</td>
                         <td className="px-2 py-2 text-right font-semibold text-gray-900">{a.outPrTime !== null ? en1.format(a.outPrTime) : '—'}</td>
+                        <td className="px-2 py-2 text-right">{kr2(krPrKg(a.raaPrTime))}</td>
+                        <td className="px-2 py-2 text-right">{kr2(krPrKg(a.outPrTime))}</td>
                         <td className="px-2 py-2 text-right">{a.personer.length}</td>
                       </tr>,
                       aaben && (
                         <tr key={`${a.jobNr}-folk`} className="border-b border-gray-100 bg-gray-50">
-                          <td colSpan={9} className="px-2 py-2">
+                          <td colSpan={11} className="px-2 py-2">
                             <ul className="flex flex-wrap gap-1.5">
                               {a.personer.map(p => (
                                 <li key={p.navn} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-gray-800 ring-1 ring-gray-200">

@@ -47,7 +47,7 @@ export default async function TidslinjerPage({
       fejl: e instanceof Error ? e.message : String(e),
     })),
     produktionTidslinje(fra, til).catch(e => ({
-      dage: [], afdelinger: [], udenJob: { produktioner: 0, raaKg: 0, outKg: 0 }, udaekkede: [], timerFra: null,
+      dage: [], afdelinger: [], udenJob: { produktioner: 0, raaKg: 0, outKg: 0 }, udaekkede: [], timerFra: null, timeloen: null,
       fejl: e instanceof Error ? e.message : String(e),
     })),
   ])
