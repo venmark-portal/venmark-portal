@@ -286,6 +286,10 @@ export default function BestillingSkaerm() {
         </p>
       )}
 
+      {/* MED VILJE ingen "meld hylden tom" her, selvom ScanFelt sender kilden med.
+          Scanner man kanban-kortet midt i en bestilling, er varen på vej i kurven, og
+          en melding oven i ville bede kontoret skaffe det, man lige selv har bestilt.
+          Det skal fanges HER, mens man bestiller (Claus 23-11). */}
       {!laast && <ScanFelt onScan={scan} travl={travl} taltastatur pause={dialogAaben} placeholder="Scan eller tast varenr." />}
 
       {!laast && (

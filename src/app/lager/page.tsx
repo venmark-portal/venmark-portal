@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import OmAppen from '@/components/lager/OmAppen'
+import MeldTomHylde from '@/components/lager/MeldTomHylde'
 import {
   antalVarer, hentVare, laegIUdbakke, sendUdbakke, soegVarer, synkroniserKatalog, udbakkeAntal,
   type KatalogVare,
@@ -34,6 +35,9 @@ interface Scan {
 export default function LagerForside() {
   const [mig, setMig] = useState<any>(null)
   const [scanninger, setScanninger] = useState<Scan[]>([])
+  // Kanban-QR'en fra hylde-labelen. Den virker på alle lager-skærme UNDTAGEN
+  // bestillingen — dér fanger man alligevel, hvad der mangler (Claus 23-11).
+  const [tomHylde, setTomHylde] = useState<{ itemNo: string; navn: string } | null>(null)
   const [travl, setTravl] = useState(false)
   const [katalog, setKatalog] = useState(0)
   const [kø, setKø] = useState(0)
@@ -78,7 +82,7 @@ export default function LagerForside() {
     sendUdbakke().then(r => setKø(r.tilbage))
   }, [online, kø])
 
-  async function scan(kode: string) {
+  async function scan(kode: string, kilde: 'kode' | 'kanban' = 'kode') {
     setTravl(true)
     const id = `${Date.now()}-${kode}`
 
@@ -120,6 +124,7 @@ export default function LagerForside() {
         lot: r.lotNo, kodetype: r.codeType, vaegtvariabel: r.variableWeight,
         beholdning: r.inventory, spaerret: r.blocked,
       })
+      if (kilde === 'kanban') setTomHylde({ itemNo: r.itemNo, navn: r.description })
     } finally {
       setTravl(false)
     }
@@ -166,7 +171,7 @@ export default function LagerForside() {
         </div>
       </header>
 
-      <ScanFelt onScan={scan} travl={travl} taltastatur />
+      <ScanFelt onScan={scan} travl={travl} taltastatur pause={!!tomHylde} />
 
       <p className="mt-2 text-xs text-gray-500">
         Fri scanning: scan en kasse, en EAN eller et varenr. Ukendte koder kan knyttes til en vare med det samme.
@@ -286,6 +291,28 @@ export default function LagerForside() {
             setLaerKode('')
             bip(660, 120)
             udbakkeAntal().then(setKø)
+          }}
+        />
+      )}
+
+      {tomHylde && (
+        <MeldTomHylde
+          itemNo={tomHylde.itemNo}
+          navn={tomHylde.navn}
+          onFaerdig={svar => {
+            setTomHylde(null)
+            // Skærmen her har ingen beskedlinje — svaret lægger sig som en scanning
+            // øverst i listen, hvor alt andet også lander.
+            if (svar)
+              opdater(`kanban-${Date.now()}`, {
+                id:      `kanban-${Date.now()}`,
+                kode:    tomHylde.itemNo,
+                tid:     Date.now(),
+                status:  svar.slags === 'ok' ? 'ok' : 'fejl',
+                varenr:  tomHylde.itemNo,
+                navn:    tomHylde.navn,
+                besked:  svar.tekst,
+              })
           }}
         />
       )}

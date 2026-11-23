@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Camera, CornerDownLeft, Delete, Keyboard, ScanLine, X } from 'lucide-react'
-import { rensScanKode } from '@/lib/lager/kode'
+import { laesScanKode } from '@/lib/lager/kode'
 
 /**
  * Scanne-feltet. Håndterminalen sender stregkoden som tastetryk efterfulgt af Enter —
@@ -38,7 +38,9 @@ export default function ScanFelt({
   pause = false,
   taltastatur = false,
 }: {
-  onScan: (kode: string) => void
+  /** `kilde` siger, HVILKEN af hylde-labelens to QR-koder der blev scannet. Skærme,
+   *  der ikke bryder sig om forskellen, tager bare imod koden og ser bort fra den. */
+  onScan: (kode: string, kilde: 'kode' | 'kanban') => void
   travl?: boolean
   placeholder?: string
   /** Appens eget taltastatur ligger FAST under feltet. Så er Androids tastatur ikke
@@ -111,9 +113,9 @@ export default function ScanFelt({
 
   function send(kode: string, auto = false) {
     window.clearTimeout(stilleRef.current)
-    // Både tastaturfejlen og vores egen kanban-adresse rettes i rensScanKode, så
+    // Både tastaturfejlen og vores egen kanban-adresse rettes i laesScanKode, så
     // kameraet, scanneren og taltastaturet afleverer det samme til opslaget.
-    const renset = rensScanKode(kode)
+    const { kode: renset, kanban } = laesScanKode(kode)
     if (!renset) return
     setSidste({
       tegn: renset.length,
@@ -125,7 +127,7 @@ export default function ScanFelt({
     forrigeTastRef.current = 0
     startTidRef.current = 0
     vaerdiRef.current = ''
-    onScan(renset)
+    onScan(renset, kanban ? 'kanban' : 'kode')
     setVaerdi('')
   }
 

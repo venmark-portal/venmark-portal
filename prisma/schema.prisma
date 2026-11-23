@@ -951,6 +951,9 @@ model KanbanSignal {
   firstAt     DateTime @default(now())
   lastAt      DateTime @default(now())
   meldtAf     String   @default("")
+  // Besked fra den der melder — skrevet eller indtalt. Den staar i mailen til
+  // kontoret og paa kortet, saa "hylden er tom" kan faa et hvorfor med.
+  note        String   @default("")
   bestiltAt   DateTime?
   bestiltAf   String   @default("")
 

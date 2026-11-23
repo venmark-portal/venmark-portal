@@ -9,6 +9,7 @@ import {
 import ScanFelt from '@/components/lager/ScanFelt'
 import Taltastatur, { beregn } from '@/components/lager/Taltastatur'
 import Bemaerkning from '@/components/lager/Bemaerkning'
+import MeldTomHylde from '@/components/lager/MeldTomHylde'
 import { nyNoegle } from '@/lib/lager/device'
 import {
   forslagstekst, paaVejTekst, vurderForslag, type Forslag, type Planlaegning,
@@ -95,6 +96,9 @@ export default function OptaellingSide() {
   const [travl, setTravl] = useState(false)
   const [stemmerDialog, setStemmerDialog] = useState(false)
   const [bemaerkVare, setBemaerkVare] = useState('')
+  // Scannede nogen kanban-QR'en ("TOM HYLDE? SCAN HER") mens han talte? Varen er
+  // allerede talt, når dialogen kommer — meldingen er en afbrydelse, ikke en omvej.
+  const [tomHylde, setTomHylde] = useState<{ itemNo: string; navn: string } | null>(null)
   // Det tastede antal bor her og ikke nede i taltastaturet, fordi knapperne der
   // gemmer er flyttet op på varekortet ved siden af "Stemmer på …" (Claus 21-11).
   const [antalTekst, setAntalTekst] = useState('')
@@ -251,7 +255,7 @@ export default function OptaellingSide() {
     } finally { setTravl(false) }
   }
 
-  async function scan(kode: string) {
+  async function scan(kode: string, kilde: 'kode' | 'kanban' = 'kode') {
     if (!optaelling) return
     setTravl(true)
     setBesked(null)
@@ -311,6 +315,11 @@ export default function OptaellingSide() {
         planlaegning: v.planlaegning ?? null,
       })
       setVarer(await fetch(`/api/lager/optaelling/${optaelling.id}`).then(x => x.json()).then(x => x.varer ?? []))
+
+      // Varen er registreret FØRST, og så spørger vi. Scannede han kanban-kortet,
+      // vil han som regel også tælle varen (og skrive 0) — så hvis vi havde stoppet
+      // ved dialogen, skulle han scanne én gang til bagefter.
+      if (kilde === 'kanban') setTomHylde({ itemNo: v.itemNo, navn: v.description })
     } finally { setTravl(false) }
   }
 
@@ -624,7 +633,7 @@ export default function OptaellingSide() {
               onScan={scan}
               travl={travl}
               placeholder={scanLager ? 'Scan kasse' : 'Scan vare eller kasse'}
-              pause={stemmerDialog || !!bemaerkVare || billedeAabent || sendDialog || forslagAaben}
+              pause={stemmerDialog || !!bemaerkVare || !!tomHylde || billedeAabent || sendDialog || forslagAaben}
             />
 
             {scanLager && (
@@ -843,6 +852,19 @@ export default function OptaellingSide() {
                   return
                 }
                 await hentStatus(optaelling.id)
+              }}
+            />
+          )}
+
+          {tomHylde && (
+            <MeldTomHylde
+              itemNo={tomHylde.itemNo}
+              navn={tomHylde.navn}
+              onFaerdig={svar => {
+                setTomHylde(null)
+                // Lukkede han uden at melde, står den gamle besked fra scanningen
+                // stadig — den skal ikke overskrives med ingenting.
+                if (svar) setBesked({ slags: svar.slags === 'ok' ? 'ok' : 'advar', tekst: svar.tekst })
               }}
             />
           )}

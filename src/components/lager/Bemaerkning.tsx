@@ -20,11 +20,21 @@ const MAKS = 150
 export default function Bemaerkning({
   vare,
   start = '',
+  titel = 'Bemærkning',
+  gemTekst = 'Gem bemærkning',
+  placeholder = 'Fx: to kasser står i frostrummet, resten er talt',
+  info,
   onGem,
   onLuk,
 }: {
   vare: string
   start?: string
+  /** Overskriften. Dialogen bruges også til at melde en hylde tom. */
+  titel?: string
+  gemTekst?: string
+  placeholder?: string
+  /** Linje over feltet, når brugeren skal vide, hvad trykket udløser. */
+  info?: string
   onGem: (tekst: string) => void
   onLuk: () => void
 }) {
@@ -160,7 +170,7 @@ export default function Bemaerkning({
       <div className="w-full max-w-lg rounded-t-3xl bg-white p-4">
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-gray-900">Bemærkning</h2>
+            <h2 className="text-lg font-bold text-gray-900">{titel}</h2>
             <p className="truncate text-sm text-gray-500">{vare}</p>
           </div>
           <button onClick={onLuk} className="rounded-full bg-gray-100 p-2" aria-label="Luk">
@@ -168,12 +178,16 @@ export default function Bemaerkning({
           </button>
         </div>
 
+        {info && (
+          <p className="mb-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">{info}</p>
+        )}
+
         <textarea
           value={tekst}
           onChange={e => setTekst(e.target.value.slice(0, MAKS))}
           autoFocus
           rows={3}
-          placeholder="Fx: to kasser står i frostrummet, resten er talt"
+          placeholder={placeholder}
           className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base focus:border-emerald-600 focus:outline-none"
         />
 
@@ -231,7 +245,7 @@ export default function Bemaerkning({
             onClick={() => onGem(tekst.trim())}
             className="flex-1 rounded-xl bg-emerald-700 py-3.5 font-semibold text-white"
           >
-            Gem bemærkning
+            {gemTekst}
           </button>
           {start !== '' && (
             <button

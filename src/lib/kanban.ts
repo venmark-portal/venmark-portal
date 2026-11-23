@@ -14,6 +14,7 @@
 import { getItemsByNumbers } from '@/lib/businesscentral'
 import { prisma } from '@/lib/prisma'
 import { resolveBarcode } from '@/lib/lager/bc'
+import { sendEmail } from '@/lib/email'
 
 /**
  * Varenumre fra og med dette tal vises IKKE på salgsskærmen (Claus 22-11).
@@ -42,6 +43,8 @@ export interface KanbanRaekke {
   firstAt:     string
   lastAt:      string
   meldtAf:     string
+  /** Besked fra den, der meldte — skrevet eller indtalt. Tom, når der ingen er. */
+  note:        string
 }
 
 let ensured = false
@@ -77,6 +80,9 @@ export async function ensureKanbanSchema() {
   // Tilføjet 22-11: hylden med i snapshottet, så den der skal hente varen kan se
   // HVOR den står — både på kontorskærmen og i bestillingsappen.
   await prisma.$executeRaw`ALTER TABLE "KanbanSignal" ADD COLUMN IF NOT EXISTS "shelfNo" TEXT NOT NULL DEFAULT ''`
+  // Tilføjet 23-11: beskeden fra den der melder. Håndterminalen kan skrive den eller
+  // indtale den, og den følger med i mailen til kontoret.
+  await prisma.$executeRaw`ALTER TABLE "KanbanSignal" ADD COLUMN IF NOT EXISTS "note" TEXT NOT NULL DEFAULT ''`
   ensured = true
 }
 
@@ -123,7 +129,7 @@ export async function aabentSignal(itemNo: string) {
  * Er varen meldt i forvejen, bumpes tælleren i stedet for at lave en ny række —
  * ellers fyldte én tom hylde hele skærmen, og "de 5 nyeste" blev meningsløst.
  */
-export async function meldTom(itemNo: string, meldtAf: string) {
+export async function meldTom(itemNo: string, meldtAf: string, note = '') {
   await ensureKanbanSchema()
 
   const findes = await aabentSignal(itemNo)
@@ -135,6 +141,10 @@ export async function meldTom(itemNo: string, meldtAf: string) {
         lastAt:  new Date(),
         // Den SENESTE melder står på skærmen — det er ham, man spørger.
         meldtAf: meldtAf || findes.meldtAf,
+        // En ny besked erstatter den gamle; INGEN besked lader den gamle stå.
+        // Melder nummer to siger ikke noget, betyder det ikke, at nummer et tog
+        // sit "der står kun brækkede kasser tilbage" i sig igen.
+        note:    note || findes.note,
       },
     })
   }
@@ -154,8 +164,75 @@ export async function meldTom(itemNo: string, meldtAf: string) {
       baseUom:     vare?.baseUom ?? '',
       bcInventory: vare?.inventory ?? null,
       meldtAf,
+      note,
     },
   })
+}
+
+/**
+ * Mail til kontoret, når en hylde meldes tom.
+ *
+ * Kontorskærmen er god til "hvad mangler lige nu", men den kræver, at nogen kigger op.
+ * Mailen er det, der gør, at indkøberen ved det MED DET SAMME (Claus 23-11) — og det
+ * er hele grunden til, at terminalen må melde tomt, mens man tæller op.
+ *
+ * Kaster ALDRIG videre: en melding må ikke gå tabt, fordi SMTP er nede. Men den
+ * logges, for en tavs `if (!ok) return` er sådan et 404 kan gemme sig i månedsvis,
+ * se [[feedback_log_silent_bc_write_failures]].
+ */
+export async function sendTomHyldeVarsel(opts: {
+  itemNo:      string
+  description: string
+  shelfNo:     string
+  baseUom:     string
+  bcInventory: number | null
+  antal:       number
+  meldtAf:     string
+  note:        string
+}) {
+  const { itemNo, description, shelfNo, baseUom, bcInventory, antal, meldtAf, note } = opts
+  const base = process.env.NEXTAUTH_URL ?? 'https://portal.venmark.dk'
+  const navn = description ? `${itemNo} — ${description}` : itemNo
+
+  const linjer = [
+    `Vare:        ${navn}`,
+    shelfNo ? `Hylde:       ${shelfNo}` : '',
+    bcInventory !== null ? `BC siger:    ${bcInventory} ${baseUom}` : '',
+    `Meldt af:    ${meldtAf || 'ikke logget ind'}`,
+    antal > 1 ? `Meldt:       ${antal}. gang — den er stadig tom` : '',
+    '',
+    note ? `Besked fra lageret:\n"${note}"` : 'Ingen besked med.',
+    '',
+    `Luk meldingen: ${base}/k/${encodeURIComponent(itemNo)}`,
+  ].filter(l => l !== '')
+
+  try {
+    await sendEmail({
+      to:      process.env.NOTIFICATION_EMAIL ?? 'fisk@venmark.dk',
+      subject: `Tom hylde: ${navn}`,
+      text:    `Hylden er meldt tom fra lager-appen.\n\n${linjer.join('\n')}\n`,
+      html:
+        `<p><strong>Hylden er meldt tom fra lager-appen.</strong></p>` +
+        `<table cellpadding="4"><tbody>` +
+        `<tr><td>Vare</td><td><strong>${esc(navn)}</strong></td></tr>` +
+        (shelfNo ? `<tr><td>Hylde</td><td>${esc(shelfNo)}</td></tr>` : '') +
+        (bcInventory !== null ? `<tr><td>BC siger</td><td>${bcInventory} ${esc(baseUom)}</td></tr>` : '') +
+        `<tr><td>Meldt af</td><td>${esc(meldtAf || 'ikke logget ind')}</td></tr>` +
+        (antal > 1 ? `<tr><td>Meldt</td><td>${antal}. gang — den er stadig tom</td></tr>` : '') +
+        `</tbody></table>` +
+        (note
+          ? `<p><strong>Besked fra lageret:</strong><br><em>${esc(note)}</em></p>`
+          : `<p>Ingen besked med.</p>`) +
+        `<p><a href="${base}/k/${encodeURIComponent(itemNo)}">Luk meldingen</a></p>`,
+    })
+  } catch (e) {
+    console.error(`[kanban] mail om tom hylde ${itemNo} kunne ikke sendes:`, e)
+  }
+}
+
+/** Mindste tegnsætning, så et varenavn med & eller < ikke river mailen i stykker. */
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 /** Lukker meldingen. Uden den stod de samme fem varer på skærmen i ugevis. */
@@ -201,6 +278,7 @@ export async function aabneSignaler(limit = 5): Promise<KanbanRaekke[]> {
       firstAt:     r.firstAt.toISOString(),
       lastAt:      r.lastAt.toISOString(),
       meldtAf:     r.meldtAf,
+      note:        r.note ?? '',
     }))
 }
 
@@ -234,5 +312,6 @@ export async function alleAabneSignaler(limit = 50): Promise<KanbanRaekke[]> {
     firstAt:     r.firstAt.toISOString(),
     lastAt:      r.lastAt.toISOString(),
     meldtAf:     r.meldtAf,
+    note:        r.note ?? '',
   }))
 }

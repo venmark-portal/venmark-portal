@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ArrowLeft, Check, Minus, Plus, Printer, Trash2, X } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
+import MeldTomHylde from '@/components/lager/MeldTomHylde'
 
 interface PrinterRaekke { id: string; navn: string; beskrivelse: string }
 interface Valg { printerId: string; printerNavn: string }
@@ -25,6 +26,9 @@ export default function LabelSide() {
   const [varer, setVarer] = useState<Vare[]>([])
   const [travl, setTravl] = useState(false)
   const [besked, setBesked] = useState<{ slags: 'ok' | 'advar' | 'fejl'; tekst: string } | null>(null)
+  // Scannede han kanban-QR'en på en label, han selv står med? Så er det tit netop
+  // dér, man opdager at hylden er tom — mens man printer en ny label til den.
+  const [tomHylde, setTomHylde] = useState<{ itemNo: string; navn: string } | null>(null)
 
   const lydRef = useRef<AudioContext | null>(null)
   const bip = useCallback((hz: number, ms: number) => {
@@ -55,7 +59,7 @@ export default function LabelSide() {
 
   /** Slår koden op i BC for at få varenavnet. Labelen kan godt printes uden, men man
    *  skal kunne se HVAD man har scannet, før man sender fem ark gennem printeren. */
-  async function scan(kode: string) {
+  async function scan(kode: string, kilde: 'kode' | 'kanban' = 'kode') {
     setTravl(true)
     setBesked(null)
     try {
@@ -83,6 +87,7 @@ export default function LabelSide() {
         if (findes) return nu.map(x => (x.itemNo === v.itemNo ? { ...x, antal: x.antal + 1 } : x))
         return [...nu, { itemNo: v.itemNo, navn: v.description, hylde: v.shelfNo ?? '', antal: 1 }]
       })
+      if (kilde === 'kanban') setTomHylde({ itemNo: v.itemNo, navn: v.description })
     } finally { setTravl(false) }
   }
 
@@ -173,7 +178,7 @@ export default function LabelSide() {
         </button>
 
         <div className="mt-3">
-          <ScanFelt onScan={scan} travl={travl} placeholder="Scan eller tast varenr." pause={vaelger} />
+          <ScanFelt onScan={scan} travl={travl} placeholder="Scan eller tast varenr." pause={vaelger || !!tomHylde} />
         </div>
 
         {besked && (
@@ -301,6 +306,17 @@ export default function LabelSide() {
           {travl ? 'Printer…' : `Print ${iAlt || ''} label${iAlt === 1 ? '' : 's'}`}
         </button>
       </footer>
+
+      {tomHylde && (
+        <MeldTomHylde
+          itemNo={tomHylde.itemNo}
+          navn={tomHylde.navn}
+          onFaerdig={svar => {
+            setTomHylde(null)
+            if (svar) setBesked({ slags: svar.slags === 'ok' ? 'ok' : 'advar', tekst: svar.tekst })
+          }}
+        />
+      )}
     </div>
   )
 }

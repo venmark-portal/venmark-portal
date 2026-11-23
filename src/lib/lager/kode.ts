@@ -24,26 +24,40 @@
  */
 const KANBAN_ADRESSE = /^(?:https?:\/\/)?[^\s/]*\/k\/([^/?#]+)\/?$/i
 
+export interface ScanKode {
+  /** Koden som den skal slås op i BC. */
+  kode: string
+  /** Kom den fra kanban-QR'en på hylde-labelen — altså "TOM HYLDE? SCAN HER"? */
+  kanban: boolean
+}
+
 /**
- * Koden som den skal slås op i BC.
+ * Læser en scannet kode.
  *
  * Gør to ting, og kun to:
  *   1. Scanneren med US-tastatur sender '-' som '+'. Se [[feedback_scanner_keyboard_layout]].
- *   2. Vores egen kanban-adresse reduceres til varenummeret.
+ *   2. Vores egen kanban-adresse reduceres til varenummeret — og det HUSKES at den var
+ *      en kanban-kode, så skærmen kan spørge, om hylden er tom. Uden det flag var
+ *      labelens to QR-koder ikke til at kende fra hinanden bagefter.
  *
  * Alt andet går uændret videre. Feltet skal ikke gætte på, hvad en fremmed kode
  * "nok betyder" — det er BC's opslag, der afgør, om en kode findes.
  */
-export function rensScanKode(raa: string): string {
+export function laesScanKode(raa: string): ScanKode {
   // Rækkefølgen betyder ikke noget for adressen (den indeholder aldrig '+'), men
   // tastaturfejlen rettes først, så en håndtastet kode behandles som en scannet.
   const kode = raa.trim().replace(/\+/g, '-')
   const fund = KANBAN_ADRESSE.exec(kode)
-  if (!fund) return kode
+  if (!fund) return { kode, kanban: false }
   try {
-    return decodeURIComponent(fund[1])
+    return { kode: decodeURIComponent(fund[1]), kanban: true }
   } catch {
     // Ødelagt %-kodning: så er den rå tekst et bedre gæt end ingenting.
-    return fund[1]
+    return { kode: fund[1], kanban: true }
   }
+}
+
+/** Kun koden — til de steder, hvor det er ligegyldigt, hvor den kom fra. */
+export function rensScanKode(raa: string): string {
+  return laesScanKode(raa).kode
 }
