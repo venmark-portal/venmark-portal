@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Camera, CornerDownLeft, Delete, Keyboard, ScanLine, X } from 'lucide-react'
+import { rensScanKode } from '@/lib/lager/kode'
 
 /**
  * Scanne-feltet. Håndterminalen sender stregkoden som tastetryk efterfulgt af Enter —
@@ -11,6 +12,9 @@ import { Camera, CornerDownLeft, Delete, Keyboard, ScanLine, X } from 'lucide-re
  * To fælder bygget ind:
  *   - Scanneren med US-tastatur sender '-' som '+'. BC normaliserer, men vi viser også
  *     koden rigtigt her, så folk ikke jagter en fejl der ikke findes.
+ *   - Vores egen hylde-label bærer en kanban-QR med en ADRESSE (/k/<varenr>), og den
+ *     inviterer til at blive scannet. Gjorde man det med terminalen, fik man "ukendt
+ *     kode" fra BC. Varenummeret pilles ud i rensScanKode.
  *   - Et løbende kald der stjæler fokus dræber scanning. Derfor ingen timere der
  *     rører feltet — kun et klik udefra kan flytte fokus, og vi tager det tilbage.
  *   - Ikke alle scannere KAN sættes op til at sende Enter til sidst, og uden Enter
@@ -107,7 +111,9 @@ export default function ScanFelt({
 
   function send(kode: string, auto = false) {
     window.clearTimeout(stilleRef.current)
-    const renset = kode.trim().replace(/\+/g, '-')
+    // Både tastaturfejlen og vores egen kanban-adresse rettes i rensScanKode, så
+    // kameraet, scanneren og taltastaturet afleverer det samme til opslaget.
+    const renset = rensScanKode(kode)
     if (!renset) return
     setSidste({
       tegn: renset.length,
