@@ -11,12 +11,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, Check, Minus, Plus, Printer, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Minus, Plus, Printer, Trash2 } from 'lucide-react'
 import ScanFelt from '@/components/lager/ScanFelt'
 import MeldTomHylde from '@/components/lager/MeldTomHylde'
+import PrinterValg, { type PrinterRaekke, type PrinterValgt as Valg } from '@/components/lager/PrinterValg'
 
-interface PrinterRaekke { id: string; navn: string; beskrivelse: string }
-interface Valg { printerId: string; printerNavn: string }
 interface Vare { itemNo: string; navn: string; hylde: string; antal: number }
 
 export default function LabelSide() {
@@ -250,50 +249,12 @@ export default function LabelSide() {
       </div>
 
       {vaelger && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setVaelger(false)}>
-          <div
-            className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-t-3xl bg-gray-100 p-4"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="mb-1 flex shrink-0 items-start justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Vælg printer</h2>
-                <p className="text-xs text-gray-500">
-                  Den huskes, indtil du vælger en anden — fx hvis du flytter sted.
-                </p>
-              </div>
-              <button onClick={() => setVaelger(false)} className="shrink-0 rounded-full bg-white p-2 ring-1 ring-gray-300">
-                <X size={18} />
-              </button>
-            </div>
-            {printere.length === 0 && (
-              // Ikke en tom liste uden forklaring: er der ingen printere, er det BC's
-              // printerregister der er tomt, og så er det ikke appen der er i vejen.
-              <p className="mt-2 rounded-xl bg-white p-3 text-sm text-gray-700 ring-1 ring-gray-200">
-                BC har ingen printere registreret. Det er PrintNode-opsætningen i BC, der
-                skal have dem — ikke appen.
-              </p>
-            )}
-            <ul className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto">
-              {printere.map(p => (
-                <li key={p.id}>
-                  <button
-                    onClick={() => vaelgPrinter(p)}
-                    className="flex w-full items-center justify-between gap-2 rounded-2xl bg-white p-3 text-left ring-1 ring-gray-200"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold text-gray-900">{p.navn}</span>
-                      {p.beskrivelse && (
-                        <span className="block truncate text-xs text-gray-500">{p.beskrivelse}</span>
-                      )}
-                    </span>
-                    {valg?.printerId === p.id && <Check size={18} className="shrink-0 text-emerald-700" />}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <PrinterValg
+          printere={printere}
+          valg={valg}
+          onVaelg={vaelgPrinter}
+          onLuk={() => setVaelger(false)}
+        />
       )}
 
       <footer className="shrink-0 border-t border-gray-200 bg-white p-3">

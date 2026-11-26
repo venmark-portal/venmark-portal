@@ -44,6 +44,7 @@
       <li><a href="#forslag">Foreslå bestilling</a></li>
       <li><a href="#bestilling">Bestilling</a></li>
       <li><a href="#labels">Print hylde-label</a></li>
+      <li><a href="#stregkoder">Stregkoder til BC</a></li>
       <li><a href="#kanban">Meld en hylde tom</a></li>
       <li><a href="#driller">Når den driller</a></li>
     </ol>
@@ -58,7 +59,7 @@
       <div class="note tip">
         <strong>Læg den på hjemmeskærmen.</strong> Så fylder den hele skærmen og opfører sig som en app. I Chrome: menuen ⋮ → <span class="btn">Føj til startskærm</span>.
       </div>
-      <p>Forsiden har fire veje: fri scanning (øverst), <span class="btn">Lageroptælling</span>, <span class="btn">Bestilling</span> og <span class="btn">Print hylde-label</span>.</p>
+      <p>Forsiden har fem veje: fri scanning (øverst), <span class="btn">Lageroptælling</span>, <span class="btn">Bestilling</span>, <span class="btn">Print hylde-label</span> og <span class="btn">Stregkoder til BC</span>.</p>
     </section>
 
     <section class="blk" id="scan">
@@ -102,6 +103,7 @@
         <span class="do">Tryk <span class="btn">Lær koden</span>, find varen, og gem. Koden bliver en <strong>ægte varereference</strong> i BC og virker derefter overalt — også i pakkeriet og på salg.</span>
       </div>
       <p>Er koden allerede i brug på en anden vare, siger appen det og ændrer ingenting. Så er det den anden vare, der skal rettes — ikke koden, der skal overskrives.</p>
+      <p>Ved du på forhånd, hvilken vare det er — fx fordi du står og rydder op i en hylde — så er <a href="#stregkoder">Stregkoder til BC</a> hurtigere: der taster du varenummeret først og scanner bagefter.</p>
     </section>
 
     <section class="blk" id="optaelling">
@@ -246,6 +248,36 @@
         <q>Ukendt kode … Hylde-labelen er netop til varer UDEN stregkode — tast varenummeret i stedet</q>
         <span class="why">Der er ingen kode at genkende, og det er jo pointen med labelen.</span>
         <span class="do">Tast varenummeret.</span>
+      </div>
+    </section>
+
+    <section class="blk" id="stregkoder">
+      <p class="eyebrow">Stregkoder</p>
+      <h2>Stregkoder til BC</h2>
+      <p>Står du med en kasse, der <strong>har</strong> en stregkode, som BC ikke kender? Så er det her, den kommer ind. Det er den omvendte vej af <a href="#laer">Lær koden</a>: dér starter du med en kode, du ikke kender, her starter du med varen.</p>
+      <ol class="steps">
+        <li>Tryk <span class="btn">Stregkoder til BC</span>.</li>
+        <li><strong>Tast varenummeret</strong> på taltastaturet — eller scan en kode, BC kender i forvejen.</li>
+        <li>Varen kommer frem med navn, enhed og hylde. Nu skifter scannefeltet rolle: <strong>scan stregkoden på kassen</strong>.</li>
+        <li>Koden lægges klar, og appen skriver, om den er fri. Tryk <span class="btn">Godkend — gem i BC</span>.</li>
+      </ol>
+      <p>Koden bliver en <strong>ægte varereference</strong> i BC. Den virker bagefter overalt: i pakkeriet, på salg og ved optælling. Varen bliver stående, så du kan tage flere koder på den samme vare — fx EAN på pakken og ITF på kassen.</p>
+      <p>Fluebenet nederst, <span class="btn">Print hylde-label efter godkendelse</span>, printer <strong>1 label</strong> med det samme, uden at spørge om antal. Det huskes på din enhed, så du kan tage en hel hylde uden at trykke mere. Der er også en <span class="btn">Print hylde-label (1 stk)</span> på varen, hvis du bare skal have en label.</p>
+      <div class="note">
+        <strong>Appen tjekker koden, inden du godkender.</strong> Er den optaget af en anden vare, kan Godkend ikke trykkes — og du kan se hvilken vare, den sidder på. Det er hele pointen med en godkendelse.
+      </div>
+      <div class="msg">
+        <q>Det er vores egen hylde-label (TOM HYLDE-koden) — ikke varens stregkode</q>
+        <span class="why">Du scannede QR-koden på vores egen label. Den er en adresse, ikke varens kode, og registrerede du den, ville varens eget nummer stå som en leverandørkode.</span>
+        <span class="do">Scan den stregkode, der er trykt på kassen af leverandøren.</span>
+      </div>
+      <div class="msg">
+        <q>Optaget af vare …</q>
+        <span class="why">Koden sidder allerede på en anden vare. To varer kan ikke dele en stregkode — så ville pakkeriet ikke kunne vide, hvad der blev scannet.</span>
+        <span class="do">Tjek, om du har den rigtige kasse. Er den gamle kobling forkert, skal den fjernes i BC på varereferencerne først.</span>
+      </div>
+      <div class="note tip">
+        <strong>Uden net:</strong> koden kan stadig godkendes. Den lægger sig i kø og sendes af sig selv, når der er net igen — men så kan appen ikke sige på forhånd, om den var fri.
       </div>
     </section>
 
