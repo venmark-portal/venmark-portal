@@ -19,6 +19,8 @@ export default function RolleSkift({ flydende = false }: { flydende?: boolean })
   const [aaben, setAaben] = useState(false)
   const [travl, setTravl] = useState<KlientRolle | null>(null)
   const [fejl, setFejl] = useState(false)
+  // Bilag/udlæg er ikke en rolle, men en ekstra indgang for medarbejdere med "Bilag tilladt" i BC.
+  const [bilag, setBilag] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -28,7 +30,12 @@ export default function RolleSkift({ flydende = false }: { flydende?: boolean })
     return () => document.removeEventListener('mousedown', luk)
   }, [aaben])
 
-  if (!m || (m.roller?.length ?? 0) < 2) return null
+  useEffect(() => {
+    if (!m) return
+    fetch('/api/bilag/opsaetning?kort=1').then(r => r.json()).then(r => setBilag(!!r.tilladt)).catch(() => {})
+  }, [m?.navn]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!m || ((m.roller?.length ?? 0) < 2 && !bilag)) return null
 
   async function vaelg(r: KlientRolle) {
     if (r === nu) { setAaben(false); return }
@@ -48,7 +55,7 @@ export default function RolleSkift({ flydende = false }: { flydende?: boolean })
       <button type="button" onClick={() => setAaben(v => !v)} aria-haspopup="menu" aria-expanded={aaben}
         className="flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50">
         <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
-        {nu ? NAVN[nu] : 'Rolle'}
+        {nu ? NAVN[nu] : 'Menu'}
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 text-gray-400" aria-hidden="true">
           <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" />
         </svg>
@@ -65,6 +72,11 @@ export default function RolleSkift({ flydende = false }: { flydende?: boolean })
               {travl === r && <span className="text-xs text-gray-400">…</span>}
             </button>
           ))}
+          {bilag && (
+            <a href="/bilag" role="menuitem" className="mt-1 flex w-full items-center border-t border-gray-100 px-3 py-2 text-left text-gray-700 hover:bg-gray-50">
+              🧾 Bilag / udlæg
+            </a>
+          )}
           {fejl && <p className="px-3 py-1.5 text-xs text-red-600">Rollen kunne ikke vælges. Spørg kontoret.</p>}
         </div>
       )}
